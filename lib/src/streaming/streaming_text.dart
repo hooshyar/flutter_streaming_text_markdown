@@ -127,11 +127,9 @@ class _StreamingTextState extends State<StreamingText>
   Timer? _typeTimer;
   StreamSubscription<String>? _streamSubscription;
   late AnimationController _cursorController;
-  late Animation<double> _cursorAnimation;
   bool _isComplete = false;
   bool _isError = false;
   String? _errorMessage;
-  bool _isDisposed = false;
 
   // Keep track of character animations
   final Map<int, AnimationController> _characterAnimations = {};
@@ -148,14 +146,6 @@ class _StreamingTextState extends State<StreamingText>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-
-    _cursorAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _cursorController,
-      curve: Curves.easeInOut,
-    ));
 
     if (widget.showCursor) {
       _cursorController.repeat(reverse: true);
@@ -702,7 +692,10 @@ class _StreamingTextState extends State<StreamingText>
       textDirection: widget.textDirection,
       softWrap: widget.softWrap ?? true,
       overflow: widget.overflow ?? TextOverflow.clip,
-      textScaleFactor: widget.textScaleFactor ?? 1.0,
+      textScaler: widget.textScaler ??
+          (widget.textScaleFactor != null
+              ? TextScaler.linear(widget.textScaleFactor!)
+              : TextScaler.noScaling),
       maxLines: widget.maxLines,
       strutStyle: widget.strutStyle,
     );

@@ -2,7 +2,6 @@ library flutter_streaming_text_markdown;
 
 export 'src/streaming/streaming.dart';
 
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'src/streaming/streaming_text.dart';

@@ -17,7 +17,8 @@ class StreamingText extends StatefulWidget {
     this.locale,
     this.softWrap,
     this.overflow,
-    this.textScaleFactor,
+    @Deprecated('Use textScaler instead') this.textScaleFactor,
+    this.textScaler,
     this.maxLines,
     this.semanticsLabel,
     this.textWidthBasis,
@@ -71,7 +72,11 @@ class StreamingText extends StatefulWidget {
   final TextOverflow? overflow;
 
   /// The number of font pixels for each logical pixel.
+  @Deprecated('Use textScaler instead')
   final double? textScaleFactor;
+
+  /// The text scaling factor to use.
+  final TextScaler? textScaler;
 
   /// An optional maximum number of lines for the text to span.
   final int? maxLines;

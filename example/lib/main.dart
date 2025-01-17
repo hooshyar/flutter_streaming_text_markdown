@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
+import 'dart:async';
 
 void main() {
   runApp(const MyApp());
@@ -55,9 +56,36 @@ class _MyAppState extends State<MyApp> {
           ),
         ),
       ),
-      home: MyHomePage(
-        onThemeToggle: _toggleTheme,
-        isDarkMode: _isDarkMode,
+      home: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Streaming Text Demo'),
+            actions: [
+              IconButton(
+                icon: Icon(
+                  _isDarkMode ? Icons.light_mode : Icons.dark_mode,
+                ),
+                onPressed: _toggleTheme,
+              ),
+            ],
+            bottom: const TabBar(
+              tabs: [
+                Tab(text: 'Basic Demo'),
+                Tab(text: 'LLM Demo'),
+              ],
+            ),
+          ),
+          body: TabBarView(
+            children: [
+              MyHomePage(
+                onThemeToggle: _toggleTheme,
+                isDarkMode: _isDarkMode,
+              ),
+              LLMDemoPage(isDarkMode: _isDarkMode),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -442,6 +470,198 @@ Explore different modes:
           ),
         ),
       ],
+    );
+  }
+}
+
+class LLMDemoPage extends StatefulWidget {
+  final bool isDarkMode;
+
+  const LLMDemoPage({
+    super.key,
+    required this.isDarkMode,
+  });
+
+  @override
+  State<LLMDemoPage> createState() => _LLMDemoPageState();
+}
+
+class _LLMDemoPageState extends State<LLMDemoPage> {
+  final TextEditingController _promptController = TextEditingController();
+  String _currentResponse = '';
+  bool _isGenerating = false;
+  Timer? _streamingTimer;
+  int _currentIndex = 0;
+
+  final List<String> _sampleResponses = [
+    '''Here's a detailed explanation of how async/await works in Dart:
+
+1. **Basics of Async Programming**:
+   - Async programming helps handle operations that might take time
+   - It prevents blocking the main thread
+   - Uses Future objects to represent potential values
+
+2. **The async Keyword**:
+   - Marks a function as asynchronous
+   - Always returns a Future
+   - Enables the use of await
+
+3. **The await Keyword**:
+   - Pauses execution until a Future completes
+   - Can only be used in async functions
+   - Makes async code look synchronous
+
+4. **Error Handling**:
+   - Use try/catch blocks
+   - Handle errors gracefully
+   - Maintain app stability
+
+Remember: Good async programming is crucial for responsive apps!''',
+    '''Let me explain the key principles of Material Design 3:
+
+1. **Dynamic Color**:
+   - Uses color extraction from wallpapers
+   - Creates personalized color schemes
+   - Maintains accessibility
+
+2. **Typography**:
+   - Updated type scale
+   - Better readability
+   - Responsive sizing
+
+3. **Component Updates**:
+   - New navigation bar
+   - Enhanced FAB designs
+   - Improved cards
+
+4. **Elevation and Shadows**:
+   - Refined surface hierarchy
+   - Better depth perception
+   - Consistent elevation system
+
+These principles create modern, beautiful apps!''',
+    '''Here's how to implement clean architecture in Flutter:
+
+1. **Layers**:
+   - Domain (Business Logic)
+   - Data (Repository Pattern)
+   - Presentation (UI/UX)
+
+2. **Dependencies**:
+   - Dependency Injection
+   - Interface Segregation
+   - Clean Dependencies
+
+3. **Testing**:
+   - Unit Tests
+   - Integration Tests
+   - Widget Tests
+
+4. **Benefits**:
+   - Maintainable Code
+   - Scalable Architecture
+   - Easy Testing
+
+Follow these principles for robust apps!''',
+  ];
+
+  void _startGenerating() {
+    if (_promptController.text.isEmpty) return;
+
+    setState(() {
+      _isGenerating = true;
+      _currentResponse = '';
+      _currentIndex = (_currentIndex + 1) % _sampleResponses.length;
+    });
+
+    final response = _sampleResponses[_currentIndex];
+    int charIndex = 0;
+
+    _streamingTimer?.cancel();
+    _streamingTimer = Timer.periodic(const Duration(milliseconds: 10), (timer) {
+      if (charIndex < response.length) {
+        setState(() {
+          _currentResponse += response[charIndex];
+        });
+        charIndex++;
+      } else {
+        timer.cancel();
+        setState(() {
+          _isGenerating = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _streamingTimer?.cancel();
+    _promptController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _promptController,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter your prompt...',
+                      border: InputBorder.none,
+                    ),
+                    onSubmitted: (_) => _startGenerating(),
+                  ),
+                ),
+                IconButton(
+                  icon: _isGenerating
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send),
+                  onPressed: _isGenerating ? null : _startGenerating,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                ),
+              ),
+              child: StreamingTextMarkdown(
+                text: _currentResponse,
+                typingSpeed: const Duration(milliseconds: 50),
+                fadeInEnabled: true,
+                fadeInDuration: const Duration(milliseconds: 200),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

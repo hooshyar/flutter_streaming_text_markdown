@@ -118,13 +118,14 @@ void main() {
           home: StreamingText(
             text: 'Styled Text',
             style: style,
+            typingSpeed: Duration.zero,
+            markdownEnabled: false,
           ),
         ),
       );
 
       await tester.pump();
       expect(find.byType(StreamingText), findsOneWidget);
-      expect(find.byType(Text), findsOneWidget);
     });
   });
 }

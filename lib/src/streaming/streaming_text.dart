@@ -387,6 +387,116 @@ class _StreamingTextState extends State<StreamingText>
       );
     }
 
+    // For fade-in animation with markdown
+    if (widget.fadeInEnabled) {
+      final lines = _displayedText.split('\n');
+      final isRTL = widget.textDirection == TextDirection.rtl;
+
+      return Directionality(
+        textDirection: widget.textDirection ?? TextDirection.ltr,
+        child: Column(
+          crossAxisAlignment: widget.textAlign == TextAlign.center
+              ? CrossAxisAlignment.center
+              : isRTL
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+          children: lines.map((line) {
+            if (line.isEmpty) return const SizedBox(height: 20);
+
+            // Check for heading level
+            int headingLevel = 0;
+            String processedLine = line;
+            if (widget.markdownEnabled) {
+              while (processedLine.startsWith('#')) {
+                headingLevel++;
+                processedLine = processedLine.substring(1);
+              }
+              processedLine = processedLine.trim();
+            }
+
+            // Apply heading style
+            TextStyle lineStyle = effectiveStyle;
+            if (headingLevel > 0) {
+              final scaleFactor = 2.0 - ((headingLevel - 1) * 0.3);
+              lineStyle = lineStyle.copyWith(
+                fontSize: effectiveStyle.fontSize! * scaleFactor,
+                fontWeight: FontWeight.bold,
+              );
+            }
+
+            // For RTL, handle text as words
+            if (isRTL) {
+              final words =
+                  processedLine.split(' ').where((w) => w.isNotEmpty).toList();
+              return Container(
+                width: double.infinity,
+                alignment: widget.textAlign == TextAlign.center
+                    ? Alignment.center
+                    : Alignment.centerRight,
+                child: Wrap(
+                  direction: Axis.horizontal,
+                  alignment: widget.textAlign == TextAlign.center
+                      ? WrapAlignment.center
+                      : WrapAlignment.end,
+                  children: words.asMap().entries.map((entry) {
+                    final wordIndex = entry.key;
+                    final word = entry.value;
+                    final baseIndex =
+                        lines.take(lines.indexOf(line)).join('\n').length +
+                            words.take(wordIndex).join(' ').length +
+                            wordIndex;
+
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildAnimatedWord(word, baseIndex, lineStyle),
+                        if (wordIndex < words.length - 1)
+                          Text(' ', style: lineStyle),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              );
+            }
+
+            // For LTR text
+            final words = processedLine.split(' ');
+            return Wrap(
+              direction: Axis.horizontal,
+              alignment: widget.textAlign == TextAlign.center
+                  ? WrapAlignment.center
+                  : WrapAlignment.start,
+              children: words.asMap().entries.map((wordEntry) {
+                final wordIndex = wordEntry.key;
+                final word = wordEntry.value;
+                final baseIndex =
+                    lines.take(lines.indexOf(line)).join('\n').length +
+                        words.take(wordIndex).join(' ').length +
+                        (wordIndex > 0 ? 1 : 0);
+
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ...word.characters
+                        .toList()
+                        .asMap()
+                        .entries
+                        .map((charEntry) {
+                      final charIndex = baseIndex + charEntry.key;
+                      return _buildAnimatedCharacter(
+                          charEntry.value, charIndex, lineStyle);
+                    }),
+                    if (wordEntry.key < words.length - 1)
+                      Text(' ', style: lineStyle),
+                  ],
+                );
+              }).toList(),
+            );
+          }).toList(),
+        ),
+      );
+    }
+
     // Simple text rendering without markdown or fade-in
     return Text(
       _displayedText,
@@ -399,6 +509,144 @@ class _StreamingTextState extends State<StreamingText>
       maxLines: widget.maxLines,
       strutStyle: widget.strutStyle,
     );
+  }
+
+  Widget _buildAnimatedCharacter(String char, int index, TextStyle baseStyle) {
+    final controller = _characterAnimations[index];
+
+    Widget buildText(String text, {TextStyle? style}) {
+      final effectiveStyle =
+          _applyMarkdownStyle(text, index, style ?? baseStyle);
+      return Text(
+        text,
+        style: effectiveStyle,
+        textDirection: widget.textDirection,
+        textAlign: widget.textAlign,
+      );
+    }
+
+    if (controller == null || !widget.fadeInEnabled) {
+      return buildText(char);
+    }
+
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(
+            0,
+            10 * (1 - controller.value),
+          ),
+          child: Opacity(
+            opacity: controller.value,
+            child: child,
+          ),
+        );
+      },
+      child: buildText(char),
+    );
+  }
+
+  Widget _buildAnimatedWord(String word, int index, TextStyle baseStyle) {
+    final controller = _characterAnimations[index];
+
+    Widget buildText(String text, {TextStyle? style}) {
+      final effectiveStyle =
+          _applyMarkdownStyle(text, index, style ?? baseStyle);
+      return Text(
+        text,
+        style: effectiveStyle,
+        textDirection: widget.textDirection,
+        textAlign: widget.textAlign,
+      );
+    }
+
+    if (controller == null || !widget.fadeInEnabled) {
+      return buildText(word);
+    }
+
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(
+            0,
+            10 * (1 - controller.value),
+          ),
+          child: Opacity(
+            opacity: controller.value,
+            child: child,
+          ),
+        );
+      },
+      child: buildText(word),
+    );
+  }
+
+  TextStyle _applyMarkdownStyle(String text, int index, TextStyle baseStyle) {
+    if (!widget.markdownEnabled) return baseStyle;
+
+    bool isBold = _isMarkdownBold(index);
+    bool isItalic = _isMarkdownItalic(index);
+
+    return baseStyle.copyWith(
+      fontWeight: isBold ? FontWeight.bold : null,
+      fontStyle: isItalic ? FontStyle.italic : null,
+    );
+  }
+
+  bool _isMarkdownBold(int index) {
+    // Check if character is between ** or __ markers
+    final text = _displayedText;
+    if (index >= text.length) return false;
+
+    // Look for ** or __ before the current position
+    int start = index;
+    while (start > 1) {
+      if ((text[start - 2] == '*' && text[start - 1] == '*') ||
+          (text[start - 2] == '_' && text[start - 1] == '_')) {
+        // Look for matching ** or __ after the current position
+        int end = index;
+        while (end < text.length - 1) {
+          if ((text[end] == '*' && text[end + 1] == '*') ||
+              (text[end] == '_' && text[end + 1] == '_')) {
+            return true;
+          }
+          end++;
+        }
+      }
+      start--;
+    }
+    return false;
+  }
+
+  bool _isMarkdownItalic(int index) {
+    // Check if character is between * or _ markers
+    final text = _displayedText;
+    if (index >= text.length) return false;
+
+    // Look for * or _ before the current position
+    int start = index;
+    while (start > 0) {
+      if (text[start - 1] == '*' || text[start - 1] == '_') {
+        // Look for matching * or _ after the current position
+        int end = index;
+        while (end < text.length) {
+          if (text[end] == '*' || text[end] == '_') {
+            // Make sure it's not part of a bold marker
+            if (end < text.length - 1 &&
+                (text[end + 1] == '*' || text[end + 1] == '_')) {
+              end++;
+              continue;
+            }
+            return true;
+          }
+          end++;
+        }
+      }
+      start--;
+    }
+    return false;
   }
 
   @override

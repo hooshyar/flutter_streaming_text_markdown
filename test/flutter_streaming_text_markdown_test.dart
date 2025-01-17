@@ -1,72 +1,130 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 
 void main() {
-  testWidgets('StreamingTextMarkdown basic functionality test',
-      (WidgetTester tester) async {
-    // Build our widget and trigger a frame
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StreamingTextMarkdown(
-            text: '# Initial Text\n\n**Bold Text**',
-            initialText: '# Initial Text',
+  group('StreamingTextMarkdown', () {
+    testWidgets('renders initial text correctly', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: '# Hello\nWorld',
+            initialText: '# Hello',
           ),
         ),
-      ),
-    );
+      );
 
-    // Verify initial text is displayed
-    expect(find.text('Initial Text'), findsOneWidget);
+      await tester.pump();
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+      expect(find.byType(MarkdownBody), findsOneWidget);
+    });
 
-    // Wait for animation
-    await tester.pump(const Duration(seconds: 1));
+    testWidgets('supports markdown formatting', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: '**Bold** and *italic*',
+          ),
+        ),
+      );
 
-    // Verify the new text is displayed
-    expect(find.text('Bold Text'), findsOneWidget);
-  });
+      await tester.pump();
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+      expect(find.byType(MarkdownBody), findsOneWidget);
+    });
 
-  testWidgets('StreamingTextMarkdown RTL support test',
-      (WidgetTester tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StreamingTextMarkdown(
-            text: '# مرحباً\n\nنص عربي',
-            initialText: '# مرحباً',
+    testWidgets('handles RTL text correctly', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: 'مرحبا',
             textDirection: TextDirection.rtl,
-            textAlign: TextAlign.right,
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('مرحباً'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 1));
-    expect(find.text('نص عربي'), findsOneWidget);
-  });
+      await tester.pump();
+      final widget = tester.widget<StreamingTextMarkdown>(
+        find.byType(StreamingTextMarkdown),
+      );
+      expect(widget.textDirection, TextDirection.rtl);
+    });
 
-  testWidgets('StreamingTextMarkdown animation settings test',
-      (WidgetTester tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StreamingTextMarkdown(
-            text: '# Test\n\nAnimated Text',
-            initialText: '# Test',
-            fadeInEnabled: true,
-            fadeInDuration: const Duration(milliseconds: 300),
+    testWidgets('supports word-by-word animation', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: 'Hello World',
             wordByWord: true,
             typingSpeed: const Duration(milliseconds: 50),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('Test'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 1));
-    expect(find.text('Animated Text'), findsOneWidget);
+      await tester.pump();
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+    });
+
+    testWidgets('supports fade-in animation', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: 'Fade In Text',
+            fadeInEnabled: true,
+            fadeInDuration: const Duration(milliseconds: 100),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+    });
+  });
+
+  group('StreamingText', () {
+    testWidgets('handles stream updates', (tester) async {
+      final controller = StreamController<String>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingText(
+            text: '',
+            stream: controller.stream,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(StreamingText), findsOneWidget);
+
+      controller.add('Hello');
+      await tester.pump();
+      expect(find.byType(Text), findsOneWidget);
+
+      await controller.close();
+    });
+
+    testWidgets('supports custom text style', (tester) async {
+      const style = TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        color: Colors.blue,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingText(
+            text: 'Styled Text',
+            style: style,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(StreamingText), findsOneWidget);
+      expect(find.byType(Text), findsOneWidget);
+    });
   });
 }

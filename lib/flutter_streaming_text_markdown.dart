@@ -1,3 +1,21 @@
+/// A Flutter package for displaying streaming text with Markdown support.
+///
+/// This package provides widgets for creating animated text displays with
+/// markdown formatting. It's perfect for creating typing animations,
+/// chat interfaces, or any text that needs to appear gradually with style.
+///
+/// The main widget is [StreamingTextMarkdown], which combines markdown
+/// rendering with customizable typing animations.
+///
+/// Example usage:
+/// ```dart
+/// StreamingTextMarkdown(
+///   text: '''# Welcome! 👋
+///   This is a **demo** of streaming text with *markdown* support.''',
+///   typingSpeed: Duration(milliseconds: 50),
+///   fadeInEnabled: true,
+/// )
+/// ```
 library flutter_streaming_text_markdown;
 
 export 'src/streaming/streaming.dart';
@@ -6,7 +24,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'src/streaming/streaming_text.dart';
 
-/// A widget that displays streaming text with Markdown support
+/// A widget that displays streaming text with Markdown support.
+///
+/// This widget combines the power of markdown rendering with smooth
+/// typing animations. It supports:
+/// * Markdown formatting (headers, bold, italic, lists)
+/// * Character-by-character or word-by-word typing
+/// * Customizable typing speed and animations
+/// * RTL language support
+/// * Auto-scrolling
+///
+/// The [text] parameter is required and should contain the markdown-formatted
+/// text to be displayed. Use [typingSpeed] to control how fast the text appears,
+/// and [wordByWord] to choose between character-by-character or word-by-word animation.
 class StreamingTextMarkdown extends StatefulWidget {
   /// The text to display
   final String text;

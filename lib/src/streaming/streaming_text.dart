@@ -4,8 +4,31 @@ import 'package:characters/characters.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 /// A widget that displays streaming text with real-time updates and markdown support.
+///
+/// This widget provides a rich text display with features like:
+/// * Character-by-character or word-by-word typing animation
+/// * Markdown rendering with support for bold, italic, and headers
+/// * Fade-in animations for smooth text appearance
+/// * RTL (Right-to-Left) language support
+/// * Real-time text streaming capabilities
+/// * Customizable typing speed and animation durations
+///
+/// Example usage:
+/// ```dart
+/// StreamingText(
+///   text: '**Hello** _world_!',
+///   typingSpeed: Duration(milliseconds: 50),
+///   fadeInEnabled: true,
+///   wordByWord: true,
+///   markdownEnabled: true,
+/// )
+/// ```
 class StreamingText extends StatefulWidget {
   /// Creates a streaming text widget.
+  ///
+  /// The [text] parameter must not be null and contains the text to be displayed.
+  /// Use [typingSpeed] to control the animation speed and [wordByWord] to choose
+  /// between character-by-character or word-by-word animation.
   const StreamingText({
     super.key,
     required this.text,
@@ -211,8 +234,6 @@ class _StreamingTextState extends State<StreamingText>
   void _startTyping() {
     if (_isComplete) return;
 
-    final isRTL = widget.textDirection == TextDirection.rtl;
-
     if (widget.wordByWord) {
       final lines = widget.text.split('\n');
       int currentLine = 0;
@@ -243,7 +264,7 @@ class _StreamingTextState extends State<StreamingText>
         final lineWords = line.split(' ').where((w) => w.isNotEmpty).toList();
 
         // Reverse words for RTL
-        if (isRTL) {
+        if (widget.textDirection == TextDirection.rtl) {
           lineWords.reversed.toList();
         }
 
@@ -294,242 +315,35 @@ class _StreamingTextState extends State<StreamingText>
       final characters = Characters(widget.text).toList();
       int index = _displayedText.characters.length;
 
+      _typeTimer?.cancel();
       _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
         if (!mounted) {
           timer.cancel();
           return;
         }
 
-        final remainingChars = characters.length - index;
-        final charsToReveal = widget.chunkSize <= remainingChars
-            ? widget.chunkSize
-            : remainingChars;
-
-        if (charsToReveal <= 0) {
+        if (index >= characters.length) {
           timer.cancel();
-          if (mounted) {
-            setState(() => _isComplete = true);
-            widget.onComplete?.call();
-          }
+          setState(() => _isComplete = true);
+          widget.onComplete?.call();
           return;
         }
 
-        if (mounted) {
-          setState(() {
-            _displayedText +=
-                characters.sublist(index, index + charsToReveal).join();
-          });
-          _createCharacterAnimation(index, charsToReveal);
-        }
+        final chunkSize = widget.chunkSize;
+        final remainingChars = characters.length - index;
+        final currentChunkSize =
+            chunkSize > remainingChars ? remainingChars : chunkSize;
 
-        if (RegExp(r'[.,!?؟،]')
-            .hasMatch(characters[index + charsToReveal - 1])) {
-          timer.cancel();
-          Future.delayed(widget.typingSpeed * 4, () {
-            if (mounted) {
-              _startTyping();
-            }
-          });
-        }
+        setState(() {
+          final chunk =
+              characters.sublist(index, index + currentChunkSize).join();
+          _displayedText += chunk;
+          _createCharacterAnimation(index, currentChunkSize);
+        });
 
-        index += charsToReveal;
+        index += currentChunkSize;
       });
     }
-  }
-
-  void _cleanup() {
-    _typeTimer?.cancel();
-    _streamSubscription?.cancel();
-
-    // Stop and dispose all character animations
-    for (final controller in _characterAnimations.values.toList()) {
-      try {
-        if (controller.isAnimating) {
-          controller.stop();
-        }
-        controller.dispose();
-      } catch (e) {
-        // Controller might already be disposed
-      }
-    }
-    _characterAnimations.clear();
-  }
-
-  void _disposeAnimations() {
-    // Stop and dispose cursor animation
-    try {
-      if (_cursorController.isAnimating) {
-        _cursorController.stop();
-      }
-      _cursorController.dispose();
-    } catch (e) {
-      // Controller might already be disposed
-    }
-  }
-
-  @override
-  void dispose() {
-    _cleanup();
-    _disposeAnimations();
-    super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(StreamingText oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (widget.text != oldWidget.text ||
-        widget.showCursor != oldWidget.showCursor) {
-      _cleanup();
-      _disposeAnimations();
-      if (mounted) {
-        setState(() {
-          _displayedText = '';
-          _isComplete = false;
-        });
-        _initCursorAnimation();
-        _initializeText();
-      }
-    }
-  }
-
-  Widget _buildAnimatedCharacter(String char, int index, TextStyle baseStyle) {
-    final controller = _characterAnimations[index];
-    final isRTL = widget.textDirection == TextDirection.rtl;
-
-    Widget buildText(String text, {TextStyle? style}) {
-      final effectiveStyle =
-          _applyMarkdownStyle(text, index, style ?? baseStyle);
-      return Text(
-        text,
-        style: effectiveStyle,
-        textDirection: widget.textDirection,
-        textAlign: widget.textAlign,
-      );
-    }
-
-    if (controller == null || !widget.fadeInEnabled) {
-      return buildText(char);
-    }
-
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(
-            0,
-            10 * (1 - controller.value),
-          ),
-          child: Opacity(
-            opacity: controller.value,
-            child: child,
-          ),
-        );
-      },
-      child: buildText(char),
-    );
-  }
-
-  TextStyle _applyMarkdownStyle(String text, int index, TextStyle baseStyle) {
-    if (!widget.markdownEnabled) return baseStyle;
-
-    bool isBold = _isMarkdownBold(index);
-    bool isItalic = _isMarkdownItalic(index);
-
-    return baseStyle.copyWith(
-      fontWeight: isBold ? FontWeight.bold : null,
-      fontStyle: isItalic ? FontStyle.italic : null,
-    );
-  }
-
-  Widget _buildAnimatedWord(String word, int index, TextStyle baseStyle) {
-    final controller = _characterAnimations[index];
-
-    Widget buildText(String text, {TextStyle? style}) {
-      final effectiveStyle =
-          _applyMarkdownStyle(text, index, style ?? baseStyle);
-      return Text(
-        text,
-        style: effectiveStyle,
-        textDirection: widget.textDirection,
-        textAlign: widget.textAlign,
-      );
-    }
-
-    if (controller == null || !widget.fadeInEnabled) {
-      return buildText(word);
-    }
-
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(
-            0,
-            10 * (1 - controller.value),
-          ),
-          child: Opacity(
-            opacity: controller.value,
-            child: child,
-          ),
-        );
-      },
-      child: buildText(word),
-    );
-  }
-
-  bool _isMarkdownBold(int index) {
-    // Check if character is between ** or __ markers
-    final text = _displayedText;
-    if (index >= text.length) return false;
-
-    // Look for ** or __ before the current position
-    int start = index;
-    while (start > 1) {
-      if ((text[start - 2] == '*' && text[start - 1] == '*') ||
-          (text[start - 2] == '_' && text[start - 1] == '_')) {
-        // Look for matching ** or __ after the current position
-        int end = index;
-        while (end < text.length - 1) {
-          if ((text[end] == '*' && text[end + 1] == '*') ||
-              (text[end] == '_' && text[end + 1] == '_')) {
-            return true;
-          }
-          end++;
-        }
-      }
-      start--;
-    }
-    return false;
-  }
-
-  bool _isMarkdownItalic(int index) {
-    // Check if character is between * or _ markers
-    final text = _displayedText;
-    if (index >= text.length) return false;
-
-    // Look for * or _ before the current position
-    int start = index;
-    while (start > 0) {
-      if (text[start - 1] == '*' || text[start - 1] == '_') {
-        // Look for matching * or _ after the current position
-        int end = index;
-        while (end < text.length) {
-          if (text[end] == '*' || text[end] == '_') {
-            // Make sure it's not part of a bold marker
-            if (end < text.length - 1 &&
-                (text[end + 1] == '*' || text[end + 1] == '_')) {
-              end++;
-              continue;
-            }
-            return true;
-          }
-          end++;
-        }
-      }
-      start--;
-    }
-    return false;
   }
 
   Widget _buildContent(BuildContext context) {
@@ -537,12 +351,11 @@ class _StreamingTextState extends State<StreamingText>
       return Text(
         'Error: ${_errorMessage ?? 'Unknown error'}',
         style: widget.style?.copyWith(color: Colors.red) ??
-            TextStyle(color: Colors.red),
+            const TextStyle(color: Colors.red),
       );
     }
 
-    final defaultStyle = DefaultTextStyle.of(context).style;
-    final effectiveStyle = widget.style ?? defaultStyle;
+    final effectiveStyle = widget.style ?? DefaultTextStyle.of(context).style;
 
     // If markdown is enabled and no fade-in animation, use MarkdownBody directly
     if (widget.markdownEnabled && !widget.fadeInEnabled) {
@@ -574,116 +387,6 @@ class _StreamingTextState extends State<StreamingText>
       );
     }
 
-    // For fade-in animation with markdown
-    if (widget.fadeInEnabled) {
-      final lines = _displayedText.split('\n');
-      final isRTL = widget.textDirection == TextDirection.rtl;
-
-      return Directionality(
-        textDirection: widget.textDirection ?? TextDirection.ltr,
-        child: Column(
-          crossAxisAlignment: widget.textAlign == TextAlign.center
-              ? CrossAxisAlignment.center
-              : isRTL
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
-          children: lines.map((line) {
-            if (line.isEmpty) return const SizedBox(height: 20);
-
-            // Check for heading level
-            int headingLevel = 0;
-            String processedLine = line;
-            if (widget.markdownEnabled) {
-              while (processedLine.startsWith('#')) {
-                headingLevel++;
-                processedLine = processedLine.substring(1);
-              }
-              processedLine = processedLine.trim();
-            }
-
-            // Apply heading style
-            TextStyle lineStyle = effectiveStyle;
-            if (headingLevel > 0) {
-              final scaleFactor = 2.0 - ((headingLevel - 1) * 0.3);
-              lineStyle = lineStyle.copyWith(
-                fontSize: effectiveStyle.fontSize! * scaleFactor,
-                fontWeight: FontWeight.bold,
-              );
-            }
-
-            // For RTL, handle text as words
-            if (isRTL) {
-              final words =
-                  processedLine.split(' ').where((w) => w.isNotEmpty).toList();
-              return Container(
-                width: double.infinity,
-                alignment: widget.textAlign == TextAlign.center
-                    ? Alignment.center
-                    : Alignment.centerRight,
-                child: Wrap(
-                  direction: Axis.horizontal,
-                  alignment: widget.textAlign == TextAlign.center
-                      ? WrapAlignment.center
-                      : WrapAlignment.end,
-                  children: words.asMap().entries.map((entry) {
-                    final wordIndex = entry.key;
-                    final word = entry.value;
-                    final baseIndex =
-                        lines.take(lines.indexOf(line)).join('\n').length +
-                            words.take(wordIndex).join(' ').length +
-                            wordIndex;
-
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildAnimatedWord(word, baseIndex, lineStyle),
-                        if (wordIndex < words.length - 1)
-                          Text(' ', style: lineStyle),
-                      ],
-                    );
-                  }).toList(),
-                ),
-              );
-            }
-
-            // For LTR text
-            final words = processedLine.split(' ');
-            return Wrap(
-              direction: Axis.horizontal,
-              alignment: widget.textAlign == TextAlign.center
-                  ? WrapAlignment.center
-                  : WrapAlignment.start,
-              children: words.asMap().entries.map((wordEntry) {
-                final wordIndex = wordEntry.key;
-                final word = wordEntry.value;
-                final baseIndex =
-                    lines.take(lines.indexOf(line)).join('\n').length +
-                        words.take(wordIndex).join(' ').length +
-                        (wordIndex > 0 ? 1 : 0);
-
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ...word.characters
-                        .toList()
-                        .asMap()
-                        .entries
-                        .map((charEntry) {
-                      final charIndex = baseIndex + charEntry.key;
-                      return _buildAnimatedCharacter(
-                          charEntry.value, charIndex, lineStyle);
-                    }),
-                    if (wordEntry.key < words.length - 1)
-                      Text(' ', style: lineStyle),
-                  ],
-                );
-              }).toList(),
-            );
-          }).toList(),
-        ),
-      );
-    }
-
     // Simple text rendering without markdown or fade-in
     return Text(
       _displayedText,
@@ -692,10 +395,7 @@ class _StreamingTextState extends State<StreamingText>
       textDirection: widget.textDirection,
       softWrap: widget.softWrap ?? true,
       overflow: widget.overflow ?? TextOverflow.clip,
-      textScaler: widget.textScaler ??
-          (widget.textScaleFactor != null
-              ? TextScaler.linear(widget.textScaleFactor!)
-              : TextScaler.noScaling),
+      textScaler: widget.textScaler ?? MediaQuery.textScalerOf(context),
       maxLines: widget.maxLines,
       strutStyle: widget.strutStyle,
     );
@@ -706,7 +406,7 @@ class _StreamingTextState extends State<StreamingText>
     return GestureDetector(
       onTap: () {
         // Skip to end on tap
-        _cleanup();
+        _typeTimer?.cancel();
         setState(() {
           _displayedText = widget.text;
           _isComplete = true;
@@ -715,5 +415,17 @@ class _StreamingTextState extends State<StreamingText>
       },
       child: _buildContent(context),
     );
+  }
+
+  @override
+  void dispose() {
+    _typeTimer?.cancel();
+    _streamSubscription?.cancel();
+    _cursorController.dispose();
+    for (final controller in _characterAnimations.values) {
+      controller.dispose();
+    }
+    _characterAnimations.clear();
+    super.dispose();
   }
 }

@@ -165,21 +165,6 @@ class _MyHomePageState extends State<MyHomePage> {
       textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: theme.colorScheme.background,
-        appBar: AppBar(
-          title: Text(isArabic ? 'عرض النص المتدفق' : 'AI Text Streaming'),
-          actions: [
-            IconButton(
-              icon: Icon(
-                widget.isDarkMode ? Icons.light_mode : Icons.dark_mode,
-                color: theme.colorScheme.primary,
-              ),
-              onPressed: widget.onThemeToggle,
-              tooltip: widget.isDarkMode
-                  ? 'Switch to light mode'
-                  : 'Switch to dark mode',
-            ),
-          ],
-        ),
         body: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.all(16.0),

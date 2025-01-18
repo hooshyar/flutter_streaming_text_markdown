@@ -93,7 +93,18 @@ class StreamingText extends StatefulWidget {
 
 class _StreamingTextState extends State<StreamingText>
     with TickerProviderStateMixin {
-  String _displayedText = '';
+  // If the text is Arabic, disable fade-in animation.
+  bool get _fadeInAllowed {
+    // Re-check the actual displayed text for Arabic:
+    return widget.fadeInEnabled &&
+        widget.stream == null &&
+        !_containsArabic(_displayedText);
+  }
+
+  final StringBuffer _displayedTextBuffer = StringBuffer();
+
+  String get _displayedText => _displayedTextBuffer.toString();
+
   Timer? _typeTimer;
   StreamSubscription<String>? _streamSubscription;
   late AnimationController _cursorController;
@@ -101,11 +112,19 @@ class _StreamingTextState extends State<StreamingText>
   bool _isError = false;
   String? _errorMessage;
   final Map<int, AnimationController> _characterAnimations = {};
+  final Map<String, List<String>> _rtlGroupCache = {};
+  late AnimationController _groupAnimationController;
 
   @override
   void initState() {
     super.initState();
     _initCursorAnimation();
+    _displayedTextBuffer.clear();
+
+    _groupAnimationController = AnimationController(
+      vsync: this,
+      duration: widget.fadeInDuration,
+    );
     _initializeText();
   }
 
@@ -134,7 +153,7 @@ class _StreamingTextState extends State<StreamingText>
     _streamSubscription = broadcastStream.listen(
       (data) {
         setState(() {
-          _displayedText += data;
+          _displayedTextBuffer.write(data);
           _isError = false;
           _errorMessage = null;
         });
@@ -153,7 +172,7 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _createCharacterAnimation(int baseIndex, int length) {
-    if (!mounted || !widget.fadeInEnabled) return;
+    if (!mounted || !_fadeInAllowed) return;
 
     for (int i = 0; i < length; i++) {
       final controller = AnimationController(
@@ -176,10 +195,16 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _startWordByWordTyping() {
-    final words = widget.text.split(RegExp(r'\s+'));
+    // Use accurate word boundary detection for Arabic
+    final words = _containsArabic(widget.text)
+        ? _splitArabicWords(widget.text)
+        : widget.text.split(RegExp(r'\s+'));
+
     final isRTL = widget.textDirection == TextDirection.rtl ||
         _containsArabic(widget.text);
+
     int wordIndex = 0;
+    _displayedTextBuffer.clear();
 
     _typeTimer?.cancel();
     _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
@@ -196,23 +221,90 @@ class _StreamingTextState extends State<StreamingText>
       }
 
       setState(() {
-        if (_displayedText.isNotEmpty) _displayedText = '$_displayedText ';
-        _displayedText = '$_displayedText${words[wordIndex]}';
+        final endIndex = (wordIndex + widget.chunkSize).clamp(0, words.length);
+        final newWords = words.sublist(wordIndex, endIndex);
 
-        if (widget.fadeInEnabled) {
-          _createCharacterAnimation(
-              _displayedText.length - words[wordIndex].length,
-              words[wordIndex].length);
+        // Write a space if buffer is not empty
+        if (_displayedTextBuffer.isNotEmpty) {
+          _displayedTextBuffer.write(' ');
         }
-      });
+        _displayedTextBuffer.writeAll(newWords, ' ');
 
-      wordIndex++;
+        if (_fadeInAllowed) {
+          final newlyAddedLength = newWords.join(' ').length +
+              (newWords.length > 1 ? (newWords.length - 1) : 0);
+
+          if (isRTL) {
+            // Animate only the newly added chunk in RTL
+            _createRTLWordAnimation(_displayedText, newlyAddedLength);
+          } else {
+            // Same logic for LTR
+            _createCharacterAnimation(
+              _displayedText.length - newlyAddedLength,
+              newlyAddedLength,
+            );
+          }
+        }
+
+        wordIndex = endIndex;
+      });
     });
   }
 
+  List<String> _splitArabicWords(String text) {
+    // Split on Arabic word boundaries and spaces
+    final words = <String>[];
+    final pattern =
+        RegExp(r'[\s\u0600-\u060C\u060E-\u061A\u061C-\u061E\u0621\u0640]+');
+
+    int start = 0;
+    for (final match in pattern.allMatches(text)) {
+      if (match.start > start) {
+        words.add(text.substring(start, match.start));
+      }
+      start = match.end;
+    }
+
+    if (start < text.length) {
+      words.add(text.substring(start));
+    }
+
+    return words.where((w) => w.trim().isNotEmpty).toList();
+  }
+
+  void _createRTLWordAnimation(String text, int newLength) {
+    if (!mounted || !_fadeInAllowed) return;
+
+    // --------------------------------------------------------------------------
+    // Instead of resetting the groupAnimationController and clearing the map,
+    // we'll create local animations for just the newly added characters.
+    // --------------------------------------------------------------------------
+    final startIndex = text.length - newLength;
+    final endIndex = text.length;
+
+    for (int i = startIndex; i < endIndex; i++) {
+      // If no animation controller exists for this index, create it
+      if (!_characterAnimations.containsKey(i)) {
+        final controller = AnimationController(
+          vsync: this,
+          duration: widget.fadeInDuration,
+        );
+        _characterAnimations[i] = controller;
+        controller.forward(); // Start fade in
+      }
+    }
+  }
+
   void _startCharacterByCharacterTyping() {
+    if (_containsArabic(widget.text)) {
+      _startRTLCharacterTyping();
+      return;
+    }
+
     final characters = Characters(widget.text).toList();
     int index = 0;
+
+    _displayedTextBuffer.clear();
 
     _typeTimer?.cancel();
     _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
@@ -236,16 +328,105 @@ class _StreamingTextState extends State<StreamingText>
       setState(() {
         final chunk =
             characters.getRange(index, index + currentChunkSize).join();
-        _displayedText = '$_displayedText$chunk';
+        _displayedTextBuffer.write(chunk);
 
-        if (widget.fadeInEnabled) {
+        if (_fadeInAllowed) {
           _createCharacterAnimation(
-              _displayedText.length - currentChunkSize, currentChunkSize);
+            _displayedText.length - currentChunkSize,
+            currentChunkSize,
+          );
         }
       });
 
       index += currentChunkSize;
     });
+  }
+
+  void _startRTLCharacterTyping() {
+    final groups = _getArabicGroups(widget.text);
+    int groupIndex = 0;
+
+    _displayedTextBuffer.clear();
+
+    _typeTimer?.cancel();
+    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (groupIndex >= groups.length) {
+        timer.cancel();
+        setState(() => _isComplete = true);
+        widget.onComplete?.call();
+        return;
+      }
+
+      setState(() {
+        if (_displayedTextBuffer.isNotEmpty) {
+          _displayedTextBuffer.write(' ');
+        }
+
+        final currentGroup = groups[groupIndex];
+        _displayedTextBuffer.write(currentGroup);
+
+        if (_fadeInAllowed) {
+          _createGroupAnimation(
+            groups.sublist(0, groupIndex + 1),
+            _displayedText.length - currentGroup.length,
+          );
+        }
+      });
+
+      groupIndex++;
+    });
+  }
+
+  List<String> _getArabicGroups(String text) {
+    if (_rtlGroupCache.containsKey(text)) {
+      return _rtlGroupCache[text]!;
+    }
+
+    final groups = <String>[];
+    final characters = Characters(text).toList();
+    String currentGroup = '';
+
+    for (int i = 0; i < characters.length; i++) {
+      currentGroup += characters[i];
+
+      // Check if we should split the group
+      if (i == characters.length - 1 ||
+          _isGroupBreakPoint(characters[i], characters[i + 1])) {
+        groups.add(currentGroup);
+        currentGroup = '';
+      }
+    }
+
+    _rtlGroupCache[text] = groups;
+    return groups;
+  }
+
+  bool _isGroupBreakPoint(String current, String next) {
+    // Space or punctuation marks break groups
+    return RegExp(r'[\s\u0600-\u060C\u060E-\u061A\u061C-\u061E\u0621\u0640]')
+        .hasMatch(current + next);
+  }
+
+  void _createGroupAnimation(List<String> groups, int startIndex) {
+    if (!mounted || !_fadeInAllowed) return;
+
+    _groupAnimationController.reset();
+
+    // Calculate total width for pre-layout
+    int totalLength = groups.fold(0, (sum, group) => sum + group.length);
+
+    // Create single animation for the group
+    _characterAnimations.clear();
+    for (int i = 0; i < totalLength; i++) {
+      _characterAnimations[startIndex + i] = _groupAnimationController;
+    }
+
+    _groupAnimationController.forward();
   }
 
   void _cleanupAnimations() {
@@ -263,10 +444,10 @@ class _StreamingTextState extends State<StreamingText>
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        // Skip to end on tap
         _typeTimer?.cancel();
         setState(() {
-          _displayedText = widget.text;
+          _displayedTextBuffer.clear();
+          _displayedTextBuffer.write(widget.text);
           _isComplete = true;
         });
         widget.onComplete?.call();
@@ -288,61 +469,71 @@ class _StreamingTextState extends State<StreamingText>
     final isRTLText = _containsArabic(_displayedText);
     final effectiveTextDirection = widget.textDirection ??
         (isRTLText ? TextDirection.rtl : TextDirection.ltr);
-    final effectiveAlignment =
-        widget.textAlign ?? (isRTLText ? TextAlign.right : TextAlign.left);
 
-    // If markdown is enabled, use MarkdownBody without fade-in
+    // Force RTL alignment for Arabic text
+    final effectiveAlignment =
+        isRTLText ? TextAlign.right : (widget.textAlign ?? TextAlign.left);
+
+    // If markdown is enabled, wrap with RTL directionality
     if (widget.markdownEnabled) {
       return Directionality(
         textDirection: effectiveTextDirection,
-        child: MarkdownBody(
-          data: _displayedText,
-          selectable: widget.selectable,
-          styleSheet: MarkdownStyleSheet(
-            p: effectiveStyle,
-            strong: effectiveStyle.copyWith(fontWeight: FontWeight.bold),
-            em: effectiveStyle.copyWith(fontStyle: FontStyle.italic),
-            h1: effectiveStyle.copyWith(
-              fontSize: effectiveStyle.fontSize! * 2.0,
-              fontWeight: FontWeight.bold,
-            ),
-            h2: effectiveStyle.copyWith(
-              fontSize: effectiveStyle.fontSize! * 1.5,
-              fontWeight: FontWeight.bold,
-            ),
-            h3: effectiveStyle.copyWith(
-              fontSize: effectiveStyle.fontSize! * 1.17,
-              fontWeight: FontWeight.bold,
-            ),
-            h4: effectiveStyle.copyWith(
-              fontSize: effectiveStyle.fontSize! * 1.0,
-              fontWeight: FontWeight.bold,
-            ),
-            h5: effectiveStyle.copyWith(
-              fontSize: effectiveStyle.fontSize! * 0.83,
-              fontWeight: FontWeight.bold,
-            ),
-            h6: effectiveStyle.copyWith(
-              fontSize: effectiveStyle.fontSize! * 0.67,
-              fontWeight: FontWeight.bold,
-            ),
-            listBullet: effectiveStyle,
-            blockquote: effectiveStyle.copyWith(
-              color: effectiveStyle.color?.withOpacity(0.6),
-              fontStyle: FontStyle.italic,
-            ),
-            code: effectiveStyle.copyWith(
-              backgroundColor: Colors.grey.withOpacity(0.2),
-              fontFamily: 'monospace',
-            ),
-            codeblockPadding: const EdgeInsets.all(8),
-            blockquotePadding: const EdgeInsets.symmetric(horizontal: 16),
-            blockquoteDecoration: BoxDecoration(
-              border: Border(
-                left: BorderSide(
-                  color:
-                      (effectiveStyle.color ?? Colors.black).withOpacity(0.4),
-                  width: 4,
+        child: Container(
+          width: double.infinity,
+          alignment: effectiveAlignment == TextAlign.right
+              ? Alignment.centerRight
+              : (effectiveAlignment == TextAlign.center
+                  ? Alignment.center
+                  : Alignment.centerLeft),
+          child: MarkdownBody(
+            data: _displayedText,
+            selectable: widget.selectable,
+            styleSheet: MarkdownStyleSheet(
+              p: effectiveStyle,
+              strong: effectiveStyle.copyWith(fontWeight: FontWeight.bold),
+              em: effectiveStyle.copyWith(fontStyle: FontStyle.italic),
+              h1: effectiveStyle.copyWith(
+                fontSize: effectiveStyle.fontSize! * 2.0,
+                fontWeight: FontWeight.bold,
+              ),
+              h2: effectiveStyle.copyWith(
+                fontSize: effectiveStyle.fontSize! * 1.5,
+                fontWeight: FontWeight.bold,
+              ),
+              h3: effectiveStyle.copyWith(
+                fontSize: effectiveStyle.fontSize! * 1.17,
+                fontWeight: FontWeight.bold,
+              ),
+              h4: effectiveStyle.copyWith(
+                fontSize: effectiveStyle.fontSize! * 1.0,
+                fontWeight: FontWeight.bold,
+              ),
+              h5: effectiveStyle.copyWith(
+                fontSize: effectiveStyle.fontSize! * 0.83,
+                fontWeight: FontWeight.bold,
+              ),
+              h6: effectiveStyle.copyWith(
+                fontSize: effectiveStyle.fontSize! * 0.67,
+                fontWeight: FontWeight.bold,
+              ),
+              listBullet: effectiveStyle,
+              blockquote: effectiveStyle.copyWith(
+                color: effectiveStyle.color?.withOpacity(0.6),
+                fontStyle: FontStyle.italic,
+              ),
+              code: effectiveStyle.copyWith(
+                backgroundColor: Colors.grey.withOpacity(0.2),
+                fontFamily: 'monospace',
+              ),
+              codeblockPadding: const EdgeInsets.all(8),
+              blockquotePadding: const EdgeInsets.symmetric(horizontal: 16),
+              blockquoteDecoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(
+                    color:
+                        (effectiveStyle.color ?? Colors.black).withOpacity(0.4),
+                    width: 4,
+                  ),
                 ),
               ),
             ),
@@ -352,7 +543,7 @@ class _StreamingTextState extends State<StreamingText>
     }
 
     // For simple text with fade-in animation
-    if (widget.fadeInEnabled) {
+    if (_fadeInAllowed) {
       final lines = _displayedText.split('\n');
       final isRTL = effectiveTextDirection == TextDirection.rtl;
 
@@ -366,8 +557,9 @@ class _StreamingTextState extends State<StreamingText>
           if (line.isEmpty) return const SizedBox(height: 20);
 
           var words = line.split(' ').where((w) => w.isNotEmpty).toList();
-          // if (isRTL) words = words.reversed.toList();
 
+          // For RTL text, we don't need to reverse the words
+          // Let the text direction handle the display order
           return Container(
             width: double.infinity,
             alignment: effectiveAlignment == TextAlign.right
@@ -382,11 +574,14 @@ class _StreamingTextState extends State<StreamingText>
               children: words.asMap().entries.map((entry) {
                 final wordIndex = entry.key;
                 final word = entry.value;
-                final baseIndex =
-                    lines.take(lines.indexOf(line)).join('\n').length +
-                        (isRTL
-                            ? words.skip(wordIndex + 1).join(' ').length
-                            : words.take(wordIndex).join(' ').length) +
+
+                // Calculate base index for animation
+                final baseIndex = isRTL
+                    ? _displayedText.length -
+                        lines.take(lines.indexOf(line) + 1).join('\n').length +
+                        wordIndex
+                    : lines.take(lines.indexOf(line)).join('\n').length +
+                        words.take(wordIndex).join(' ').length +
                         wordIndex;
 
                 return Row(
@@ -425,7 +620,8 @@ class _StreamingTextState extends State<StreamingText>
     final effectiveTextDirection = widget.textDirection ??
         (isArabicText ? TextDirection.rtl : TextDirection.ltr);
 
-    if (controller == null || !widget.fadeInEnabled) {
+    // If no controller or fade-in is disallowed, just render static text
+    if (controller == null || !_fadeInAllowed) {
       return Directionality(
         textDirection: effectiveTextDirection,
         child: Text(text, style: baseStyle),
@@ -437,10 +633,15 @@ class _StreamingTextState extends State<StreamingText>
       child: AnimatedBuilder(
         animation: controller,
         builder: (context, child) {
+          // Apply the custom fadeInCurve to the controller's value
+          final curveValue = widget.fadeInCurve.transform(controller.value);
+
           return Transform.translate(
-            offset: Offset(0, 10 * (1 - controller.value)),
+            // Move upward as we approach curveValue = 1
+            offset: Offset(0, 10 * (1 - curveValue)),
             child: Opacity(
-              opacity: controller.value,
+              // Fade from 0 to 1
+              opacity: curveValue,
               child: child,
             ),
           );
@@ -451,19 +652,10 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   bool _containsArabic(String text) {
-    // Unicode ranges for RTL scripts:
-    // - Arabic: \u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF
-    // - Hebrew: \u0590-\u05FF
-    // - Syriac: \u0700-\u074F
-    // - Thaana: \u0780-\u07BF
-    // - N'Ko: \u07C0-\u07FF
+    // Improved Arabic detection including all Arabic Unicode ranges
     return RegExp(
-      r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF'
-      r'\u0590-\u05FF'
-      r'\u0700-\u074F'
-      r'\u0780-\u07BF'
-      r'\u07C0-\u07FF]',
-    ).hasMatch(text);
+            r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]')
+        .hasMatch(text);
   }
 
   @override
@@ -471,6 +663,7 @@ class _StreamingTextState extends State<StreamingText>
     _typeTimer?.cancel();
     _streamSubscription?.cancel();
     _cursorController.dispose();
+    _groupAnimationController.dispose();
     _cleanupAnimations();
     super.dispose();
   }

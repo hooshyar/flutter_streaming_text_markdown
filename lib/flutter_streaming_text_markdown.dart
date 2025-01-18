@@ -59,6 +59,9 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Duration of the fade-in animation
   final Duration fadeInDuration;
 
+  /// The curve to use for the fade-in animation
+  final Curve fadeInCurve;
+
   /// Whether to stream text word by word instead of character by character
   final bool wordByWord;
 
@@ -74,6 +77,9 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// The text alignment
   final TextAlign? textAlign;
 
+  /// Whether to enable markdown rendering
+  final bool markdownEnabled;
+
   const StreamingTextMarkdown({
     super.key,
     required this.text,
@@ -83,11 +89,13 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.autoScroll = true,
     this.fadeInEnabled = false,
     this.fadeInDuration = const Duration(milliseconds: 300),
+    this.fadeInCurve = Curves.easeOut,
     this.wordByWord = false,
     this.chunkSize = 1,
     this.typingSpeed = const Duration(milliseconds: 50),
     this.textDirection,
     this.textAlign,
+    this.markdownEnabled = false,
   });
 
   @override
@@ -122,9 +130,10 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
               '${widget.text}_${widget.wordByWord}_${widget.chunkSize}_${widget.typingSpeed.inMilliseconds}'),
           text: widget.text,
           style: _textStyle,
-          markdownEnabled: true,
+          markdownEnabled: widget.markdownEnabled,
           fadeInEnabled: widget.fadeInEnabled,
           fadeInDuration: widget.fadeInDuration,
+          fadeInCurve: widget.fadeInCurve,
           wordByWord: widget.wordByWord,
           chunkSize: widget.chunkSize,
           typingSpeed: widget.typingSpeed,

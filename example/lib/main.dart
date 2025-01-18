@@ -114,7 +114,25 @@ class _MyHomePageState extends State<MyHomePage> {
   Duration _typingSpeed = const Duration(milliseconds: 20);
   Duration _fadeInDuration = const Duration(milliseconds: 100);
   bool _fadeInEnabled = true;
+  bool _markdownEnabled = false;
+  Curve _fadeInCurve = Curves.easeOut;
   int _resetCounter = 0;
+
+  final List<MapEntry<String, Curve>> _curves = [
+    MapEntry('Ease Out', Curves.easeOut),
+    MapEntry('Ease In', Curves.easeIn),
+    MapEntry('Elastic Out', Curves.elasticOut),
+    MapEntry('Bounce Out', Curves.bounceOut),
+    MapEntry('Decelerate', Curves.decelerate),
+  ];
+
+  final List<MapEntry<String, int>> _chunkSizes = [
+    MapEntry('1', 1),
+    MapEntry('2', 2),
+    MapEntry('3', 3),
+    MapEntry('5', 5),
+    MapEntry('10', 10),
+  ];
 
   @override
   void initState() {
@@ -128,6 +146,9 @@ class _MyHomePageState extends State<MyHomePage> {
           widget.initialSettings!['fadeInDuration'] ?? _fadeInDuration;
       _fadeInEnabled =
           widget.initialSettings!['fadeInEnabled'] ?? _fadeInEnabled;
+      _markdownEnabled =
+          widget.initialSettings!['markdownEnabled'] ?? _markdownEnabled;
+      _fadeInCurve = widget.initialSettings!['fadeInCurve'] ?? _fadeInCurve;
     }
   }
 
@@ -144,6 +165,8 @@ class _MyHomePageState extends State<MyHomePage> {
     Duration? typingSpeed,
     Duration? fadeInDuration,
     bool? fadeInEnabled,
+    bool? markdownEnabled,
+    Curve? fadeInCurve,
   }) {
     setState(() {
       if (wordByWord != null) _wordByWord = wordByWord;
@@ -152,6 +175,8 @@ class _MyHomePageState extends State<MyHomePage> {
       if (typingSpeed != null) _typingSpeed = typingSpeed;
       if (fadeInDuration != null) _fadeInDuration = fadeInDuration;
       if (fadeInEnabled != null) _fadeInEnabled = fadeInEnabled;
+      if (markdownEnabled != null) _markdownEnabled = markdownEnabled;
+      if (fadeInCurve != null) _fadeInCurve = fadeInCurve;
       _resetCounter++;
     });
   }
@@ -194,7 +219,8 @@ class _MyHomePageState extends State<MyHomePage> {
                   child: StreamingTextMarkdown(
                     key: ValueKey('streaming_text_$_resetCounter'),
                     text: isArabic
-                        ? '''# مرحباً بكم! 🤖
+                        ? _markdownEnabled
+                            ? '''# مرحباً بكم! 🤖
 
 هذا **عرض توضيحي** للنص المتدفق.
 
@@ -204,7 +230,18 @@ class _MyHomePageState extends State<MyHomePage> {
 3. مجموعات مخصصة
 
 *هذا مثال بسيط* على قدراتنا في عرض النصوص العربية!'''
-                        : '''# Welcome to the Future! 🤖
+                            : '''مرحباً بكم! 🤖
+
+هذا عرض توضيحي للنص المتدفق.
+
+يمكنك تجربة الأوضاع المختلفة:
+• حرف بحرف
+• كلمة بكلمة
+• مجموعات مخصصة
+
+هذا مثال بسيط على قدراتنا في عرض النصوص العربية!'''
+                        : _markdownEnabled
+                            ? '''# Welcome to the Future! 🤖
 
 This is an **AI-powered** text streaming demonstration.
 
@@ -213,18 +250,30 @@ Explore different modes:
 2. Word by word
 3. Custom chunks
 
-*Experience the future* of text animation!''',
+*Experience the future* of text animation!'''
+                            : '''Welcome to the Future! 🤖
+
+This is an AI-powered text streaming demonstration.
+
+Explore different modes:
+• Character by character
+• Word by word
+• Custom chunks
+
+Experience the future of text animation!''',
                     initialText: isArabic
                         ? '# مرحباً بكم!\n\nجاري تهيئة النظام...\n\n'
                         : '# Welcome!\n\nInitializing system...\n\n',
                     fadeInEnabled: _fadeInEnabled,
                     fadeInDuration: _fadeInDuration,
+                    fadeInCurve: _fadeInCurve,
                     wordByWord: _wordByWord,
                     chunkSize: _chunkSize,
                     typingSpeed: _typingSpeed,
                     textDirection:
                         isArabic ? TextDirection.rtl : TextDirection.ltr,
                     textAlign: isArabic ? TextAlign.right : TextAlign.left,
+                    markdownEnabled: _markdownEnabled,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -239,15 +288,21 @@ Explore different modes:
                       onChanged: (value) => _updateSettings(isArabic: value),
                     ),
                     _buildSwitch(
+                      label: isArabic ? 'تنسيق ماركداون' : 'Markdown',
+                      value: _markdownEnabled,
+                      onChanged: (value) =>
+                          _updateSettings(markdownEnabled: value),
+                    ),
+                    _buildSwitch(
                       label: isArabic ? 'كلمة بكلمة' : 'Word by Word',
                       value: _wordByWord,
                       onChanged: (value) => _updateSettings(wordByWord: value),
                     ),
                     if (!_wordByWord)
-                      _buildDropdown(
+                      _buildDropdown<int>(
                         label: isArabic ? 'حجم المجموعة' : 'Chunk Size',
                         value: _chunkSize,
-                        items: [1, 2, 3, 5, 10],
+                        items: _chunkSizes,
                         onChanged: (value) {
                           if (value != null) {
                             _updateSettings(chunkSize: value);
@@ -267,7 +322,7 @@ Explore different modes:
                       onChanged: (value) =>
                           _updateSettings(fadeInEnabled: value),
                     ),
-                    if (_fadeInEnabled)
+                    if (_fadeInEnabled) ...[
                       _buildSlider(
                         label:
                             isArabic ? 'مدة تأثير الظهور' : 'Fade-in Duration',
@@ -279,6 +334,17 @@ Explore different modes:
                           fadeInDuration: Duration(milliseconds: value.round()),
                         ),
                       ),
+                      _buildDropdown<Curve>(
+                        label: isArabic ? 'نوع الحركة' : 'Animation Curve',
+                        value: _fadeInCurve,
+                        items: _curves,
+                        onChanged: (curve) {
+                          if (curve != null) {
+                            _updateSettings(fadeInCurve: curve);
+                          }
+                        },
+                      ),
+                    ],
                     _buildSlider(
                       label: isArabic ? 'سرعة الكتابة' : 'Typing Speed',
                       value: _typingSpeed.inMilliseconds.toDouble(),
@@ -386,20 +452,23 @@ Explore different modes:
     );
   }
 
-  Widget _buildDropdown({
+  Widget _buildDropdown<T>({
     required String label,
-    required int value,
-    required List<int> items,
-    required ValueChanged<int?> onChanged,
+    required T value,
+    required List<MapEntry<String, T>> items,
+    required ValueChanged<T?> onChanged,
   }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: Theme.of(context).textTheme.bodyLarge),
-        DropdownButton<int>(
+        DropdownButton<T>(
           value: value,
-          items: items.map((size) {
-            return DropdownMenuItem(value: size, child: Text('$size'));
+          items: items.map((item) {
+            return DropdownMenuItem(
+              value: item.value,
+              child: Text(item.key),
+            );
           }).toList(),
           onChanged: onChanged,
         ),

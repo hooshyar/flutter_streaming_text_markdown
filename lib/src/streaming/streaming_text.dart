@@ -59,85 +59,32 @@ class StreamingText extends StatefulWidget {
     this.chunkSize = 1,
   });
 
-  /// The text to display with the typing animation.
   final String text;
-
-  /// The speed at which each character or word appears.
   final Duration typingSpeed;
-
-  /// Whether to stream text word by word instead of character by character.
   final bool wordByWord;
-
-  /// The number of characters to reveal at once when not in word-by-word mode.
-  /// Ignored if wordByWord is true.
   final int chunkSize;
-
-  /// The text style to apply to the text.
   final TextStyle? style;
-
-  /// The strut style to apply to the text.
   final StrutStyle? strutStyle;
-
-  /// How the text should be aligned horizontally.
   final TextAlign? textAlign;
-
-  /// The directionality of the text.
   final TextDirection? textDirection;
-
-  /// Used to select a font when the same Unicode character can
-  /// be rendered differently, depending on the locale.
   final Locale? locale;
-
-  /// Whether the text should break at soft line breaks.
   final bool? softWrap;
-
-  /// How visual overflow should be handled.
   final TextOverflow? overflow;
-
-  /// The number of font pixels for each logical pixel.
   @Deprecated('Use textScaler instead')
   final double? textScaleFactor;
-
-  /// The text scaling factor to use.
   final TextScaler? textScaler;
-
-  /// An optional maximum number of lines for the text to span.
   final int? maxLines;
-
-  /// An alternative semantics label for the text.
   final String? semanticsLabel;
-
-  /// Defines how to measure the width of the rendered text.
   final TextWidthBasis? textWidthBasis;
-
-  /// Defines how the paragraph will apply TextStyle.height to the rendered text.
   final TextHeightBehavior? textHeightBehavior;
-
-  /// Whether the text should be selectable.
   final bool selectable;
-
-  /// Whether to show a blinking cursor.
   final bool showCursor;
-
-  /// The color of the cursor.
   final Color? cursorColor;
-
-  /// Callback to be called when typing is complete.
   final VoidCallback? onComplete;
-
-  /// Optional stream of text data for real-time updates.
   final Stream<String>? stream;
-
-  /// Whether to enable markdown rendering.
   final bool markdownEnabled;
-
-  /// Whether to enable fade-in animation for each character.
   final bool fadeInEnabled;
-
-  /// Duration of the fade-in animation for each character.
   final Duration fadeInDuration;
-
-  /// Curve of the fade-in animation.
   final Curve fadeInCurve;
 
   @override
@@ -153,8 +100,6 @@ class _StreamingTextState extends State<StreamingText>
   bool _isComplete = false;
   bool _isError = false;
   String? _errorMessage;
-
-  // Keep track of character animations
   final Map<int, AnimationController> _characterAnimations = {};
 
   @override
@@ -210,443 +155,108 @@ class _StreamingTextState extends State<StreamingText>
   void _createCharacterAnimation(int baseIndex, int length) {
     if (!mounted || !widget.fadeInEnabled) return;
 
-    final controller = AnimationController(
-      vsync: this,
-      duration: widget.fadeInDuration,
-    );
-
     for (int i = 0; i < length; i++) {
+      final controller = AnimationController(
+        vsync: this,
+        duration: widget.fadeInDuration,
+      );
       _characterAnimations[baseIndex + i] = controller;
+      controller.forward();
     }
-
-    controller.forward().whenComplete(() {
-      if (!mounted) {
-        controller.dispose();
-        return;
-      }
-      for (int i = 0; i < length; i++) {
-        _characterAnimations.remove(baseIndex + i);
-      }
-      controller.dispose();
-    });
   }
 
   void _startTyping() {
     if (_isComplete) return;
 
     if (widget.wordByWord) {
-      final lines = widget.text.split('\n');
-      int currentLine = 0;
-      bool isFirstWordInLine = true;
-
-      void processNextLine() {
-        if (!mounted) return;
-        if (currentLine >= lines.length) {
-          setState(() => _isComplete = true);
-          widget.onComplete?.call();
-          return;
-        }
-
-        final line = lines[currentLine];
-
-        // Handle empty lines
-        if (line.trim().isEmpty) {
-          if (mounted) {
-            setState(() {
-              _displayedText += '\n';
-            });
-          }
-          currentLine++;
-          processNextLine();
-          return;
-        }
-
-        final lineWords = line.split(' ').where((w) => w.isNotEmpty).toList();
-
-        // Reverse words for RTL
-        if (widget.textDirection == TextDirection.rtl) {
-          lineWords.reversed.toList();
-        }
-
-        int wordIndex = 0;
-
-        _typeTimer?.cancel();
-        _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
-          if (!mounted) {
-            timer.cancel();
-            return;
-          }
-
-          if (wordIndex >= lineWords.length) {
-            timer.cancel();
-            if (mounted) {
-              setState(() {
-                if (currentLine < lines.length - 1) {
-                  _displayedText += '\n';
-                }
-              });
-            }
-            currentLine++;
-            isFirstWordInLine = true;
-            processNextLine();
-            return;
-          }
-
-          if (mounted) {
-            setState(() {
-              if (!isFirstWordInLine) {
-                _displayedText += ' ';
-              }
-              _displayedText += lineWords[wordIndex];
-              isFirstWordInLine = false;
-            });
-
-            final baseIndex =
-                _displayedText.length - lineWords[wordIndex].length;
-            _createCharacterAnimation(baseIndex, lineWords[wordIndex].length);
-          }
-
-          wordIndex++;
-        });
-      }
-
-      processNextLine();
+      _startWordByWordTyping();
     } else {
-      final characters = Characters(widget.text).toList();
-      int index = _displayedText.characters.length;
+      _startCharacterByCharacterTyping();
+    }
+  }
 
-      _typeTimer?.cancel();
-      _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
+  void _startWordByWordTyping() {
+    final words = widget.text.split(RegExp(r'\s+'));
+    final isRTL = widget.textDirection == TextDirection.rtl ||
+        _containsArabic(widget.text);
+    int wordIndex = 0;
+
+    _typeTimer?.cancel();
+    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (wordIndex >= words.length) {
+        timer.cancel();
+        setState(() => _isComplete = true);
+        widget.onComplete?.call();
+        return;
+      }
+
+      setState(() {
+        if (_displayedText.isNotEmpty) _displayedText = '$_displayedText ';
+        _displayedText = '$_displayedText${words[wordIndex]}';
+
+        if (widget.fadeInEnabled) {
+          _createCharacterAnimation(
+              _displayedText.length - words[wordIndex].length,
+              words[wordIndex].length);
         }
-
-        if (index >= characters.length) {
-          timer.cancel();
-          setState(() => _isComplete = true);
-          widget.onComplete?.call();
-          return;
-        }
-
-        final chunkSize = widget.chunkSize;
-        final remainingChars = characters.length - index;
-        final currentChunkSize =
-            chunkSize > remainingChars ? remainingChars : chunkSize;
-
-        setState(() {
-          final chunk =
-              characters.sublist(index, index + currentChunkSize).join();
-          _displayedText += chunk;
-          _createCharacterAnimation(index, currentChunkSize);
-        });
-
-        index += currentChunkSize;
       });
-    }
+
+      wordIndex++;
+    });
   }
 
-  Widget _buildContent(BuildContext context) {
-    if (_isError) {
-      return Text(
-        'Error: ${_errorMessage ?? 'Unknown error'}',
-        style: widget.style?.copyWith(color: Colors.red) ??
-            const TextStyle(color: Colors.red),
-      );
-    }
+  void _startCharacterByCharacterTyping() {
+    final characters = Characters(widget.text).toList();
+    int index = 0;
 
-    final effectiveStyle = widget.style ?? DefaultTextStyle.of(context).style;
-
-    // If markdown is enabled and no fade-in animation, use MarkdownBody directly
-    if (widget.markdownEnabled && !widget.fadeInEnabled) {
-      return Directionality(
-        textDirection: widget.textDirection ?? TextDirection.ltr,
-        child: MarkdownBody(
-          data: _displayedText,
-          selectable: widget.selectable,
-          styleSheet: MarkdownStyleSheet(
-            h1: effectiveStyle.copyWith(
-              fontSize: effectiveStyle.fontSize! * 2,
-              fontWeight: FontWeight.bold,
-            ),
-            h2: effectiveStyle.copyWith(
-              fontSize: effectiveStyle.fontSize! * 1.5,
-              fontWeight: FontWeight.bold,
-            ),
-            h3: effectiveStyle.copyWith(
-              fontSize: effectiveStyle.fontSize! * 1.17,
-              fontWeight: FontWeight.bold,
-            ),
-            p: effectiveStyle,
-            strong: effectiveStyle.copyWith(fontWeight: FontWeight.bold),
-            em: effectiveStyle.copyWith(fontStyle: FontStyle.italic),
-            listBullet: effectiveStyle,
-          ),
-          softLineBreak: true,
-        ),
-      );
-    }
-
-    // For fade-in animation with markdown
-    if (widget.fadeInEnabled) {
-      final lines = _displayedText.split('\n');
-      final isRTL = widget.textDirection == TextDirection.rtl;
-
-      return Directionality(
-        textDirection: widget.textDirection ?? TextDirection.ltr,
-        child: Column(
-          crossAxisAlignment: widget.textAlign == TextAlign.center
-              ? CrossAxisAlignment.center
-              : isRTL
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
-          children: lines.map((line) {
-            if (line.isEmpty) return const SizedBox(height: 20);
-
-            // Check for heading level
-            int headingLevel = 0;
-            String processedLine = line;
-            if (widget.markdownEnabled) {
-              while (processedLine.startsWith('#')) {
-                headingLevel++;
-                processedLine = processedLine.substring(1);
-              }
-              processedLine = processedLine.trim();
-            }
-
-            // Apply heading style
-            TextStyle lineStyle = effectiveStyle;
-            if (headingLevel > 0) {
-              final scaleFactor = 2.0 - ((headingLevel - 1) * 0.3);
-              lineStyle = lineStyle.copyWith(
-                fontSize: effectiveStyle.fontSize! * scaleFactor,
-                fontWeight: FontWeight.bold,
-              );
-            }
-
-            // For RTL, handle text as words
-            if (isRTL) {
-              final words =
-                  processedLine.split(' ').where((w) => w.isNotEmpty).toList();
-              return Container(
-                width: double.infinity,
-                alignment: widget.textAlign == TextAlign.center
-                    ? Alignment.center
-                    : Alignment.centerRight,
-                child: Wrap(
-                  direction: Axis.horizontal,
-                  alignment: widget.textAlign == TextAlign.center
-                      ? WrapAlignment.center
-                      : WrapAlignment.end,
-                  children: words.asMap().entries.map((entry) {
-                    final wordIndex = entry.key;
-                    final word = entry.value;
-                    final baseIndex =
-                        lines.take(lines.indexOf(line)).join('\n').length +
-                            words.take(wordIndex).join(' ').length +
-                            wordIndex;
-
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildAnimatedWord(word, baseIndex, lineStyle),
-                        if (wordIndex < words.length - 1)
-                          Text(' ', style: lineStyle),
-                      ],
-                    );
-                  }).toList(),
-                ),
-              );
-            }
-
-            // For LTR text
-            final words = processedLine.split(' ');
-            return Wrap(
-              direction: Axis.horizontal,
-              alignment: widget.textAlign == TextAlign.center
-                  ? WrapAlignment.center
-                  : WrapAlignment.start,
-              children: words.asMap().entries.map((wordEntry) {
-                final wordIndex = wordEntry.key;
-                final word = wordEntry.value;
-                final baseIndex =
-                    lines.take(lines.indexOf(line)).join('\n').length +
-                        words.take(wordIndex).join(' ').length +
-                        (wordIndex > 0 ? 1 : 0);
-
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ...word.characters
-                        .toList()
-                        .asMap()
-                        .entries
-                        .map((charEntry) {
-                      final charIndex = baseIndex + charEntry.key;
-                      return _buildAnimatedCharacter(
-                          charEntry.value, charIndex, lineStyle);
-                    }),
-                    if (wordEntry.key < words.length - 1)
-                      Text(' ', style: lineStyle),
-                  ],
-                );
-              }).toList(),
-            );
-          }).toList(),
-        ),
-      );
-    }
-
-    // Simple text rendering without markdown or fade-in
-    return Text(
-      _displayedText,
-      style: effectiveStyle,
-      textAlign: widget.textAlign ?? TextAlign.start,
-      textDirection: widget.textDirection,
-      softWrap: widget.softWrap ?? true,
-      overflow: widget.overflow ?? TextOverflow.clip,
-      textScaler: widget.textScaler ?? MediaQuery.textScalerOf(context),
-      maxLines: widget.maxLines,
-      strutStyle: widget.strutStyle,
-    );
-  }
-
-  Widget _buildAnimatedCharacter(String char, int index, TextStyle baseStyle) {
-    final controller = _characterAnimations[index];
-
-    Widget buildText(String text, {TextStyle? style}) {
-      final effectiveStyle =
-          _applyMarkdownStyle(text, index, style ?? baseStyle);
-      return Text(
-        text,
-        style: effectiveStyle,
-        textDirection: widget.textDirection,
-        textAlign: widget.textAlign,
-      );
-    }
-
-    if (controller == null || !widget.fadeInEnabled) {
-      return buildText(char);
-    }
-
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(
-            0,
-            10 * (1 - controller.value),
-          ),
-          child: Opacity(
-            opacity: controller.value,
-            child: child,
-          ),
-        );
-      },
-      child: buildText(char),
-    );
-  }
-
-  Widget _buildAnimatedWord(String word, int index, TextStyle baseStyle) {
-    final controller = _characterAnimations[index];
-
-    Widget buildText(String text, {TextStyle? style}) {
-      final effectiveStyle =
-          _applyMarkdownStyle(text, index, style ?? baseStyle);
-      return Text(
-        text,
-        style: effectiveStyle,
-        textDirection: widget.textDirection,
-        textAlign: widget.textAlign,
-      );
-    }
-
-    if (controller == null || !widget.fadeInEnabled) {
-      return buildText(word);
-    }
-
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(
-            0,
-            10 * (1 - controller.value),
-          ),
-          child: Opacity(
-            opacity: controller.value,
-            child: child,
-          ),
-        );
-      },
-      child: buildText(word),
-    );
-  }
-
-  TextStyle _applyMarkdownStyle(String text, int index, TextStyle baseStyle) {
-    if (!widget.markdownEnabled) return baseStyle;
-
-    bool isBold = _isMarkdownBold(index);
-    bool isItalic = _isMarkdownItalic(index);
-
-    return baseStyle.copyWith(
-      fontWeight: isBold ? FontWeight.bold : null,
-      fontStyle: isItalic ? FontStyle.italic : null,
-    );
-  }
-
-  bool _isMarkdownBold(int index) {
-    // Check if character is between ** or __ markers
-    final text = _displayedText;
-    if (index >= text.length) return false;
-
-    // Look for ** or __ before the current position
-    int start = index;
-    while (start > 1) {
-      if ((text[start - 2] == '*' && text[start - 1] == '*') ||
-          (text[start - 2] == '_' && text[start - 1] == '_')) {
-        // Look for matching ** or __ after the current position
-        int end = index;
-        while (end < text.length - 1) {
-          if ((text[end] == '*' && text[end + 1] == '*') ||
-              (text[end] == '_' && text[end + 1] == '_')) {
-            return true;
-          }
-          end++;
-        }
+    _typeTimer?.cancel();
+    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
       }
-      start--;
-    }
-    return false;
+
+      if (index >= characters.length) {
+        timer.cancel();
+        setState(() => _isComplete = true);
+        widget.onComplete?.call();
+        return;
+      }
+
+      final chunkSize = widget.chunkSize;
+      final remainingChars = characters.length - index;
+      final currentChunkSize =
+          chunkSize > remainingChars ? remainingChars : chunkSize;
+
+      setState(() {
+        final chunk =
+            characters.getRange(index, index + currentChunkSize).join();
+        _displayedText = '$_displayedText$chunk';
+
+        if (widget.fadeInEnabled) {
+          _createCharacterAnimation(
+              _displayedText.length - currentChunkSize, currentChunkSize);
+        }
+      });
+
+      index += currentChunkSize;
+    });
   }
 
-  bool _isMarkdownItalic(int index) {
-    // Check if character is between * or _ markers
-    final text = _displayedText;
-    if (index >= text.length) return false;
-
-    // Look for * or _ before the current position
-    int start = index;
-    while (start > 0) {
-      if (text[start - 1] == '*' || text[start - 1] == '_') {
-        // Look for matching * or _ after the current position
-        int end = index;
-        while (end < text.length) {
-          if (text[end] == '*' || text[end] == '_') {
-            // Make sure it's not part of a bold marker
-            if (end < text.length - 1 &&
-                (text[end + 1] == '*' || text[end + 1] == '_')) {
-              end++;
-              continue;
-            }
-            return true;
-          }
-          end++;
-        }
+  void _cleanupAnimations() {
+    for (final controller in _characterAnimations.values) {
+      try {
+        controller.dispose();
+      } catch (e) {
+        // Skip if controller is already disposed
       }
-      start--;
     }
-    return false;
+    _characterAnimations.clear();
   }
 
   @override
@@ -665,15 +275,203 @@ class _StreamingTextState extends State<StreamingText>
     );
   }
 
+  Widget _buildContent(BuildContext context) {
+    if (_isError) {
+      return Text(
+        'Error: ${_errorMessage ?? 'Unknown error'}',
+        style: widget.style?.copyWith(color: Colors.red) ??
+            const TextStyle(color: Colors.red),
+      );
+    }
+
+    final effectiveStyle = widget.style ?? DefaultTextStyle.of(context).style;
+    final isRTLText = _containsArabic(_displayedText);
+    final effectiveTextDirection = widget.textDirection ??
+        (isRTLText ? TextDirection.rtl : TextDirection.ltr);
+    final effectiveAlignment =
+        widget.textAlign ?? (isRTLText ? TextAlign.right : TextAlign.left);
+
+    // If markdown is enabled, use MarkdownBody without fade-in
+    if (widget.markdownEnabled) {
+      return Directionality(
+        textDirection: effectiveTextDirection,
+        child: MarkdownBody(
+          data: _displayedText,
+          selectable: widget.selectable,
+          styleSheet: MarkdownStyleSheet(
+            p: effectiveStyle,
+            strong: effectiveStyle.copyWith(fontWeight: FontWeight.bold),
+            em: effectiveStyle.copyWith(fontStyle: FontStyle.italic),
+            h1: effectiveStyle.copyWith(
+              fontSize: effectiveStyle.fontSize! * 2.0,
+              fontWeight: FontWeight.bold,
+            ),
+            h2: effectiveStyle.copyWith(
+              fontSize: effectiveStyle.fontSize! * 1.5,
+              fontWeight: FontWeight.bold,
+            ),
+            h3: effectiveStyle.copyWith(
+              fontSize: effectiveStyle.fontSize! * 1.17,
+              fontWeight: FontWeight.bold,
+            ),
+            h4: effectiveStyle.copyWith(
+              fontSize: effectiveStyle.fontSize! * 1.0,
+              fontWeight: FontWeight.bold,
+            ),
+            h5: effectiveStyle.copyWith(
+              fontSize: effectiveStyle.fontSize! * 0.83,
+              fontWeight: FontWeight.bold,
+            ),
+            h6: effectiveStyle.copyWith(
+              fontSize: effectiveStyle.fontSize! * 0.67,
+              fontWeight: FontWeight.bold,
+            ),
+            listBullet: effectiveStyle,
+            blockquote: effectiveStyle.copyWith(
+              color: effectiveStyle.color?.withOpacity(0.6),
+              fontStyle: FontStyle.italic,
+            ),
+            code: effectiveStyle.copyWith(
+              backgroundColor: Colors.grey.withOpacity(0.2),
+              fontFamily: 'monospace',
+            ),
+            codeblockPadding: const EdgeInsets.all(8),
+            blockquotePadding: const EdgeInsets.symmetric(horizontal: 16),
+            blockquoteDecoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(
+                  color:
+                      (effectiveStyle.color ?? Colors.black).withOpacity(0.4),
+                  width: 4,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // For simple text with fade-in animation
+    if (widget.fadeInEnabled) {
+      final lines = _displayedText.split('\n');
+      final isRTL = effectiveTextDirection == TextDirection.rtl;
+
+      return Column(
+        crossAxisAlignment: widget.textAlign == TextAlign.center
+            ? CrossAxisAlignment.center
+            : isRTL
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+        children: lines.map((line) {
+          if (line.isEmpty) return const SizedBox(height: 20);
+
+          var words = line.split(' ').where((w) => w.isNotEmpty).toList();
+          // if (isRTL) words = words.reversed.toList();
+
+          return Container(
+            width: double.infinity,
+            alignment: effectiveAlignment == TextAlign.right
+                ? Alignment.centerRight
+                : effectiveAlignment == TextAlign.center
+                    ? Alignment.center
+                    : Alignment.centerLeft,
+            child: Wrap(
+              direction: Axis.horizontal,
+              alignment: isRTL ? WrapAlignment.end : WrapAlignment.start,
+              textDirection: effectiveTextDirection,
+              children: words.asMap().entries.map((entry) {
+                final wordIndex = entry.key;
+                final word = entry.value;
+                final baseIndex =
+                    lines.take(lines.indexOf(line)).join('\n').length +
+                        (isRTL
+                            ? words.skip(wordIndex + 1).join(' ').length
+                            : words.take(wordIndex).join(' ').length) +
+                        wordIndex;
+
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  textDirection: effectiveTextDirection,
+                  children: [
+                    _buildAnimatedText(word, baseIndex, effectiveStyle),
+                    if (wordIndex < words.length - 1)
+                      Text(' ', style: effectiveStyle),
+                  ],
+                );
+              }).toList(),
+            ),
+          );
+        }).toList(),
+      );
+    }
+
+    // Simple text rendering without animation
+    return Text(
+      _displayedText,
+      style: effectiveStyle,
+      textAlign: effectiveAlignment,
+      textDirection: effectiveTextDirection,
+      softWrap: widget.softWrap ?? true,
+      overflow: widget.overflow ?? TextOverflow.clip,
+      textScaler: widget.textScaler ?? MediaQuery.textScalerOf(context),
+      maxLines: widget.maxLines,
+      strutStyle: widget.strutStyle,
+    );
+  }
+
+  Widget _buildAnimatedText(String text, int index, TextStyle baseStyle) {
+    final controller = _characterAnimations[index];
+    final isArabicText = _containsArabic(text);
+    final effectiveTextDirection = widget.textDirection ??
+        (isArabicText ? TextDirection.rtl : TextDirection.ltr);
+
+    if (controller == null || !widget.fadeInEnabled) {
+      return Directionality(
+        textDirection: effectiveTextDirection,
+        child: Text(text, style: baseStyle),
+      );
+    }
+
+    return Directionality(
+      textDirection: effectiveTextDirection,
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, child) {
+          return Transform.translate(
+            offset: Offset(0, 10 * (1 - controller.value)),
+            child: Opacity(
+              opacity: controller.value,
+              child: child,
+            ),
+          );
+        },
+        child: Text(text, style: baseStyle),
+      ),
+    );
+  }
+
+  bool _containsArabic(String text) {
+    // Unicode ranges for RTL scripts:
+    // - Arabic: \u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF
+    // - Hebrew: \u0590-\u05FF
+    // - Syriac: \u0700-\u074F
+    // - Thaana: \u0780-\u07BF
+    // - N'Ko: \u07C0-\u07FF
+    return RegExp(
+      r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF'
+      r'\u0590-\u05FF'
+      r'\u0700-\u074F'
+      r'\u0780-\u07BF'
+      r'\u07C0-\u07FF]',
+    ).hasMatch(text);
+  }
+
   @override
   void dispose() {
     _typeTimer?.cancel();
     _streamSubscription?.cancel();
     _cursorController.dispose();
-    for (final controller in _characterAnimations.values) {
-      controller.dispose();
-    }
-    _characterAnimations.clear();
+    _cleanupAnimations();
     super.dispose();
   }
 }

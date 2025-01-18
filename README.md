@@ -20,7 +20,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_streaming_text_markdown: ^1.0.0
+  flutter_streaming_text_markdown: ^1.0.1
 ```
 
 ## Usage

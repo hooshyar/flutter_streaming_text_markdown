@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1
+
+### Improvements
+- 🔄 Updated text scaling implementation to use modern textScaler
+- 📚 Documentation improvements
+- 🐛 Minor bug fixes and performance optimizations
+
 ## 1.0.0
 
 Initial stable release 🎉

@@ -8,7 +8,7 @@ void main() {
   group('StreamingTextMarkdown', () {
     testWidgets('renders initial text correctly', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: StreamingTextMarkdown(
             text: '# Hello\nWorld',
             initialText: '# Hello',
@@ -23,7 +23,7 @@ void main() {
 
     testWidgets('supports markdown formatting', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: StreamingTextMarkdown(
             text: '**Bold** and *italic*',
           ),
@@ -37,7 +37,7 @@ void main() {
 
     testWidgets('handles RTL text correctly', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: StreamingTextMarkdown(
             text: 'مرحبا',
             textDirection: TextDirection.rtl,
@@ -54,11 +54,11 @@ void main() {
 
     testWidgets('supports word-by-word animation', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: StreamingTextMarkdown(
             text: 'Hello World',
             wordByWord: true,
-            typingSpeed: const Duration(milliseconds: 50),
+            typingSpeed: Duration(milliseconds: 50),
           ),
         ),
       );
@@ -69,11 +69,11 @@ void main() {
 
     testWidgets('supports fade-in animation', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: StreamingTextMarkdown(
             text: 'Fade In Text',
             fadeInEnabled: true,
-            fadeInDuration: const Duration(milliseconds: 100),
+            fadeInDuration: Duration(milliseconds: 100),
           ),
         ),
       );
@@ -114,7 +114,7 @@ void main() {
       );
 
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: StreamingText(
             text: 'Styled Text',
             style: style,

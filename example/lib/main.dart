@@ -34,8 +34,6 @@ class _MyAppState extends State<MyApp> {
           primary: const Color(0xFF00BCD4),
           secondary: const Color(0xFF80DEEA),
           surface: _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
-          background:
-              _isDarkMode ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
         ),
         useMaterial3: true,
         cardTheme: CardTheme(
@@ -119,19 +117,19 @@ class _MyHomePageState extends State<MyHomePage> {
   int _resetCounter = 0;
 
   final List<MapEntry<String, Curve>> _curves = [
-    MapEntry('Ease Out', Curves.easeOut),
-    MapEntry('Ease In', Curves.easeIn),
-    MapEntry('Elastic Out', Curves.elasticOut),
-    MapEntry('Bounce Out', Curves.bounceOut),
-    MapEntry('Decelerate', Curves.decelerate),
+    const MapEntry('Ease Out', Curves.easeOut),
+    const MapEntry('Ease In', Curves.easeIn),
+    const MapEntry('Elastic Out', Curves.elasticOut),
+    const MapEntry('Bounce Out', Curves.bounceOut),
+    const MapEntry('Decelerate', Curves.decelerate),
   ];
 
   final List<MapEntry<String, int>> _chunkSizes = [
-    MapEntry('1', 1),
-    MapEntry('2', 2),
-    MapEntry('3', 3),
-    MapEntry('5', 5),
-    MapEntry('10', 10),
+    const MapEntry('1', 1),
+    const MapEntry('2', 2),
+    const MapEntry('3', 3),
+    const MapEntry('5', 5),
+    const MapEntry('10', 10),
   ];
 
   @override

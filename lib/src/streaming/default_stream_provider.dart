@@ -35,7 +35,7 @@ class DefaultStreamProvider implements StreamProvider {
   @override
   Stream<StreamData> startStream(String input) {
     if (_controller != null) {
-      throw StreamException(
+      throw const StreamException(
         'Stream already in progress',
         code: 'STREAM_ALREADY_STARTED',
       );
@@ -53,7 +53,7 @@ class DefaultStreamProvider implements StreamProvider {
       config.timeoutDuration,
       onTimeout: (sink) {
         sink.addError(
-          StreamException(
+          const StreamException(
             'Stream timeout',
             code: 'STREAM_TIMEOUT',
           ),

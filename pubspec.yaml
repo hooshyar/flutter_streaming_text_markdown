@@ -1,6 +1,6 @@
 name: flutter_streaming_text_markdown
 description: A Flutter package for displaying streaming text with Markdown support, featuring typing animations, word-by-word streaming, RTL support, and customizable fade-in effects.
-version: 1.0.1
+version: 1.0.2
 homepage: https://github.com/hooshyar/flutter_streaming_text_markdown
 repository: https://github.com/hooshyar/flutter_streaming_text_markdown
 issue_tracker: https://github.com/hooshyar/flutter_streaming_text_markdown/issues
@@ -19,7 +19,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_markdown: ^0.6.18
+  flutter_markdown: ^0.7.6
   characters: ^1.3.0
 
 dev_dependencies:

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:characters/characters.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 /// A widget that displays streaming text with real-time updates and markdown support.

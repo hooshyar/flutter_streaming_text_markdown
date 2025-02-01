@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.2
+
+### Improvements
+- 📦 Updated dependencies to latest compatible versions
+- 🔧 Improved package structure and organization
+- 📚 Enhanced API documentation and examples
+- ⚡️ Performance optimizations for text rendering
+
 ## 1.0.1
 
 ### Improvements

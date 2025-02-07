@@ -56,6 +56,7 @@ class StreamingText extends StatefulWidget {
     this.fadeInCurve = Curves.easeOut,
     this.wordByWord = false,
     this.chunkSize = 1,
+    this.markdownStyleSheet,
   });
 
   final String text;
@@ -85,6 +86,7 @@ class StreamingText extends StatefulWidget {
   final bool fadeInEnabled;
   final Duration fadeInDuration;
   final Curve fadeInCurve;
+  final MarkdownStyleSheet? markdownStyleSheet;
 
   @override
   State<StreamingText> createState() => _StreamingTextState();
@@ -487,55 +489,8 @@ class _StreamingTextState extends State<StreamingText>
           child: MarkdownBody(
             data: _displayedText,
             selectable: widget.selectable,
-            styleSheet: MarkdownStyleSheet(
-              p: effectiveStyle,
-              strong: effectiveStyle.copyWith(fontWeight: FontWeight.bold),
-              em: effectiveStyle.copyWith(fontStyle: FontStyle.italic),
-              h1: effectiveStyle.copyWith(
-                fontSize: effectiveStyle.fontSize! * 2.0,
-                fontWeight: FontWeight.bold,
-              ),
-              h2: effectiveStyle.copyWith(
-                fontSize: effectiveStyle.fontSize! * 1.5,
-                fontWeight: FontWeight.bold,
-              ),
-              h3: effectiveStyle.copyWith(
-                fontSize: effectiveStyle.fontSize! * 1.17,
-                fontWeight: FontWeight.bold,
-              ),
-              h4: effectiveStyle.copyWith(
-                fontSize: effectiveStyle.fontSize! * 1.0,
-                fontWeight: FontWeight.bold,
-              ),
-              h5: effectiveStyle.copyWith(
-                fontSize: effectiveStyle.fontSize! * 0.83,
-                fontWeight: FontWeight.bold,
-              ),
-              h6: effectiveStyle.copyWith(
-                fontSize: effectiveStyle.fontSize! * 0.67,
-                fontWeight: FontWeight.bold,
-              ),
-              listBullet: effectiveStyle,
-              blockquote: effectiveStyle.copyWith(
-                color: effectiveStyle.color?.withOpacity(0.6),
-                fontStyle: FontStyle.italic,
-              ),
-              code: effectiveStyle.copyWith(
-                backgroundColor: Colors.grey.withOpacity(0.2),
-                fontFamily: 'monospace',
-              ),
-              codeblockPadding: const EdgeInsets.all(8),
-              blockquotePadding: const EdgeInsets.symmetric(horizontal: 16),
-              blockquoteDecoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(
-                    color:
-                        (effectiveStyle.color ?? Colors.black).withOpacity(0.4),
-                    width: 4,
-                  ),
-                ),
-              ),
-            ),
+            styleSheet: widget.markdownStyleSheet ??
+                MarkdownStyleSheet.fromTheme(Theme.of(context)),
           ),
         ),
       );

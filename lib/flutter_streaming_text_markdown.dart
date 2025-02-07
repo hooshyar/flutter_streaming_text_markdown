@@ -19,10 +19,12 @@
 library flutter_streaming_text_markdown;
 
 export 'src/streaming/streaming.dart';
+export 'src/theme/streaming_text_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'src/streaming/streaming_text.dart';
+import 'src/theme/streaming_text_theme.dart';
 
 /// A widget that displays streaming text with Markdown support.
 ///
@@ -33,6 +35,7 @@ import 'src/streaming/streaming_text.dart';
 /// * Customizable typing speed and animations
 /// * RTL language support
 /// * Auto-scrolling
+/// * Theme support through [StreamingTextTheme]
 ///
 /// The [text] parameter is required and should contain the markdown-formatted
 /// text to be displayed. Use [typingSpeed] to control how fast the text appears,
@@ -47,8 +50,11 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Markdown style sheet configuration
   final MarkdownStyleSheet? styleSheet;
 
+  /// Custom theme for the widget
+  final StreamingTextTheme? theme;
+
   /// Padding around the text
-  final EdgeInsets padding;
+  final EdgeInsets? padding;
 
   /// Whether to scroll automatically as new text arrives
   final bool autoScroll;
@@ -85,7 +91,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     required this.text,
     this.initialText = '',
     this.styleSheet,
-    this.padding = const EdgeInsets.all(16.0),
+    this.theme,
+    this.padding,
     this.autoScroll = true,
     this.fadeInEnabled = false,
     this.fadeInDuration = const Duration(milliseconds: 300),
@@ -104,13 +111,13 @@ class StreamingTextMarkdown extends StatefulWidget {
 
 class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
   final ScrollController _scrollController = ScrollController();
-  TextStyle? _textStyle;
+  late StreamingTextTheme _effectiveTheme;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Cache the text style when dependencies change
-    _textStyle = Theme.of(context).textTheme.bodyLarge;
+    // Update effective theme when dependencies change
+    _effectiveTheme = widget.theme ?? context.streamingTextTheme;
   }
 
   @override
@@ -121,16 +128,25 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveStyleSheet = widget.styleSheet ??
+        _effectiveTheme.markdownStyleSheet ??
+        MarkdownStyleSheet.fromTheme(Theme.of(context));
+
+    final effectivePadding = widget.padding ??
+        _effectiveTheme.defaultPadding ??
+        const EdgeInsets.all(16.0);
+
     return SingleChildScrollView(
       controller: _scrollController,
       child: Padding(
-        padding: widget.padding,
+        padding: effectivePadding,
         child: StreamingText(
           key: ValueKey(
               '${widget.text}_${widget.wordByWord}_${widget.chunkSize}_${widget.typingSpeed.inMilliseconds}'),
           text: widget.text,
-          style: _textStyle,
+          style: _effectiveTheme.textStyle,
           markdownEnabled: widget.markdownEnabled,
+          markdownStyleSheet: effectiveStyleSheet,
           fadeInEnabled: widget.fadeInEnabled,
           fadeInDuration: widget.fadeInDuration,
           fadeInCurve: widget.fadeInCurve,

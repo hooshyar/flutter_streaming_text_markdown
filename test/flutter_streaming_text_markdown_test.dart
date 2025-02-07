@@ -12,6 +12,7 @@ void main() {
           home: StreamingTextMarkdown(
             text: '# Hello\nWorld',
             initialText: '# Hello',
+            markdownEnabled: true,
           ),
         ),
       );
@@ -26,6 +27,7 @@ void main() {
         const MaterialApp(
           home: StreamingTextMarkdown(
             text: '**Bold** and *italic*',
+            markdownEnabled: true,
           ),
         ),
       );

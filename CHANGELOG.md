@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0
+
+* Added professional theme system with StreamingTextTheme
+* Added support for custom markdown styling through theme extension
+* Added proper theme inheritance and fallback system
+* Added documentation for theme customization
+* Improved style sheet handling in StreamingText widget
+* Made padding configuration more flexible
+* Maintained full backward compatibility
+
 ## 1.0.2
 
 ### Improvements

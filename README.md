@@ -92,6 +92,50 @@ StreamingTextMarkdown(
 )
 ```
 
+## Styling and Theming
+
+### Using the Theme System
+
+The package now supports a professional theme system that allows you to customize both normal text and markdown styling:
+
+```dart
+// Create a custom theme
+final customTheme = StreamingTextTheme(
+  textStyle: TextStyle(fontSize: 16, color: Colors.blue),
+  markdownStyleSheet: MarkdownStyleSheet(
+    h1: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+    p: TextStyle(fontSize: 16),
+  ),
+  defaultPadding: EdgeInsets.all(20),
+);
+
+// Apply theme to a single widget
+StreamingTextMarkdown(
+  text: '# Hello\nThis is a test',
+  theme: customTheme,
+)
+
+// Or apply globally through your app's theme
+MaterialApp(
+  theme: ThemeData(
+    extensions: [
+      StreamingTextTheme(
+        textStyle: TextStyle(/* ... */),
+        markdownStyleSheet: MarkdownStyleSheet(/* ... */),
+      ),
+    ],
+  ),
+  // ...
+)
+```
+
+### Theme Inheritance
+
+The theme system follows Flutter's standard inheritance pattern:
+1. Widget-level theme (if provided)
+2. Global theme extension
+3. Default theme based on the current context
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

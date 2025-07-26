@@ -1,6 +1,0 @@
-[2024-02-01 18:45:00] Added professional styling system with StreamingTextTheme
-- Created StreamingTextTheme class with support for both normal text and markdown styling
-- Updated StreamingTextMarkdown widget to use the new theme system
-- Added markdownStyleSheet support to StreamingText widget
-- Maintained backward compatibility with existing styling options
-- Added theme extension pattern following Flutter's design guidelines 

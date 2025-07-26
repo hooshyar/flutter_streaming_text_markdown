@@ -7,15 +7,10 @@ issue_tracker: https://github.com/hooshyar/flutter_streaming_text_markdown/issue
 documentation: https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/README.md
 topics:
   - llm
-  - chatgpt
-  - claude
-  - markdown
-  - text
-  - animation
   - streaming
-  - rtl
+  - markdown
+  - animation
   - ai
-  - chat
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

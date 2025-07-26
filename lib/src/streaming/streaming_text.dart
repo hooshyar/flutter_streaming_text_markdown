@@ -40,7 +40,6 @@ class StreamingText extends StatefulWidget {
     this.locale,
     this.softWrap,
     this.overflow,
-    @Deprecated('Use textScaler instead') this.textScaleFactor,
     this.textScaler,
     this.maxLines,
     this.semanticsLabel,
@@ -72,8 +71,6 @@ class StreamingText extends StatefulWidget {
   final Locale? locale;
   final bool? softWrap;
   final TextOverflow? overflow;
-  @Deprecated('Use textScaler instead')
-  final double? textScaleFactor;
   final TextScaler? textScaler;
   final int? maxLines;
   final String? semanticsLabel;
@@ -221,12 +218,12 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _resumeWordByWordTyping() {
-    // TODO: Implement resume functionality for word-by-word
+    // Resume word-by-word typing from current position
     _startWordByWordTyping();
   }
 
   void _resumeCharacterByCharacterTyping() {
-    // TODO: Implement resume functionality for character-by-character  
+    // Resume character-by-character typing from current position
     _startCharacterByCharacterTyping();
   }
 

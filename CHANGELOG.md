@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1
+
+### 🐛 Bug Fixes & Pub.dev Optimization
+* **Removed deprecated textScaleFactor** - Removed deprecated parameter to fix static analysis warnings
+* **Fixed pub.dev scoring** - Removed non-existent issue tracker URL to improve pub.dev scoring
+* **Code cleanup** - Removed TODO comments and improved code documentation
+
 ## 1.2.0
 
 ### 🚀 Major Features

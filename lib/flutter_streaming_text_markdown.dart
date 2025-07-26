@@ -20,11 +20,15 @@ library flutter_streaming_text_markdown;
 
 export 'src/streaming/streaming.dart';
 export 'src/theme/streaming_text_theme.dart';
+export 'src/controller/streaming_text_controller.dart';
+export 'src/presets/animation_presets.dart';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'src/streaming/streaming_text.dart';
 import 'src/theme/streaming_text_theme.dart';
+import 'src/controller/streaming_text_controller.dart';
+import 'src/presets/animation_presets.dart';
 
 /// A widget that displays streaming text with Markdown support.
 ///
@@ -86,6 +90,12 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Whether to enable markdown rendering
   final bool markdownEnabled;
 
+  /// Controller for programmatic animation control
+  final StreamingTextController? controller;
+
+  /// Callback when animation completes
+  final VoidCallback? onComplete;
+
   const StreamingTextMarkdown({
     super.key,
     required this.text,
@@ -103,7 +113,119 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.textDirection,
     this.textAlign,
     this.markdownEnabled = false,
+    this.controller,
+    this.onComplete,
   });
+
+  /// Creates a StreamingTextMarkdown with ChatGPT-style animation
+  /// Perfect for fast, character-by-character streaming like ChatGPT
+  const StreamingTextMarkdown.chatGPT({
+    super.key,
+    required this.text,
+    this.initialText = '',
+    this.styleSheet,
+    this.theme,
+    this.padding,
+    this.autoScroll = true,
+    this.textDirection,
+    this.textAlign,
+    this.markdownEnabled = true,
+    this.controller,
+    this.onComplete,
+  })  : fadeInEnabled = true,
+        fadeInDuration = const Duration(milliseconds: 150),
+        fadeInCurve = Curves.easeOut,
+        wordByWord = false,
+        chunkSize = 1,
+        typingSpeed = const Duration(milliseconds: 15);
+
+  /// Creates a StreamingTextMarkdown with Claude-style animation
+  /// Perfect for smooth, word-by-word streaming like Claude
+  const StreamingTextMarkdown.claude({
+    super.key,
+    required this.text,
+    this.initialText = '',
+    this.styleSheet,
+    this.theme,
+    this.padding,
+    this.autoScroll = true,
+    this.textDirection,
+    this.textAlign,
+    this.markdownEnabled = true,
+    this.controller,
+    this.onComplete,
+  })  : fadeInEnabled = true,
+        fadeInDuration = const Duration(milliseconds: 200),
+        fadeInCurve = Curves.easeInOut,
+        wordByWord = true,
+        chunkSize = 1,
+        typingSpeed = const Duration(milliseconds: 80);
+
+  /// Creates a StreamingTextMarkdown with typewriter animation
+  /// Classic typewriter effect without fade-in
+  const StreamingTextMarkdown.typewriter({
+    super.key,
+    required this.text,
+    this.initialText = '',
+    this.styleSheet,
+    this.theme,
+    this.padding,
+    this.autoScroll = true,
+    this.textDirection,
+    this.textAlign,
+    this.markdownEnabled = false,
+    this.controller,
+    this.onComplete,
+  })  : fadeInEnabled = false,
+        fadeInDuration = Duration.zero,
+        fadeInCurve = Curves.linear,
+        wordByWord = false,
+        chunkSize = 1,
+        typingSpeed = const Duration(milliseconds: 50);
+
+  /// Creates a StreamingTextMarkdown with instant display
+  /// For when speed is priority over animation
+  const StreamingTextMarkdown.instant({
+    super.key,
+    required this.text,
+    this.initialText = '',
+    this.styleSheet,
+    this.theme,
+    this.padding,
+    this.autoScroll = true,
+    this.textDirection,
+    this.textAlign,
+    this.markdownEnabled = false,
+    this.controller,
+    this.onComplete,
+  })  : fadeInEnabled = false,
+        fadeInDuration = Duration.zero,
+        fadeInCurve = Curves.linear,
+        wordByWord = false,
+        chunkSize = 1000,
+        typingSpeed = Duration.zero;
+
+  /// Creates a StreamingTextMarkdown from a preset configuration
+  StreamingTextMarkdown.fromPreset({
+    super.key,
+    required this.text,
+    required StreamingTextConfig preset,
+    this.initialText = '',
+    this.styleSheet,
+    this.theme,
+    this.padding,
+    this.autoScroll = true,
+    this.textDirection,
+    this.textAlign,
+    this.markdownEnabled = false,
+    this.controller,
+    this.onComplete,
+  })  : fadeInEnabled = preset.fadeInEnabled,
+        fadeInDuration = preset.fadeInDuration,
+        fadeInCurve = preset.fadeInCurve,
+        wordByWord = preset.wordByWord,
+        chunkSize = preset.chunkSize,
+        typingSpeed = preset.typingSpeed;
 
   @override
   State<StreamingTextMarkdown> createState() => _StreamingTextMarkdownState();
@@ -155,7 +277,9 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           typingSpeed: widget.typingSpeed,
           textDirection: widget.textDirection,
           textAlign: widget.textAlign,
+          controller: widget.controller,
           onComplete: () {
+            // Handle auto-scrolling
             if (mounted && widget.autoScroll && _scrollController.hasClients) {
               _scrollController.animateTo(
                 _scrollController.position.maxScrollExtent,
@@ -163,6 +287,8 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
                 curve: Curves.easeOut,
               );
             }
+            // Call user's completion callback
+            widget.onComplete?.call();
           },
         ),
       ),

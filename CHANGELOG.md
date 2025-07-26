@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.2.0
+
+### 🚀 Major Features
+* **StreamingTextController** - Added programmatic control for pause/resume/skip/restart functionality
+* **LLM Animation Presets** - Added ChatGPT and Claude-style animation presets optimized for AI text streaming
+* **Convenient Constructors** - Added `StreamingTextMarkdown.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()` constructors
+
+### 🎯 LLM Integration Enhancements
+* Enhanced package description and tags for better discoverability in LLM use cases
+* Added comprehensive example app showcasing ChatGPT-style, Claude-style, and controller demos
+* Optimized animation speeds and behaviors specifically for AI text streaming scenarios
+
+### 🛠️ Developer Experience
+* Added `StreamingTextConfig` class for reusable animation configurations
+* Added progress tracking and state management through controller callbacks
+* Added animation presets: `chatGPT`, `claude`, `typewriter`, `gentle`, `bouncy`, `chunks`, `rtlOptimized`, `professional`
+* Added animation speed enums: `slow`, `medium`, `fast`, `ultraFast`
+
+### 🔧 Technical Improvements
+* Updated deprecated API usage (`withOpacity` → `withValues`)
+* Fixed package structure (`docs/` → `doc/`, added `.pubignore`)
+* Improved Flutter compatibility and dependency management
+* Enhanced error handling and controller lifecycle management
+
+### 📱 Example App Overhaul
+* Complete redesign with 4 tabs: ChatGPT Style, Claude Style, Controller Demo, Custom Settings
+* Real-time streaming simulation with Flutter development content
+* Interactive controller demo showing pause/resume/skip/restart functionality
+* Performance optimizations and modern UI design
+
+### 🐛 Bug Fixes
+* Fixed animation disposal and memory management
+* Improved RTL text handling and performance
+* Fixed deprecated API warnings and analysis issues
+
 ## 1.1.0
 
 * Added professional theme system with StreamingTextTheme

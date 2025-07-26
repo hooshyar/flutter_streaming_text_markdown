@@ -1,0 +1,19 @@
+# Development files
+logger.txt
+.vscode/
+.idea/
+*.iml
+build/
+.DS_Store
+
+# Documentation development files
+docs/
+doc/tasks.md
+doc/remember.txt
+doc/changes.log
+
+# Test coverage
+coverage/
+
+# Example build files
+example/build/

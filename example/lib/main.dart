@@ -36,7 +36,7 @@ class _MyAppState extends State<MyApp> {
           surface: _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
         ),
         useMaterial3: true,
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -55,10 +55,10 @@ class _MyAppState extends State<MyApp> {
         ),
       ),
       home: DefaultTabController(
-        length: 2,
+        length: 4,
         child: Scaffold(
           appBar: AppBar(
-            title: const Text('Streaming Text Demo'),
+            title: const Text('LLM Streaming Demo'),
             actions: [
               IconButton(
                 icon: Icon(
@@ -68,19 +68,24 @@ class _MyAppState extends State<MyApp> {
               ),
             ],
             bottom: const TabBar(
+              isScrollable: true,
               tabs: [
-                Tab(text: 'Basic Demo'),
-                Tab(text: 'LLM Demo'),
+                Tab(text: 'ChatGPT Style'),
+                Tab(text: 'Claude Style'),
+                Tab(text: 'Controller Demo'),
+                Tab(text: 'Custom Settings'),
               ],
             ),
           ),
           body: TabBarView(
             children: [
+              ChatGPTDemoPage(isDarkMode: _isDarkMode),
+              ClaudeDemoPage(isDarkMode: _isDarkMode),
+              ControllerDemoPage(isDarkMode: _isDarkMode),
               MyHomePage(
                 onThemeToggle: _toggleTheme,
                 isDarkMode: _isDarkMode,
               ),
-              LLMDemoPage(isDarkMode: _isDarkMode),
             ],
           ),
         ),
@@ -203,12 +208,12 @@ class _MyHomePageState extends State<MyHomePage> {
                     color: theme.colorScheme.surface,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: theme.colorScheme.primary.withAlpha(100),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.4),
                       width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: theme.colorScheme.primary.withAlpha(100),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.4),
                         blurRadius: 20,
                         spreadRadius: 0,
                       ),
@@ -391,12 +396,12 @@ Experience the future of text animation!''',
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: theme.colorScheme.primary.withOpacity(0.2),
+          color: theme.colorScheme.primary.withValues(alpha: 0.2),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: theme.colorScheme.primary.withOpacity(0.1),
+            color: theme.colorScheme.primary.withValues(alpha: 0.1),
             blurRadius: 20,
             spreadRadius: 0,
           ),
@@ -508,9 +513,9 @@ Experience the future of text animation!''',
         SliderTheme(
           data: SliderThemeData(
             activeTrackColor: theme.colorScheme.primary,
-            inactiveTrackColor: theme.colorScheme.primary.withOpacity(0.2),
+            inactiveTrackColor: theme.colorScheme.primary.withValues(alpha: 0.2),
             thumbColor: theme.colorScheme.primary,
-            overlayColor: theme.colorScheme.primary.withOpacity(0.1),
+            overlayColor: theme.colorScheme.primary.withValues(alpha: 0.1),
           ),
           child: Slider(
             value: value,
@@ -526,111 +531,123 @@ Experience the future of text animation!''',
   }
 }
 
-class LLMDemoPage extends StatefulWidget {
+// ChatGPT-style demo page
+class ChatGPTDemoPage extends StatefulWidget {
   final bool isDarkMode;
 
-  const LLMDemoPage({
-    super.key,
-    required this.isDarkMode,
-  });
+  const ChatGPTDemoPage({super.key, required this.isDarkMode});
 
   @override
-  State<LLMDemoPage> createState() => _LLMDemoPageState();
+  State<ChatGPTDemoPage> createState() => _ChatGPTDemoPageState();
 }
 
-class _LLMDemoPageState extends State<LLMDemoPage> {
+class _ChatGPTDemoPageState extends State<ChatGPTDemoPage> {
   final TextEditingController _promptController = TextEditingController();
   String _currentResponse = '';
   bool _isGenerating = false;
   Timer? _streamingTimer;
   int _currentIndex = 0;
 
-  final List<String> _sampleResponses = [
-    '''Here's a detailed explanation of how async/await works in Dart:
+  final List<String> _chatGPTResponses = [
+    '''# Flutter Development Best Practices
 
-1. **Basics of Async Programming**:
-   - Async programming helps handle operations that might take time
-   - It prevents blocking the main thread
-   - Uses Future objects to represent potential values
+**1. State Management**
+- Use **Provider** for simple apps
+- **Riverpod** for complex state
+- **BLoC** for enterprise applications
 
-2. **The async Keyword**:
-   - Marks a function as asynchronous
-   - Always returns a Future
-   - Enables the use of await
+**2. Performance Tips**
+- Use `const` constructors
+- Implement `ListView.builder` for long lists
+- Avoid rebuilding widgets unnecessarily
 
-3. **The await Keyword**:
-   - Pauses execution until a Future completes
-   - Can only be used in async functions
-   - Makes async code look synchronous
+**3. Code Organization**
+```dart
+lib/
+  ├── models/
+  ├── services/
+  ├── widgets/
+  └── screens/
+```
 
-4. **Error Handling**:
-   - Use try/catch blocks
-   - Handle errors gracefully
-   - Maintain app stability
+*Remember: Clean code is maintainable code!*''',
 
-Remember: Good async programming is crucial for responsive apps!''',
-    '''Let me explain the key principles of Material Design 3:
+    '''# Building Responsive Flutter Apps
 
-1. **Dynamic Color**:
-   - Uses color extraction from wallpapers
-   - Creates personalized color schemes
-   - Maintains accessibility
+**Key Principles:**
+1. **LayoutBuilder** for adaptive layouts
+2. **MediaQuery** for screen dimensions
+3. **Flexible** and **Expanded** for space distribution
 
-2. **Typography**:
-   - Updated type scale
-   - Better readability
-   - Responsive sizing
+**Breakpoints:**
+- Mobile: < 600px
+- Tablet: 600px - 1200px  
+- Desktop: > 1200px
 
-3. **Component Updates**:
-   - New navigation bar
-   - Enhanced FAB designs
-   - Improved cards
+**Code Example:**
+```dart
+LayoutBuilder(builder: (context, constraints) {
+  if (constraints.maxWidth > 600) {
+    return DesktopLayout();
+  }
+  return MobileLayout();
+})
+```
 
-4. **Elevation and Shadows**:
-   - Refined surface hierarchy
-   - Better depth perception
-   - Consistent elevation system
+*Pro tip: Test on different screen sizes early!*''',
 
-These principles create modern, beautiful apps!''',
-    '''Here's how to implement clean architecture in Flutter:
+    '''# Flutter Animation Guide
 
-1. **Layers**:
-   - Domain (Business Logic)
-   - Data (Repository Pattern)
-   - Presentation (UI/UX)
+**Animation Types:**
+1. **Implicit Animations** - AnimatedContainer, AnimatedOpacity
+2. **Explicit Animations** - AnimationController, Tween
+3. **Hero Animations** - Seamless page transitions
 
-2. **Dependencies**:
-   - Dependency Injection
-   - Interface Segregation
-   - Clean Dependencies
+**Performance Considerations:**
+- Use `RepaintBoundary` for complex animations
+- Prefer **Transform** over changing layout properties
+- Cache heavy computations with `AnimationController`
 
-3. **Testing**:
-   - Unit Tests
-   - Integration Tests
-   - Widget Tests
+**Example:**
+```dart
+AnimatedContainer(
+  duration: Duration(milliseconds: 300),
+  curve: Curves.easeInOut,
+  width: _isExpanded ? 200 : 100,
+  child: YourWidget(),
+)
+```
 
-4. **Benefits**:
-   - Maintainable Code
-   - Scalable Architecture
-   - Easy Testing
-
-Follow these principles for robust apps!''',
+*Smooth animations enhance user experience!*''',
   ];
 
-  void _startGenerating() {
-    if (_promptController.text.isEmpty) return;
+  final List<String> _samplePrompts = [
+    "Explain Flutter state management best practices",
+    "How to build responsive Flutter apps?",
+    "Guide to Flutter animations and performance",
+  ];
+
+  void _startGenerating([String? customPrompt]) {
+    final prompt = customPrompt ?? _promptController.text;
+    if (prompt.isEmpty) return;
 
     setState(() {
       _isGenerating = true;
       _currentResponse = '';
-      _currentIndex = (_currentIndex + 1) % _sampleResponses.length;
+      if (customPrompt != null) {
+        // Find matching response or use first one
+        _currentIndex = _samplePrompts.indexWhere((p) => p.contains(prompt.split(' ')[0]));
+        if (_currentIndex == -1) _currentIndex = 0;
+      } else {
+        _currentIndex = (_currentIndex + 1) % _chatGPTResponses.length;
+      }
     });
 
-    final response = _sampleResponses[_currentIndex];
+    final response = _chatGPTResponses[_currentIndex];
     int charIndex = 0;
 
     _streamingTimer?.cancel();
-    _streamingTimer = Timer.periodic(const Duration(milliseconds: 10), (timer) {
+    _streamingTimer = Timer.periodic(const Duration(milliseconds: 8), (timer) {
       if (charIndex < response.length) {
         setState(() {
           _currentResponse += response[charIndex];
@@ -658,13 +675,26 @@ Follow these principles for robust apps!''',
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
+          // Quick prompt buttons
+          Wrap(
+            spacing: 8,
+            children: _samplePrompts.map((prompt) {
+              return ElevatedButton(
+                onPressed: _isGenerating ? null : () => _startGenerating(prompt),
+                child: Text(prompt, style: const TextStyle(fontSize: 12)),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+          
+          // Input field
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
               ),
             ),
             child: Row(
@@ -673,7 +703,7 @@ Follow these principles for robust apps!''',
                   child: TextField(
                     controller: _promptController,
                     decoration: const InputDecoration(
-                      hintText: 'Enter your prompt...',
+                      hintText: 'Ask about Flutter development...',
                       border: InputBorder.none,
                     ),
                     onSubmitted: (_) => _startGenerating(),
@@ -687,12 +717,14 @@ Follow these principles for robust apps!''',
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.send),
-                  onPressed: _isGenerating ? null : _startGenerating,
+                  onPressed: _isGenerating ? null : () => _startGenerating(),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
+          
+          // Response area
           Expanded(
             child: Container(
               width: double.infinity,
@@ -701,14 +733,506 @@ Follow these principles for robust apps!''',
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
                 ),
               ),
-              child: StreamingTextMarkdown(
+              child: StreamingTextMarkdown.chatGPT(
                 text: _currentResponse,
-                typingSpeed: const Duration(milliseconds: 50),
-                fadeInEnabled: true,
-                fadeInDuration: const Duration(milliseconds: 200),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Claude-style demo page  
+class ClaudeDemoPage extends StatefulWidget {
+  final bool isDarkMode;
+
+  const ClaudeDemoPage({super.key, required this.isDarkMode});
+
+  @override
+  State<ClaudeDemoPage> createState() => _ClaudeDemoPageState();
+}
+
+class _ClaudeDemoPageState extends State<ClaudeDemoPage> {
+  final TextEditingController _promptController = TextEditingController();
+  String _currentResponse = '';
+  bool _isGenerating = false;
+  Timer? _streamingTimer;
+  int _currentIndex = 0;
+
+  final List<String> _claudeResponses = [
+    '''# Understanding Flutter Widget Trees
+
+I'd be happy to explain Flutter's widget tree architecture and how it impacts performance.
+
+## Widget Tree Fundamentals
+
+Flutter's architecture is built around three key trees:
+
+**1. Widget Tree**
+- Describes the UI configuration
+- Immutable and lightweight
+- Rebuilds frequently during state changes
+
+**2. Element Tree**  
+- Manages the lifecycle of widgets
+- Mutable and persistent
+- Handles the actual widget mounting/unmounting
+
+**3. Render Tree**
+- Handles layout, painting, and hit testing
+- Only rebuilds when necessary
+- Most expensive operations happen here
+
+## Performance Implications
+
+The key insight is that Flutter tries to minimize work in the render tree by:
+- Reusing elements when possible
+- Only rebuilding widgets that actually changed
+- Using keys to maintain state across rebuilds
+
+## Best Practices
+
+```dart
+// Good: Use const constructors
+const Text('Hello World')
+
+// Good: Extract widgets to methods or classes
+Widget buildHeader() => Container(...)
+
+// Good: Use keys for dynamic lists
+ListView(children: items.map((item) => 
+  ItemWidget(key: ValueKey(item.id), item: item)
+).toList())
+```
+
+This architecture enables Flutter's excellent performance while maintaining developer productivity.''',
+
+    '''# Implementing Clean Architecture in Flutter
+
+Let me walk you through implementing clean architecture in Flutter applications.
+
+## Architecture Layers
+
+Clean architecture organizes code into distinct layers with clear dependencies:
+
+**1. Domain Layer (Core Business Logic)**
+- Entities: Core business objects
+- Use Cases: Application-specific business rules  
+- Repository Interfaces: Abstract data contracts
+
+**2. Data Layer**
+- Repository Implementations
+- Data Sources (Remote APIs, Local Databases)
+- Models and DTOs
+
+**3. Presentation Layer**
+- UI Widgets
+- State Management (BLoC, Provider, etc.)
+- View Models/Controllers
+
+## Dependency Direction
+
+```
+Presentation → Domain ← Data
+```
+
+Dependencies only flow inward. The domain layer knows nothing about Flutter or external frameworks.
+
+## Implementation Example
+
+```dart
+// Domain Layer
+abstract class UserRepository {
+  Future<User> getUser(String id);
+}
+
+class GetUserUseCase {
+  final UserRepository repository;
+  GetUserUseCase(this.repository);
+  
+  Future<User> execute(String id) => repository.getUser(id);
+}
+
+// Data Layer  
+class UserRepositoryImpl implements UserRepository {
+  final UserDataSource dataSource;
+  
+  @override
+  Future<User> getUser(String id) async {
+    final dto = await dataSource.fetchUser(id);
+    return dto.toDomain();
+  }
+}
+```
+
+## Benefits
+
+- **Testability**: Easy to mock dependencies and test business logic
+- **Maintainability**: Clear separation of concerns
+- **Flexibility**: Easy to swap implementations
+- **Scalability**: Architecture supports large teams and codebases
+
+The investment in proper architecture pays dividends as your application grows.''',
+
+    '''# Flutter State Management Comparison
+
+I'll provide a comprehensive comparison of Flutter's most popular state management solutions.
+
+## Provider (Recommended for Beginners)
+
+**Pros:**
+- Simple to learn and implement
+- Built on InheritedWidget (Flutter's foundation)
+- Great for small to medium apps
+- Excellent debugging with Provider Inspector
+
+**Cons:**
+- Can become complex with multiple providers
+- No built-in async state handling
+- Performance can suffer with deeply nested widgets
+
+**Example:**
+```dart
+ChangeNotifierProvider(
+  create: (_) => CounterProvider(),
+  child: Consumer<CounterProvider>(
+    builder: (context, counter, _) => Text('\${counter.value}'),
+  ),
+)
+```
+
+## Riverpod (Provider's Evolution)
+
+**Pros:**
+- Compile-time safety
+- No context dependency
+- Excellent async support
+- Built-in testing utilities
+
+**Cons:**
+- Steeper learning curve
+- Relatively newer ecosystem
+
+## BLoC (Business Logic Component)
+
+**Pros:**
+- Predictable state changes
+- Excellent for large applications
+- Platform agnostic
+- Great testing support
+
+**Cons:**
+- Verbose boilerplate
+- Steep learning curve
+- Can be overkill for simple apps
+
+## Recommendation Matrix
+
+- **Small Apps (< 10 screens)**: Provider
+- **Medium Apps (10-50 screens)**: Riverpod
+- **Large Apps (50+ screens)**: BLoC or Riverpod
+- **Enterprise**: BLoC with proper architecture
+
+The key is choosing the right tool for your team's expertise and project requirements.''',
+  ];
+
+  final List<String> _claudePrompts = [
+    "Explain Flutter widget trees and performance",
+    "How to implement clean architecture in Flutter?",
+    "Compare Flutter state management solutions",
+  ];
+
+  void _startGenerating([String? customPrompt]) {
+    final prompt = customPrompt ?? _promptController.text;
+    if (prompt.isEmpty) return;
+
+    setState(() {
+      _isGenerating = true;
+      _currentResponse = '';
+      if (customPrompt != null) {
+        _currentIndex = _claudePrompts.indexWhere((p) => p.contains(prompt.split(' ')[0]));
+        if (_currentIndex == -1) _currentIndex = 0;
+      } else {
+        _currentIndex = (_currentIndex + 1) % _claudeResponses.length;
+      }
+    });
+
+    final response = _claudeResponses[_currentIndex];
+    int charIndex = 0;
+
+    _streamingTimer?.cancel();
+    _streamingTimer = Timer.periodic(const Duration(milliseconds: 12), (timer) {
+      if (charIndex < response.length) {
+        setState(() {
+          _currentResponse += response[charIndex];
+        });
+        charIndex++;
+      } else {
+        timer.cancel();
+        setState(() {
+          _isGenerating = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _streamingTimer?.cancel();
+    _promptController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          // Quick prompt buttons
+          Wrap(
+            spacing: 8,
+            children: _claudePrompts.map((prompt) {
+              return ElevatedButton(
+                onPressed: _isGenerating ? null : () => _startGenerating(prompt),
+                child: Text(prompt, style: const TextStyle(fontSize: 12)),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+          
+          // Input field
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _promptController,
+                    decoration: const InputDecoration(
+                      hintText: 'Ask for detailed explanations...',
+                      border: InputBorder.none,
+                    ),
+                    onSubmitted: (_) => _startGenerating(),
+                  ),
+                ),
+                IconButton(
+                  icon: _isGenerating
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send),
+                  onPressed: _isGenerating ? null : () => _startGenerating(),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Response area
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: StreamingTextMarkdown.claude(
+                text: _currentResponse,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Controller demo page
+class ControllerDemoPage extends StatefulWidget {
+  final bool isDarkMode;
+
+  const ControllerDemoPage({super.key, required this.isDarkMode});
+
+  @override
+  State<ControllerDemoPage> createState() => _ControllerDemoPageState();
+}
+
+class _ControllerDemoPageState extends State<ControllerDemoPage> {
+  final StreamingTextController _controller = StreamingTextController();
+  String _currentText = '';
+  String _stateText = 'Idle';
+  double _progress = 0.0;
+
+  final String _demoText = '''# StreamingTextController Demo
+
+This demonstrates **programmatic control** over text streaming animations.
+
+## Controller Features:
+1. **Pause/Resume** - Stop and continue animations
+2. **Skip to End** - Jump to complete text immediately  
+3. **Restart** - Begin animation from the start
+4. **Progress Tracking** - Monitor animation progress
+5. **State Management** - Track current animation state
+
+## Use Cases:
+- User wants to **pause** during long responses
+- **Skip** animation when re-reading content
+- **Restart** to see the animation again
+- Show **progress indicators** for long content
+
+*Try the controls below to see the controller in action!*
+
+This is perfect for **LLM applications** where users need control over the streaming experience.
+
+## Technical Implementation:
+```dart
+final controller = StreamingTextController();
+
+StreamingTextMarkdown.claude(
+  text: llmResponse,
+  controller: controller,
+)
+
+// Control the animation
+controller.pause();
+controller.resume();
+controller.skipToEnd();
+controller.restart();
+```
+
+The controller provides **real-time feedback** about animation state and progress, making it easy to build responsive UIs that adapt to user needs.''';
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.onStateChanged((state) {
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _stateText = state.description;
+            });
+          }
+        });
+      }
+    });
+    
+    _controller.onProgressChanged((progress) {
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _progress = progress;
+            });
+          }
+        });
+      }
+    });
+    
+    // Start with the demo text after the build is complete
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startDemo();
+    });
+  }
+
+  void _startDemo() {
+    setState(() {
+      _currentText = _demoText;
+    });
+    _controller.restart();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          // Control buttons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton.icon(
+                onPressed: _controller.isAnimating ? _controller.pause : _controller.resume,
+                icon: Icon(_controller.isAnimating ? Icons.pause : Icons.play_arrow),
+                label: Text(_controller.isAnimating ? 'Pause' : 'Resume'),
+              ),
+              ElevatedButton.icon(
+                onPressed: _controller.skipToEnd,
+                icon: const Icon(Icons.skip_next),
+                label: const Text('Skip'),
+              ),
+              ElevatedButton.icon(
+                onPressed: _startDemo,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Restart'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Status info
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('State: $_stateText', style: Theme.of(context).textTheme.titleMedium),
+                      Text('Progress: ${(_progress * 100).toInt()}%', 
+                           style: Theme.of(context).textTheme.titleMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(value: _progress),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Text display
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: StreamingTextMarkdown.claude(
+                text: _currentText,
+                controller: _controller,
               ),
             ),
           ),

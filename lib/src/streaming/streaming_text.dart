@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import '../controller/streaming_text_controller.dart';
 
 /// A widget that displays streaming text with real-time updates and markdown support.
 ///
@@ -57,6 +58,7 @@ class StreamingText extends StatefulWidget {
     this.wordByWord = false,
     this.chunkSize = 1,
     this.markdownStyleSheet,
+    this.controller,
   });
 
   final String text;
@@ -87,6 +89,7 @@ class StreamingText extends StatefulWidget {
   final Duration fadeInDuration;
   final Curve fadeInCurve;
   final MarkdownStyleSheet? markdownStyleSheet;
+  final StreamingTextController? controller;
 
   @override
   State<StreamingText> createState() => _StreamingTextState();
@@ -126,7 +129,75 @@ class _StreamingTextState extends State<StreamingText>
       vsync: this,
       duration: widget.fadeInDuration,
     );
+    
+    // Set up controller integration
+    _setupController();
     _initializeText();
+  }
+
+  void _setupController() {
+    if (widget.controller != null) {
+      widget.controller!.updateState(StreamingTextState.idle);
+      // Listen for controller commands
+      widget.controller!.addListener(_handleControllerChange);
+    }
+  }
+
+  void _handleControllerChange() {
+    if (widget.controller == null || !mounted) return;
+    
+    final controller = widget.controller!;
+    
+    // Handle pause/resume
+    if (controller.isPaused && _typeTimer?.isActive == true) {
+      _typeTimer?.cancel();
+    } else if (!controller.isPaused && 
+               controller.state == StreamingTextState.animating && 
+               _typeTimer?.isActive != true) {
+      _resumeAnimation();
+    }
+    
+    // Handle restart
+    if (controller.state == StreamingTextState.animating && 
+        controller.progress == 0.0 && 
+        _displayedText.isNotEmpty) {
+      _restartAnimation();
+    }
+    
+    // Handle skip to end
+    if (controller.state == StreamingTextState.completed && 
+        !_isComplete) {
+      _skipToEnd();
+    }
+  }
+
+  void _resumeAnimation() {
+    if (widget.wordByWord) {
+      _resumeWordByWordTyping();
+    } else {
+      _resumeCharacterByCharacterTyping();
+    }
+  }
+
+  void _restartAnimation() {
+    _typeTimer?.cancel();
+    setState(() {
+      _displayedTextBuffer.clear();
+      _isComplete = false;
+      _cleanupAnimations();
+    });
+    _initializeText();
+  }
+
+  void _skipToEnd() {
+    _typeTimer?.cancel();
+    setState(() {
+      _displayedTextBuffer.clear();
+      _displayedTextBuffer.write(widget.text);
+      _isComplete = true;
+    });
+    widget.controller?.markCompleted();
+    widget.onComplete?.call();
   }
 
   void _initCursorAnimation() {
@@ -141,10 +212,28 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _initializeText() {
+    widget.controller?.updateState(StreamingTextState.animating);
     if (widget.stream != null) {
       _handleStream();
     } else {
       _startTyping();
+    }
+  }
+
+  void _resumeWordByWordTyping() {
+    // TODO: Implement resume functionality for word-by-word
+    _startWordByWordTyping();
+  }
+
+  void _resumeCharacterByCharacterTyping() {
+    // TODO: Implement resume functionality for character-by-character  
+    _startCharacterByCharacterTyping();
+  }
+
+  void _updateProgress() {
+    if (widget.controller != null && widget.text.isNotEmpty) {
+      final progress = _displayedText.length / widget.text.length;
+      widget.controller!.updateProgress(progress);
     }
   }
 
@@ -157,6 +246,7 @@ class _StreamingTextState extends State<StreamingText>
           _displayedTextBuffer.write(data);
           _isError = false;
           _errorMessage = null;
+          _updateProgress();
         });
       },
       onError: (error) {
@@ -167,6 +257,7 @@ class _StreamingTextState extends State<StreamingText>
       },
       onDone: () {
         setState(() => _isComplete = true);
+        widget.controller?.markCompleted();
         widget.onComplete?.call();
       },
     );
@@ -217,6 +308,7 @@ class _StreamingTextState extends State<StreamingText>
       if (wordIndex >= words.length) {
         timer.cancel();
         setState(() => _isComplete = true);
+        widget.controller?.markCompleted();
         widget.onComplete?.call();
         return;
       }
@@ -248,6 +340,7 @@ class _StreamingTextState extends State<StreamingText>
         }
 
         wordIndex = endIndex;
+        _updateProgress();
       });
     });
   }
@@ -317,6 +410,7 @@ class _StreamingTextState extends State<StreamingText>
       if (index >= characters.length) {
         timer.cancel();
         setState(() => _isComplete = true);
+        widget.controller?.markCompleted();
         widget.onComplete?.call();
         return;
       }
@@ -337,6 +431,7 @@ class _StreamingTextState extends State<StreamingText>
             currentChunkSize,
           );
         }
+        _updateProgress();
       });
 
       index += currentChunkSize;
@@ -619,6 +714,12 @@ class _StreamingTextState extends State<StreamingText>
     _cursorController.dispose();
     _groupAnimationController.dispose();
     _cleanupAnimations();
+    
+    // Remove controller listener
+    if (widget.controller != null) {
+      widget.controller!.removeListener(_handleControllerChange);
+    }
+    
     super.dispose();
   }
 }

@@ -1,0 +1,24 @@
+PACKAGE_VERSION: 1.1.0
+FLUTTER_COMPATIBILITY: Flutter SDK >=3.0.0 <4.0.0
+DART_COMPATIBILITY: Dart SDK >=3.0.0 <4.0.0
+LATEST_UPDATE: March 9, 2024
+REPOSITORY: https://github.com/hooshyar/flutter_streaming_text_markdown
+MAINTAINER: hooshyar
+
+DEPENDENCIES:
+- flutter_markdown: ^0.7.6
+- characters: ^1.3.0
+
+KEY_FEATURES:
+- Markdown formatting with typing animations
+- Character-by-character and word-by-word animations
+- RTL language support
+- Customizable animation speeds and fade effects
+- Theming capabilities with StreamingTextTheme
+
+BREAKING_CHANGES_IN_LAST_VERSION: None
+
+TODO:
+- Check upcoming flutter_markdown releases for compatibility
+- Consider implementing code highlighting for code blocks
+- Explore accessibility improvements 

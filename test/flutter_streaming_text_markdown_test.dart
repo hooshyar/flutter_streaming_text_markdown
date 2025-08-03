@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 
 void main() {
@@ -19,7 +19,7 @@ void main() {
 
       await tester.pump();
       expect(find.byType(StreamingTextMarkdown), findsOneWidget);
-      expect(find.byType(MarkdownBody), findsOneWidget);
+      expect(find.byType(StreamingText), findsOneWidget);
     });
 
     testWidgets('supports markdown formatting', (tester) async {
@@ -34,7 +34,7 @@ void main() {
 
       await tester.pump();
       expect(find.byType(StreamingTextMarkdown), findsOneWidget);
-      expect(find.byType(MarkdownBody), findsOneWidget);
+      expect(find.byType(StreamingText), findsOneWidget);
     });
 
     testWidgets('handles RTL text correctly', (tester) async {

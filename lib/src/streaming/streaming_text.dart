@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../controller/streaming_text_controller.dart';
+import '../utils/latex_processor.dart';
 
 /// A widget that displays streaming text with real-time updates and markdown support.
 ///
@@ -51,6 +51,10 @@ class StreamingText extends StatefulWidget {
     this.onComplete,
     this.stream,
     this.markdownEnabled = true,
+    this.latexEnabled = false,
+    this.latexStyle,
+    this.latexScale = 1.0,
+    this.latexFadeInEnabled,
     this.fadeInEnabled = false,
     this.fadeInDuration = const Duration(milliseconds: 300),
     this.fadeInCurve = Curves.easeOut,
@@ -82,10 +86,14 @@ class StreamingText extends StatefulWidget {
   final VoidCallback? onComplete;
   final Stream<String>? stream;
   final bool markdownEnabled;
+  final bool latexEnabled;
+  final TextStyle? latexStyle;
+  final double latexScale;
+  final bool? latexFadeInEnabled;
   final bool fadeInEnabled;
   final Duration fadeInDuration;
   final Curve fadeInCurve;
-  final MarkdownStyleSheet? markdownStyleSheet;
+  final TextStyle? markdownStyleSheet;
   final StreamingTextController? controller;
 
   @override
@@ -114,6 +122,8 @@ class _StreamingTextState extends State<StreamingText>
   String? _errorMessage;
   final Map<int, AnimationController> _characterAnimations = {};
   final Map<String, List<String>> _rtlGroupCache = {};
+  final Map<String, Widget> _markdownCache = {};
+  String _lastProcessedText = '';
   late AnimationController _groupAnimationController;
 
   @override
@@ -195,6 +205,10 @@ class _StreamingTextState extends State<StreamingText>
     });
     widget.controller?.markCompleted();
     widget.onComplete?.call();
+    // Force rebuild to process complete markdown
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _initCursorAnimation() {
@@ -219,12 +233,47 @@ class _StreamingTextState extends State<StreamingText>
 
   void _resumeWordByWordTyping() {
     // Resume word-by-word typing from current position
-    _startWordByWordTyping();
+    if (_isComplete) return;
+    
+    List<String> units;
+    if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(widget.text)) {
+      units = _parseTextUnitsWithLatex();
+    } else {
+      units = _containsArabic(widget.text)
+          ? _splitArabicWords(widget.text)
+          : _splitMarkdownAwareWords(widget.text);
+    }
+
+    // Calculate current position based on displayed text length
+    int currentUnitIndex = 0;
+    int displayedLength = 0;
+    
+    for (int i = 0; i < units.length; i++) {
+      final unit = units[i];
+      final unitLength = unit == '\n' ? 1 : unit.length + (i > 0 ? 1 : 0); // +1 for space
+      if (displayedLength + unitLength > _displayedText.length) {
+        break;
+      }
+      displayedLength += unitLength;
+      currentUnitIndex = i + 1;
+    }
+
+    _startWordByWordTypingFromIndex(units, currentUnitIndex);
   }
 
   void _resumeCharacterByCharacterTyping() {
     // Resume character-by-character typing from current position
-    _startCharacterByCharacterTyping();
+    if (_isComplete) return;
+    
+    List<String> units;
+    if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(widget.text)) {
+      units = _parseCharacterUnitsWithLatex();
+    } else {
+      units = Characters(widget.text).toList();
+    }
+
+    final currentIndex = _displayedText.length;
+    _startCharacterByCharacterTypingFromIndex(units, currentIndex);
   }
 
   void _updateProgress() {
@@ -256,6 +305,10 @@ class _StreamingTextState extends State<StreamingText>
         setState(() => _isComplete = true);
         widget.controller?.markCompleted();
         widget.onComplete?.call();
+        // Force rebuild to process complete markdown
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() {});
+        });
       },
     );
   }
@@ -284,15 +337,22 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _startWordByWordTyping() {
-    // Use accurate word boundary detection for Arabic
-    final words = _containsArabic(widget.text)
-        ? _splitArabicWords(widget.text)
-        : widget.text.split(RegExp(r'\s+'));
+    List<String> units;
+    
+    // If LaTeX is enabled, parse text into segments that preserve LaTeX expressions
+    if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(widget.text)) {
+      units = _parseTextUnitsWithLatex();
+    } else {
+      // Use markdown-aware word splitting for better formatting
+      units = _containsArabic(widget.text)
+          ? _splitArabicWords(widget.text)
+          : _splitMarkdownAwareWords(widget.text);
+    }
 
     final isRTL = widget.textDirection == TextDirection.rtl ||
         _containsArabic(widget.text);
 
-    int wordIndex = 0;
+    int unitIndex = 0;
     _displayedTextBuffer.clear();
 
     _typeTimer?.cancel();
@@ -302,27 +362,48 @@ class _StreamingTextState extends State<StreamingText>
         return;
       }
 
-      if (wordIndex >= words.length) {
+      if (unitIndex >= units.length) {
         timer.cancel();
         setState(() => _isComplete = true);
         widget.controller?.markCompleted();
         widget.onComplete?.call();
+        // Force rebuild to process complete markdown
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() {});
+        });
         return;
       }
 
       setState(() {
-        final endIndex = (wordIndex + widget.chunkSize).clamp(0, words.length);
-        final newWords = words.sublist(wordIndex, endIndex);
+        final endIndex = (unitIndex + widget.chunkSize).clamp(0, units.length);
+        final newUnits = units.sublist(unitIndex, endIndex);
 
-        // Write a space if buffer is not empty
-        if (_displayedTextBuffer.isNotEmpty) {
-          _displayedTextBuffer.write(' ');
+        for (final unit in newUnits) {
+          if (unit == '\n') {
+            // Handle newlines directly
+            _displayedTextBuffer.write('\n');
+          } else if (unit.startsWith('#')) {
+            // Headers should be on their own line
+            if (_displayedTextBuffer.isNotEmpty && !_displayedTextBuffer.toString().endsWith('\n')) {
+              _displayedTextBuffer.write('\n');
+            }
+            _displayedTextBuffer.write(unit);
+            _displayedTextBuffer.write('\n');
+          } else {
+            // Regular words - add space before if needed
+            if (_displayedTextBuffer.isNotEmpty && 
+                !_displayedTextBuffer.toString().endsWith(' ') && 
+                !_displayedTextBuffer.toString().endsWith('\n')) {
+              _displayedTextBuffer.write(' ');
+            }
+            _displayedTextBuffer.write(unit);
+          }
         }
-        _displayedTextBuffer.writeAll(newWords, ' ');
 
-        if (_fadeInAllowed) {
-          final newlyAddedLength = newWords.join(' ').length +
-              (newWords.length > 1 ? (newWords.length - 1) : 0);
+        if (_fadeInAllowed && 
+            !(widget.latexEnabled && _containsLatexInUnits(newUnits))) {
+          final newlyAddedLength = newUnits.join(' ').length +
+              (newUnits.length > 1 ? (newUnits.length - 1) : 0);
 
           if (isRTL) {
             // Animate only the newly added chunk in RTL
@@ -336,9 +417,95 @@ class _StreamingTextState extends State<StreamingText>
           }
         }
 
-        wordIndex = endIndex;
+        unitIndex = endIndex;
         _updateProgress();
       });
+    });
+  }
+
+  void _startWordByWordTypingFromIndex(List<String> units, int startIndex) {
+    int unitIndex = startIndex;
+
+    _typeTimer?.cancel();
+    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (unitIndex >= units.length) {
+        timer.cancel();
+        setState(() => _isComplete = true);
+        widget.controller?.markCompleted();
+        widget.onComplete?.call();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() {});
+        });
+        return;
+      }
+
+      setState(() {
+        final endIndex = (unitIndex + widget.chunkSize).clamp(0, units.length);
+        final newUnits = units.sublist(unitIndex, endIndex);
+
+        for (final unit in newUnits) {
+          if (unit == '\n') {
+            _displayedTextBuffer.write('\n');
+          } else if (unit.startsWith('#')) {
+            if (_displayedTextBuffer.isNotEmpty && !_displayedTextBuffer.toString().endsWith('\n')) {
+              _displayedTextBuffer.write('\n');
+            }
+            _displayedTextBuffer.write(unit);
+            _displayedTextBuffer.write('\n');
+          } else {
+            if (_displayedTextBuffer.isNotEmpty && 
+                !_displayedTextBuffer.toString().endsWith(' ') && 
+                !_displayedTextBuffer.toString().endsWith('\n')) {
+              _displayedTextBuffer.write(' ');
+            }
+            _displayedTextBuffer.write(unit);
+          }
+        }
+
+        unitIndex = endIndex;
+        _updateProgress();
+      });
+    });
+  }
+
+  void _startCharacterByCharacterTypingFromIndex(List<String> units, int startIndex) {
+    int index = startIndex;
+
+    _typeTimer?.cancel();
+    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (index >= units.length) {
+        timer.cancel();
+        setState(() => _isComplete = true);
+        widget.controller?.markCompleted();
+        widget.onComplete?.call();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() {});
+        });
+        return;
+      }
+
+      final chunkSize = widget.chunkSize;
+      final remainingUnits = units.length - index;
+      final currentChunkSize =
+          chunkSize > remainingUnits ? remainingUnits : chunkSize;
+
+      setState(() {
+        final chunk = units.getRange(index, index + currentChunkSize).join();
+        _displayedTextBuffer.write(chunk);
+        _updateProgress();
+      });
+
+      index += currentChunkSize;
     });
   }
 
@@ -361,6 +528,34 @@ class _StreamingTextState extends State<StreamingText>
     }
 
     return words.where((w) => w.trim().isNotEmpty).toList();
+  }
+
+  List<String> _splitMarkdownAwareWords(String text) {
+    final words = <String>[];
+    final lines = text.split('\n');
+    
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      
+      // Handle headers as single units to preserve formatting
+      if (line.startsWith('### ') || line.startsWith('## ') || line.startsWith('# ')) {
+        words.add(line);
+      } else if (line.trim().isEmpty) {
+        // Preserve empty lines
+        words.add(line);
+      } else {
+        // Split regular text by spaces, but preserve markdown syntax
+        final lineWords = line.split(RegExp(r'\s+'));
+        words.addAll(lineWords.where((w) => w.isNotEmpty));
+      }
+      
+      // Add line break marker except for last line
+      if (i < lines.length - 1) {
+        words.add('\n');
+      }
+    }
+    
+    return words;
   }
 
   void _createRTLWordAnimation(String text, int newLength) {
@@ -392,9 +587,17 @@ class _StreamingTextState extends State<StreamingText>
       return;
     }
 
-    final characters = Characters(widget.text).toList();
-    int index = 0;
+    List<String> units;
+    
+    // If LaTeX is enabled, use character units that preserve LaTeX expressions
+    if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(widget.text)) {
+      units = _parseCharacterUnitsWithLatex();
+    } else {
+      // Regular character-by-character processing
+      units = Characters(widget.text).toList();
+    }
 
+    int index = 0;
     _displayedTextBuffer.clear();
 
     _typeTimer?.cancel();
@@ -404,30 +607,36 @@ class _StreamingTextState extends State<StreamingText>
         return;
       }
 
-      if (index >= characters.length) {
+      if (index >= units.length) {
         timer.cancel();
         setState(() => _isComplete = true);
         widget.controller?.markCompleted();
         widget.onComplete?.call();
+        // Force rebuild to process complete markdown
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() {});
+        });
         return;
       }
 
       final chunkSize = widget.chunkSize;
-      final remainingChars = characters.length - index;
+      final remainingUnits = units.length - index;
       final currentChunkSize =
-          chunkSize > remainingChars ? remainingChars : chunkSize;
+          chunkSize > remainingUnits ? remainingUnits : chunkSize;
 
       setState(() {
-        final chunk =
-            characters.getRange(index, index + currentChunkSize).join();
+        final chunk = units.getRange(index, index + currentChunkSize).join();
         _displayedTextBuffer.write(chunk);
 
-        if (_fadeInAllowed) {
+        // Don't animate LaTeX content with fade-in for performance
+        if (_fadeInAllowed && 
+            !(widget.latexEnabled && _containsLatexInUnits(units.getRange(index, index + currentChunkSize).toList()))) {
           _createCharacterAnimation(
-            _displayedText.length - currentChunkSize,
-            currentChunkSize,
+            _displayedText.length - chunk.length,
+            chunk.length,
           );
         }
+
         _updateProgress();
       });
 
@@ -452,6 +661,10 @@ class _StreamingTextState extends State<StreamingText>
         timer.cancel();
         setState(() => _isComplete = true);
         widget.onComplete?.call();
+        // Force rebuild to process complete markdown
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() {});
+        });
         return;
       }
 
@@ -544,6 +757,10 @@ class _StreamingTextState extends State<StreamingText>
           _isComplete = true;
         });
         widget.onComplete?.call();
+        // Force rebuild to process complete markdown
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() {});
+        });
       },
       child: _buildContent(context),
     );
@@ -578,12 +795,7 @@ class _StreamingTextState extends State<StreamingText>
               : (effectiveAlignment == TextAlign.center
                   ? Alignment.center
                   : Alignment.centerLeft),
-          child: MarkdownBody(
-            data: _displayedText,
-            selectable: widget.selectable,
-            styleSheet: widget.markdownStyleSheet ??
-                MarkdownStyleSheet.fromTheme(Theme.of(context)),
-          ),
+          child: _buildMarkdownBody(),
         ),
       );
     }
@@ -704,6 +916,331 @@ class _StreamingTextState extends State<StreamingText>
         .hasMatch(text);
   }
 
+  /// Parses text into units that preserve LaTeX expressions as atomic blocks
+  List<String> _parseTextUnitsWithLatex() {
+    final segments = LaTeXProcessor.parseTextSegments(widget.text);
+    final units = <String>[];
+
+    for (final segment in segments) {
+      if (segment.isLaTeX) {
+        // LaTeX expressions are treated as single atomic units
+        units.add(segment.fullExpression);
+      } else {
+        // Regular text is split into words
+        final words = _containsArabic(segment.content)
+            ? _splitArabicWords(segment.content)
+            : segment.content.split(RegExp(r'\s+'));
+        units.addAll(words.where((w) => w.trim().isNotEmpty));
+      }
+    }
+
+    return units;
+  }
+
+  /// Checks if any of the units contains LaTeX expressions
+  bool _containsLatexInUnits(List<String> units) {
+    return units.any((unit) => LaTeXProcessor.containsLaTeX(unit));
+  }
+
+  /// Parses text into character units that preserve LaTeX expressions as atomic blocks
+  List<String> _parseCharacterUnitsWithLatex() {
+    final segments = LaTeXProcessor.parseTextSegments(widget.text);
+    final units = <String>[];
+
+    for (final segment in segments) {
+      if (segment.isLaTeX) {
+        // LaTeX expressions are treated as single atomic units
+        units.add(segment.fullExpression);
+      } else {
+        // Regular text is split into individual characters
+        final characters = Characters(segment.content).toList();
+        units.addAll(characters);
+      }
+    }
+
+    return units;
+  }
+
+  Widget _buildMarkdownBody() {
+    // Only use LaTeX processing if LaTeX is enabled AND LaTeX content is actually present
+    if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(_displayedText)) {
+      // Process LaTeX expressions and render them properly
+      return _buildLatexMarkdown();
+    } else {
+      // Standard markdown rendering for content without LaTeX
+      return _buildSimpleMarkdown();
+    }
+  }
+
+  Widget _buildLatexMarkdown() {
+    // Parse text segments and build widgets for each
+    final segments = LaTeXProcessor.parseTextSegments(_displayedText);
+    
+    if (segments.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // For now, we'll render LaTeX as styled text with a math-like appearance
+    // This is a simplified approach that works without external LaTeX renderers
+    final children = <Widget>[];
+    
+    for (final segment in segments) {
+      if (segment.isLaTeX) {
+        // Render LaTeX content with special styling
+        children.add(
+          Container(
+            padding: segment.type == SegmentType.blockLaTeX 
+                ? const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0)
+                : const EdgeInsets.symmetric(horizontal: 4.0),
+            margin: segment.type == SegmentType.blockLaTeX 
+                ? const EdgeInsets.symmetric(vertical: 8.0)
+                : EdgeInsets.zero,
+            decoration: segment.type == SegmentType.blockLaTeX 
+                ? BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(8.0),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+                    ),
+                  )
+                : null,
+            child: SelectableText(
+              _formatLatexForDisplay(segment.content),
+              style: (widget.latexStyle ?? widget.style ?? const TextStyle()).copyWith(
+                fontFamily: 'monospace',
+                fontSize: (widget.latexStyle?.fontSize ?? widget.style?.fontSize ?? 14) * widget.latexScale,
+                color: widget.latexStyle?.color ?? Colors.blue,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        );
+      } else {
+        // Render regular markdown content using simple markdown parser
+        if (segment.content.trim().isNotEmpty) {
+          children.add(
+            _buildFormattedText(segment.content),
+          );
+        }
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  Widget _buildSimpleMarkdown() {
+    if (!widget.markdownEnabled) {
+      return Text(
+        _displayedText,
+        style: widget.style,
+      );
+    }
+
+    // Performance optimization: Only reprocess if text actually changed
+    if (_displayedText == _lastProcessedText && _markdownCache.containsKey(_displayedText)) {
+      return _markdownCache[_displayedText]!;
+    }
+
+    // Quick check: if text looks like it has no markdown, show as plain text
+    if (!_looksLikeMarkdown(_displayedText)) {
+      final widget = Text(_displayedText, style: this.widget.style);
+      _markdownCache[_displayedText] = widget;
+      _lastProcessedText = _displayedText;
+      return widget;
+    }
+
+    // Process markdown (only when needed)
+    final result = _processMarkdownLines();
+    _markdownCache[_displayedText] = result;
+    _lastProcessedText = _displayedText;
+    
+    return result;
+  }
+
+  bool _looksLikeMarkdown(String text) {
+    // Quick checks to avoid expensive processing
+    return text.contains('#') || text.contains('**') || text.contains('*');
+  }
+
+  Widget _processMarkdownLines() {
+    final lines = _displayedText.split('\n');
+    final children = <Widget>[];
+
+    for (final line in lines) {
+      if (line.trim().isEmpty) {
+        children.add(const SizedBox(height: 8));
+        continue;
+      }
+
+      // Headers - only process if complete
+      if (line.startsWith('### ') && line.length > 4) {
+        children.add(Text(
+          line.substring(4),
+          style: (widget.style ?? const TextStyle()).copyWith(
+            fontSize: (widget.style?.fontSize ?? 16) * 1.2,
+            fontWeight: FontWeight.w600,
+          ),
+        ));
+      } else if (line.startsWith('## ') && line.length > 3) {
+        children.add(Text(
+          line.substring(3),
+          style: (widget.style ?? const TextStyle()).copyWith(
+            fontSize: (widget.style?.fontSize ?? 16) * 1.4,
+            fontWeight: FontWeight.w700,
+          ),
+        ));
+      } else if (line.startsWith('# ') && line.length > 2) {
+        children.add(Text(
+          line.substring(2),
+          style: (widget.style ?? const TextStyle()).copyWith(
+            fontSize: (widget.style?.fontSize ?? 16) * 1.6,
+            fontWeight: FontWeight.w800,
+          ),
+        ));
+      } else {
+        // Only process inline formatting if line contains markdown markers
+        if (line.contains('**') || line.contains('*')) {
+          children.add(_buildFormattedText(line));
+        } else {
+          children.add(Text(line, style: widget.style));
+        }
+      }
+      
+      children.add(const SizedBox(height: 4));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  Widget _buildFormattedText(String text) {
+    final baseStyle = widget.style ?? const TextStyle();
+    
+    // Performance: Simple string operations instead of complex regex
+    final spans = <TextSpan>[];
+    int currentIndex = 0;
+    
+    while (currentIndex < text.length) {
+      // Look for bold patterns **text**
+      final boldStart = text.indexOf('**', currentIndex);
+      if (boldStart != -1) {
+        final boldEnd = text.indexOf('**', boldStart + 2);
+        if (boldEnd != -1) {
+          // Add text before bold
+          if (boldStart > currentIndex) {
+            spans.add(TextSpan(
+              text: text.substring(currentIndex, boldStart),
+              style: baseStyle,
+            ));
+          }
+          // Add bold text
+          spans.add(TextSpan(
+            text: text.substring(boldStart + 2, boldEnd),
+            style: baseStyle.copyWith(fontWeight: FontWeight.bold),
+          ));
+          currentIndex = boldEnd + 2;
+          continue;
+        }
+      }
+      
+      // Look for italic patterns *text* (not part of bold)
+      final italicStart = text.indexOf('*', currentIndex);
+      if (italicStart != -1 && 
+          (italicStart == 0 || text[italicStart - 1] != '*') && 
+          (italicStart + 1 < text.length && text[italicStart + 1] != '*')) {
+        final italicEnd = text.indexOf('*', italicStart + 1);
+        if (italicEnd != -1 && (italicEnd + 1 >= text.length || text[italicEnd + 1] != '*')) {
+          // Add text before italic
+          if (italicStart > currentIndex) {
+            spans.add(TextSpan(
+              text: text.substring(currentIndex, italicStart),
+              style: baseStyle,
+            ));
+          }
+          // Add italic text
+          spans.add(TextSpan(
+            text: text.substring(italicStart + 1, italicEnd),
+            style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+          ));
+          currentIndex = italicEnd + 1;
+          continue;
+        }
+      }
+      
+      // No more patterns found, add remaining text
+      spans.add(TextSpan(
+        text: text.substring(currentIndex),
+        style: baseStyle,
+      ));
+      break;
+    }
+    
+    return spans.isEmpty 
+        ? Text(text, style: baseStyle)
+        : Text.rich(TextSpan(children: spans));
+  }
+
+  String _formatLatexForDisplay(String latex) {
+    // Simple LaTeX to Unicode conversion for better display
+    return latex
+        .replaceAll(r'\alpha', 'α')
+        .replaceAll(r'\beta', 'β')
+        .replaceAll(r'\gamma', 'γ')
+        .replaceAll(r'\delta', 'δ')
+        .replaceAll(r'\pi', 'π')
+        .replaceAll(r'\sigma', 'σ')
+        .replaceAll(r'\lambda', 'λ')
+        .replaceAll(r'\mu', 'μ')
+        .replaceAll(r'\theta', 'θ')
+        .replaceAll(r'\phi', 'φ')
+        .replaceAll(r'\psi', 'ψ')
+        .replaceAll(r'\omega', 'ω')
+        .replaceAll(r'\pm', '±')
+        .replaceAll(r'\mp', '∓')
+        .replaceAll(r'\times', '×')
+        .replaceAll(r'\div', '÷')
+        .replaceAll(r'\cdot', '·')
+        .replaceAll(r'\neq', '≠')
+        .replaceAll(r'\leq', '≤')
+        .replaceAll(r'\geq', '≥')
+        .replaceAll(r'\approx', '≈')
+        .replaceAll(r'\equiv', '≡')
+        .replaceAll(r'\infty', '∞')
+        .replaceAll(r'\sum', '∑')
+        .replaceAll(r'\int', '∫')
+        .replaceAll(r'\partial', '∂')
+        .replaceAll(r'\nabla', '∇')
+        .replaceAll(r'\sqrt', '√')
+        .replaceAll(r'\ldots', '…')
+        .replaceAll(r'\rightarrow', '→')
+        .replaceAll(r'\leftarrow', '←')
+        .replaceAll(r'\Rightarrow', '⇒')
+        .replaceAll(r'\Leftarrow', '⇐')
+        .replaceAll(r'\hbar', 'ℏ')
+        // Handle fractions
+        .replaceAllMapped(RegExp(r'\\frac\{([^}]*)\}\{([^}]*)\}'), (match) {
+          return '${match.group(1)}/${match.group(2)}';
+        })
+        // Handle superscripts (simplified)
+        .replaceAllMapped(RegExp(r'\^(\w|\{[^}]*\})'), (match) {
+          final exp = match.group(1)!.replaceAll(RegExp(r'[{}]'), '');
+          return '^$exp';
+        })
+        // Handle subscripts (simplified)
+        .replaceAllMapped(RegExp(r'_(\w|\{[^}]*\})'), (match) {
+          final sub = match.group(1)!.replaceAll(RegExp(r'[{}]'), '');
+          return '₍$sub₎';
+        })
+        // Clean up remaining LaTeX commands
+        .replaceAll(RegExp(r'\\[a-zA-Z]+'), '')
+        .replaceAll(RegExp(r'[{}]'), '');
+  }
+
   @override
   void dispose() {
     _typeTimer?.cancel();
@@ -711,6 +1248,10 @@ class _StreamingTextState extends State<StreamingText>
     _cursorController.dispose();
     _groupAnimationController.dispose();
     _cleanupAnimations();
+    
+    // Clear caches to prevent memory leaks
+    _markdownCache.clear();
+    _rtlGroupCache.clear();
     
     // Remove controller listener
     if (widget.controller != null) {

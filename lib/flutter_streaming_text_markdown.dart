@@ -24,7 +24,6 @@ export 'src/controller/streaming_text_controller.dart';
 export 'src/presets/animation_presets.dart';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'src/streaming/streaming_text.dart';
 import 'src/theme/streaming_text_theme.dart';
 import 'src/controller/streaming_text_controller.dart';
@@ -51,8 +50,8 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Initial text to display before the animation starts
   final String initialText;
 
-  /// Markdown style sheet configuration
-  final MarkdownStyleSheet? styleSheet;
+  /// Markdown style configuration
+  final TextStyle? styleSheet;
 
   /// Custom theme for the widget
   final StreamingTextTheme? theme;
@@ -90,6 +89,18 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Whether to enable markdown rendering
   final bool markdownEnabled;
 
+  /// Whether to enable LaTeX rendering
+  final bool latexEnabled;
+
+  /// Custom style for LaTeX expressions
+  final TextStyle? latexStyle;
+
+  /// Scale factor for LaTeX equations
+  final double latexScale;
+
+  /// Whether to enable fade-in animations for LaTeX content
+  final bool? latexFadeInEnabled;
+
   /// Controller for programmatic animation control
   final StreamingTextController? controller;
 
@@ -113,6 +124,10 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.textDirection,
     this.textAlign,
     this.markdownEnabled = false,
+    this.latexEnabled = false,
+    this.latexStyle,
+    this.latexScale = 1.0,
+    this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
   });
@@ -130,6 +145,10 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.textDirection,
     this.textAlign,
     this.markdownEnabled = true,
+    this.latexEnabled = false,
+    this.latexStyle,
+    this.latexScale = 1.0,
+    this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
   })  : fadeInEnabled = true,
@@ -152,6 +171,10 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.textDirection,
     this.textAlign,
     this.markdownEnabled = true,
+    this.latexEnabled = false,
+    this.latexStyle,
+    this.latexScale = 1.0,
+    this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
   })  : fadeInEnabled = true,
@@ -174,6 +197,10 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.textDirection,
     this.textAlign,
     this.markdownEnabled = false,
+    this.latexEnabled = false,
+    this.latexStyle,
+    this.latexScale = 1.0,
+    this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
   })  : fadeInEnabled = false,
@@ -196,6 +223,10 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.textDirection,
     this.textAlign,
     this.markdownEnabled = false,
+    this.latexEnabled = false,
+    this.latexStyle,
+    this.latexScale = 1.0,
+    this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
   })  : fadeInEnabled = false,
@@ -218,6 +249,10 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.textDirection,
     this.textAlign,
     this.markdownEnabled = false,
+    this.latexEnabled = false,
+    this.latexStyle,
+    this.latexScale = 1.0,
+    this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
   })  : fadeInEnabled = preset.fadeInEnabled,
@@ -251,8 +286,8 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
   @override
   Widget build(BuildContext context) {
     final effectiveStyleSheet = widget.styleSheet ??
-        _effectiveTheme.markdownStyleSheet ??
-        MarkdownStyleSheet.fromTheme(Theme.of(context));
+        _effectiveTheme.markdownStyle ??
+        Theme.of(context).textTheme.bodyLarge;
 
     final effectivePadding = widget.padding ??
         _effectiveTheme.defaultPadding ??
@@ -264,10 +299,14 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
         padding: effectivePadding,
         child: StreamingText(
           key: ValueKey(
-              '${widget.text}_${widget.wordByWord}_${widget.chunkSize}_${widget.typingSpeed.inMilliseconds}'),
+              '${widget.text}_${widget.wordByWord}_${widget.chunkSize}_${widget.typingSpeed.inMilliseconds}_${widget.latexEnabled}'),
           text: widget.text,
           style: _effectiveTheme.textStyle,
           markdownEnabled: widget.markdownEnabled,
+          latexEnabled: widget.latexEnabled,
+          latexStyle: widget.latexStyle ?? _effectiveTheme.inlineLatexStyle,
+          latexScale: widget.latexScale,
+          latexFadeInEnabled: widget.latexFadeInEnabled ?? _effectiveTheme.latexFadeInEnabled,
           markdownStyleSheet: effectiveStyleSheet,
           fadeInEnabled: widget.fadeInEnabled,
           fadeInDuration: widget.fadeInDuration,

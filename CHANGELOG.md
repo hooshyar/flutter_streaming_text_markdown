@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.3.0
+
+### 🔢 LaTeX Support
+* **Mathematical Expressions** - Added comprehensive LaTeX support for inline ($x^2$) and block ($$E=mc^2$$) mathematical expressions
+* **Unicode Conversion** - LaTeX expressions are converted to Unicode symbols for proper rendering
+* **Atomic Animation** - LaTeX expressions are treated as atomic units during streaming animation
+* **Theme Integration** - Extended StreamingTextTheme with latexStyle, latexScale, and latexFadeInEnabled properties
+* **Performance Optimization** - LaTeX expressions can disable fade-in animations for better performance
+
+### 🔧 Package Architecture Improvements
+* **Dependency Migration** - Migrated from multiple markdown packages to single gpt_markdown package
+* **Word-by-Word Markdown** - Fixed markdown rendering issues in word-by-word animation mode
+* **Caching System** - Added intelligent caching for LaTeX processing and markdown parsing
+* **Performance Enhancements** - Optimized text processing and animation performance
+
+### 🛠️ Developer Experience
+* **LaTeX Configuration** - Added latexEnabled, latexStyle, latexScale, and latexFadeInEnabled parameters
+* **Enhanced Documentation** - Comprehensive LaTeX usage examples and configuration guide
+* **Test Coverage** - Added extensive test suite for LaTeX functionality and integration
+* **Example Updates** - Updated example app with LaTeX demonstration and scientific content
+
+### 🐛 Bug Fixes
+* **Unused Import Cleanup** - Removed unused gpt_markdown import from streaming_text.dart
+* **Animation Consistency** - Fixed word-by-word animation with mixed markdown and LaTeX content
+* **Memory Management** - Improved disposal of LaTeX processing resources
+
 ## 1.2.1
 
 ### 🐛 Bug Fixes & Pub.dev Optimization

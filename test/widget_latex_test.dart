@@ -70,7 +70,7 @@ void main() {
 
     testWidgets('StreamingTextMarkdown.chatGPT with LaTeX enabled', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown.chatGPT(
               text: 'Formula: \$E = mc^2\$',
@@ -88,7 +88,7 @@ void main() {
 
     testWidgets('StreamingTextMarkdown.claude with LaTeX enabled', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown.claude(
               text: 'The integral \$\\int_0^1 x dx = \\frac{1}{2}\$',

@@ -916,7 +916,7 @@ class ControllerDemoPage extends StatefulWidget {
 
 class _ControllerDemoPageState extends State<ControllerDemoPage> {
   final StreamingTextController _controller = StreamingTextController();
-  String _currentText = '''# Controller Demo
+  final String _currentText = '''# Controller Demo
 
 Programmatic control over text streaming:
 

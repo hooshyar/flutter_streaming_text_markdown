@@ -16,7 +16,7 @@
 ///   fadeInEnabled: true,
 /// )
 /// ```
-library flutter_streaming_text_markdown;
+library;
 
 export 'src/streaming/streaming.dart';
 export 'src/theme/streaming_text_theme.dart';

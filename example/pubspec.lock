@@ -110,10 +110,10 @@ packages:
     dependency: transitive
     description:
       name: gpt_markdown
-      sha256: f85b0a87fa06365a76776646bc7f885173b38f61322a4ea7d6e3f7b8e85231f4
+      sha256: "68d5337c8a00fc03a37dbddf84a6fd90401c30e99b6baf497ef9522a81fc34ee"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.15"
+    version: "1.1.2"
   http:
     dependency: transitive
     description:
@@ -352,5 +352,5 @@ packages:
     source: hosted
     version: "6.5.0"
 sdks:
-  dart: ">=3.7.0-0 <4.0.0"
-  flutter: ">=3.27.0"
+  dart: ">=3.7.0 <4.0.0"
+  flutter: ">=3.29.0"

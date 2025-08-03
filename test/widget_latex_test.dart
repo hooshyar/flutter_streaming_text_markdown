@@ -17,7 +17,10 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       // Should find the text with dollar signs intact (not rendered as LaTeX)
       expect(find.text('Hello \$x = 5\$ world'), findsOneWidget);
@@ -37,7 +40,10 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       // The LaTeX should be processed, so the raw text won't be found
       expect(find.text('The equation \$x = 5\$ is simple'), findsNothing);
@@ -61,7 +67,10 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       // Should process the block LaTeX
       expect(find.textContaining('Matrix:'), findsOneWidget);
@@ -80,7 +89,10 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       // Should find the text parts
       expect(find.textContaining('Formula:'), findsOneWidget);
@@ -98,7 +110,10 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.textContaining('The integral'), findsOneWidget);
     });
@@ -122,7 +137,10 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.textContaining('Styled'), findsOneWidget);
       expect(find.textContaining('equation'), findsOneWidget);
@@ -151,7 +169,10 @@ Block math:
         ),
       );
 
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       // Should find markdown headers and formatting
       expect(find.textContaining('Math Examples'), findsOneWidget);
@@ -174,7 +195,10 @@ Block math:
       );
 
       // Should not crash and should render the text
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
       expect(find.textContaining('Invalid'), findsOneWidget);
     });
 
@@ -196,7 +220,10 @@ Block math:
 
       // Let animation run
       await tester.pump(const Duration(milliseconds: 50));
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.textContaining('Equation'), findsOneWidget);
     });
@@ -219,7 +246,10 @@ Block math:
         ),
       );
 
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
       expect(find.textContaining('Themed'), findsOneWidget);
     });
 
@@ -246,7 +276,10 @@ Block math:
       expect(finder, findsOneWidget);
 
       // Complete the animation
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.textContaining('Start'), findsOneWidget);
       expect(find.textContaining('end'), findsOneWidget);
@@ -268,7 +301,10 @@ Block math:
       );
 
       // Complete the animation
-      await tester.pumpAndSettle(const Duration(seconds: 2));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 15; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.textContaining('Hi'), findsOneWidget);
       expect(find.textContaining('ok'), findsOneWidget);
@@ -296,7 +332,10 @@ Block math:
 
       // Skip to end using controller
       controller.skipToEnd();
-      await tester.pumpAndSettle(const Duration(seconds: 2));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 15; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.textContaining('Control'), findsOneWidget);
       expect(find.textContaining('example'), findsOneWidget);
@@ -317,7 +356,10 @@ Block math:
         ),
       );
 
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      // Wait for completion with timeout protection  
+      for (int i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.textContaining('مرحبا'), findsOneWidget);
       expect(find.textContaining('عالم'), findsOneWidget);

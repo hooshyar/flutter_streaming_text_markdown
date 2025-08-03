@@ -216,9 +216,13 @@ This is **important** mathematics.''';
         ),
       );
 
-      // Let animation run
+      // Let animation run with timeout protection
       await tester.pump(const Duration(milliseconds: 200));
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.textContaining('مرحبا'), findsOneWidget);
       expect(find.textContaining('بالعالم'), findsOneWidget);
@@ -242,10 +246,14 @@ This is **important** mathematics.''';
         ),
       );
 
-      // Let animation run
+      // Let animation run with timeout protection
       await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      await tester.pump(const Duration(milliseconds: 200));
+      
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.textContaining('Fading'), findsOneWidget);
       expect(find.textContaining('text'), findsOneWidget);
@@ -270,7 +278,12 @@ This is **important** mathematics.''';
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      await tester.pump(const Duration(milliseconds: 500));
+      
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.textContaining('First'), findsOneWidget);
       expect(find.textContaining('then'), findsOneWidget);

@@ -4,6 +4,12 @@
 
 [![pub package](https://img.shields.io/pub/v/flutter_streaming_text_markdown.svg)](https://pub.dev/packages/flutter_streaming_text_markdown)
 
+## 🐛 v1.3.1 - Critical Bug Fixes
+- ✅ **Fixed**: Markdown animations no longer freeze (Issue #3)
+- ✅ **Fixed**: Streaming text continues properly instead of restarting (Issue #1)  
+- ✅ **Improved**: Perfect static analysis score for pub.dev
+- ✅ **Enhanced**: Comprehensive test coverage for all scenarios
+
 ## ✨ Features
 
 - 🤖 **LLM Optimized** - Built specifically for ChatGPT, Claude, and AI text streaming
@@ -22,7 +28,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_streaming_text_markdown: ^1.3.0
+  flutter_streaming_text_markdown: ^1.3.1
 ```
 
 ## 🚀 Quick Start

@@ -515,7 +515,8 @@ Experience the future of text animation!''',
         SliderTheme(
           data: SliderThemeData(
             activeTrackColor: theme.colorScheme.primary,
-            inactiveTrackColor: theme.colorScheme.primary.withValues(alpha: 0.2),
+            inactiveTrackColor:
+                theme.colorScheme.primary.withValues(alpha: 0.2),
             thumbColor: theme.colorScheme.primary,
             overlayColor: theme.colorScheme.primary.withValues(alpha: 0.1),
           ),
@@ -563,7 +564,6 @@ class _ChatGPTDemoPageState extends State<ChatGPTDemoPage> {
 - `ListView.builder` for long lists
 
 *Clean code is maintainable code!*''',
-
     '''# Responsive Flutter
 
 **Key Tools:**
@@ -575,7 +575,6 @@ class _ChatGPTDemoPageState extends State<ChatGPTDemoPage> {
 - Desktop: > 600px
 
 *Test on different screen sizes early!*''',
-
     '''# Flutter Animations
 
 **Types:**
@@ -605,7 +604,8 @@ class _ChatGPTDemoPageState extends State<ChatGPTDemoPage> {
       _currentResponse = '';
       if (customPrompt != null) {
         // Find matching response or use first one
-        _currentIndex = _samplePrompts.indexWhere((p) => p.contains(prompt.split(' ')[0]));
+        _currentIndex =
+            _samplePrompts.indexWhere((p) => p.contains(prompt.split(' ')[0]));
         if (_currentIndex == -1) _currentIndex = 0;
       } else {
         _currentIndex = (_currentIndex + 1) % _chatGPTResponses.length;
@@ -649,13 +649,14 @@ class _ChatGPTDemoPageState extends State<ChatGPTDemoPage> {
             spacing: 8,
             children: _samplePrompts.map((prompt) {
               return ElevatedButton(
-                onPressed: _isGenerating ? null : () => _startGenerating(prompt),
+                onPressed:
+                    _isGenerating ? null : () => _startGenerating(prompt),
                 child: Text(prompt, style: const TextStyle(fontSize: 12)),
               );
             }).toList(),
           ),
           const SizedBox(height: 16),
-          
+
           // Input field
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -663,7 +664,10 @@ class _ChatGPTDemoPageState extends State<ChatGPTDemoPage> {
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.2),
               ),
             ),
             child: Row(
@@ -692,7 +696,7 @@ class _ChatGPTDemoPageState extends State<ChatGPTDemoPage> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Response area
           Expanded(
             child: Container(
@@ -702,7 +706,10 @@ class _ChatGPTDemoPageState extends State<ChatGPTDemoPage> {
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.2),
                 ),
               ),
               child: StreamingTextMarkdown.chatGPT(
@@ -716,7 +723,7 @@ class _ChatGPTDemoPageState extends State<ChatGPTDemoPage> {
   }
 }
 
-// Claude-style demo page  
+// Claude-style demo page
 class ClaudeDemoPage extends StatefulWidget {
   final bool isDarkMode;
 
@@ -749,7 +756,6 @@ Flutter's architecture uses three key trees:
 - Use keys for dynamic lists
 
 This architecture enables excellent performance.''',
-
     '''# Clean Architecture
 
 Organize code into layers:
@@ -764,7 +770,6 @@ Presentation → Domain ← Data
 ```
 
 Benefits: testability, maintainability, flexibility.''',
-
     '''# State Management
 
 **Provider** - Simple, great for beginners
@@ -793,7 +798,8 @@ Choose based on team expertise and project size.''',
       _isGenerating = true;
       _currentResponse = '';
       if (customPrompt != null) {
-        _currentIndex = _claudePrompts.indexWhere((p) => p.contains(prompt.split(' ')[0]));
+        _currentIndex =
+            _claudePrompts.indexWhere((p) => p.contains(prompt.split(' ')[0]));
         if (_currentIndex == -1) _currentIndex = 0;
       } else {
         _currentIndex = (_currentIndex + 1) % _claudeResponses.length;
@@ -837,13 +843,14 @@ Choose based on team expertise and project size.''',
             spacing: 8,
             children: _claudePrompts.map((prompt) {
               return ElevatedButton(
-                onPressed: _isGenerating ? null : () => _startGenerating(prompt),
+                onPressed:
+                    _isGenerating ? null : () => _startGenerating(prompt),
                 child: Text(prompt, style: const TextStyle(fontSize: 12)),
               );
             }).toList(),
           ),
           const SizedBox(height: 16),
-          
+
           // Input field
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -851,7 +858,10 @@ Choose based on team expertise and project size.''',
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.2),
               ),
             ),
             child: Row(
@@ -880,7 +890,7 @@ Choose based on team expertise and project size.''',
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Response area
           Expanded(
             child: Container(
@@ -890,7 +900,10 @@ Choose based on team expertise and project size.''',
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.2),
                 ),
               ),
               child: StreamingTextMarkdown.claude(
@@ -944,7 +957,6 @@ controller.skipToEnd();
   String _stateText = 'Idle';
   double _progress = 0.0;
 
-
   @override
   void initState() {
     super.initState();
@@ -959,7 +971,7 @@ controller.skipToEnd();
         });
       }
     });
-    
+
     _controller.onProgressChanged((progress) {
       if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -971,7 +983,7 @@ controller.skipToEnd();
         });
       }
     });
-    
+
     // Start with the demo text after the build is complete
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startDemo();
@@ -1000,8 +1012,11 @@ controller.skipToEnd();
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton.icon(
-                onPressed: _controller.isAnimating ? _controller.pause : _controller.resume,
-                icon: Icon(_controller.isAnimating ? Icons.pause : Icons.play_arrow),
+                onPressed: _controller.isAnimating
+                    ? _controller.pause
+                    : _controller.resume,
+                icon: Icon(
+                    _controller.isAnimating ? Icons.pause : Icons.play_arrow),
                 label: Text(_controller.isAnimating ? 'Pause' : 'Resume'),
               ),
               ElevatedButton.icon(
@@ -1017,7 +1032,7 @@ controller.skipToEnd();
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // Status info
           Card(
             child: Padding(
@@ -1027,9 +1042,10 @@ controller.skipToEnd();
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('State: $_stateText', style: Theme.of(context).textTheme.titleMedium),
-                      Text('Progress: ${(_progress * 100).toInt()}%', 
-                           style: Theme.of(context).textTheme.titleMedium),
+                      Text('State: $_stateText',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      Text('Progress: ${(_progress * 100).toInt()}%',
+                          style: Theme.of(context).textTheme.titleMedium),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -1039,7 +1055,7 @@ controller.skipToEnd();
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Text display
           Expanded(
             child: Container(
@@ -1049,7 +1065,10 @@ controller.skipToEnd();
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.2),
                 ),
               ),
               child: StreamingTextMarkdown.claude(
@@ -1093,7 +1112,6 @@ Operations: \$a + b\$, \$x^2\$, \$\\frac{a}{b}\$
 
 Block equation:
 \$\$E = mc^2\$\$''',
-
     '''# Quadratic Formula
 
 Solve \$ax^2 + bx + c = 0\$:
@@ -1101,7 +1119,6 @@ Solve \$ax^2 + bx + c = 0\$:
 \$\$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\$\$
 
 Derivative: \$\\frac{d}{dx}[x^n] = nx^{n-1}\$''',
-
     '''# Physics
 
 Newton's law: \$F = ma\$
@@ -1110,7 +1127,6 @@ Energy: \$KE = \\frac{1}{2}mv^2\$
 
 Wave equation:
 \$\$\\frac{\\partial^2 y}{\\partial t^2} = v^2\\frac{\\partial^2 y}{\\partial x^2}\$\$''',
-
     '''# Computer Science
 
 Big O: \$O(1)\$, \$O(n)\$, \$O(n^2)\$
@@ -1124,7 +1140,7 @@ Sigmoid: \$\\sigma(z) = \\frac{1}{1 + e^{-z}}\$''',
   final List<String> _samplePrompts = [
     "Basic math",
     "Quadratic formula",
-    "Physics formulas", 
+    "Physics formulas",
     "Computer science",
   ];
 
@@ -1136,7 +1152,8 @@ Sigmoid: \$\\sigma(z) = \\frac{1}{1 + e^{-z}}\$''',
       _isGenerating = true;
       _currentResponse = '';
       if (customPrompt != null) {
-        _currentIndex = _samplePrompts.indexWhere((p) => p.toLowerCase().contains(prompt.toLowerCase().split(' ')[0]));
+        _currentIndex = _samplePrompts.indexWhere((p) =>
+            p.toLowerCase().contains(prompt.toLowerCase().split(' ')[0]));
         if (_currentIndex == -1) _currentIndex = 0;
       } else {
         _currentIndex = (_currentIndex + 1) % _latexExamples.length;
@@ -1194,19 +1211,20 @@ Sigmoid: \$\\sigma(z) = \\frac{1}{1 + e^{-z}}\$''',
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // Quick prompt buttons
           Wrap(
             spacing: 8,
             children: _samplePrompts.map((prompt) {
               return ElevatedButton(
-                onPressed: _isGenerating ? null : () => _startGenerating(prompt),
+                onPressed:
+                    _isGenerating ? null : () => _startGenerating(prompt),
                 child: Text(prompt, style: const TextStyle(fontSize: 12)),
               );
             }).toList(),
           ),
           const SizedBox(height: 16),
-          
+
           // Input field
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1214,7 +1232,10 @@ Sigmoid: \$\\sigma(z) = \\frac{1}{1 + e^{-z}}\$''',
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.2),
               ),
             ),
             child: Row(
@@ -1243,7 +1264,7 @@ Sigmoid: \$\\sigma(z) = \\frac{1}{1 + e^{-z}}\$''',
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Response area
           Expanded(
             child: Container(
@@ -1253,7 +1274,10 @@ Sigmoid: \$\\sigma(z) = \\frac{1}{1 + e^{-z}}\$''',
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.2),
                 ),
               ),
               child: StreamingTextMarkdown(

@@ -16,7 +16,7 @@ void main() {
 
     // Verify that our app loads
     expect(find.byType(MyApp), findsOneWidget);
-    
+
     // Just verify the app structure loads without specific text
     await tester.pump();
   });

@@ -123,12 +123,8 @@ class _StreamingTextState extends State<StreamingText>
   final Map<int, AnimationController> _characterAnimations = {};
   final Map<String, List<String>> _rtlGroupCache = {};
   final Map<String, Widget> _markdownCache = {};
+  String _lastProcessedText = '';
   late AnimationController _groupAnimationController;
-
-  // NEW: Advanced State Tracking for Animation Management
-  bool _isAnimationActive = false; // Control caching behavior during animation
-  final Map<String, Widget> _completeMarkdownCache =
-      {}; // Only complete markdown states
 
   @override
   void initState() {
@@ -140,7 +136,7 @@ class _StreamingTextState extends State<StreamingText>
       vsync: this,
       duration: widget.fadeInDuration,
     );
-
+    
     // Set up controller integration
     _setupController();
     _initializeText();
@@ -156,27 +152,28 @@ class _StreamingTextState extends State<StreamingText>
 
   void _handleControllerChange() {
     if (widget.controller == null || !mounted) return;
-
+    
     final controller = widget.controller!;
-
+    
     // Handle pause/resume
     if (controller.isPaused && _typeTimer?.isActive == true) {
       _typeTimer?.cancel();
-    } else if (!controller.isPaused &&
-        controller.state == StreamingTextState.animating &&
-        _typeTimer?.isActive != true) {
+    } else if (!controller.isPaused && 
+               controller.state == StreamingTextState.animating && 
+               _typeTimer?.isActive != true) {
       _resumeAnimation();
     }
-
+    
     // Handle restart
-    if (controller.state == StreamingTextState.animating &&
-        controller.progress == 0.0 &&
+    if (controller.state == StreamingTextState.animating && 
+        controller.progress == 0.0 && 
         _displayedText.isNotEmpty) {
       _restartAnimation();
     }
-
+    
     // Handle skip to end
-    if (controller.state == StreamingTextState.completed && !_isComplete) {
+    if (controller.state == StreamingTextState.completed && 
+        !_isComplete) {
       _skipToEnd();
     }
   }
@@ -194,8 +191,6 @@ class _StreamingTextState extends State<StreamingText>
     setState(() {
       _displayedTextBuffer.clear();
       _isComplete = false;
-      _isAnimationActive = true;
-      _completeMarkdownCache.clear(); // Clear cache on restart
       _cleanupAnimations();
     });
     _initializeText();
@@ -207,7 +202,6 @@ class _StreamingTextState extends State<StreamingText>
       _displayedTextBuffer.clear();
       _displayedTextBuffer.write(widget.text);
       _isComplete = true;
-      _isAnimationActive = false;
     });
     widget.controller?.markCompleted();
     widget.onComplete?.call();
@@ -230,11 +224,6 @@ class _StreamingTextState extends State<StreamingText>
 
   void _initializeText() {
     widget.controller?.updateState(StreamingTextState.animating);
-
-    // Initialize state tracking
-    _isAnimationActive = true;
-    _completeMarkdownCache.clear(); // Clear cache when starting new animation
-
     if (widget.stream != null) {
       _handleStream();
     } else {
@@ -245,7 +234,7 @@ class _StreamingTextState extends State<StreamingText>
   void _resumeWordByWordTyping() {
     // Resume word-by-word typing from current position
     if (_isComplete) return;
-
+    
     List<String> units;
     if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(widget.text)) {
       units = _parseTextUnitsWithLatex();
@@ -258,11 +247,10 @@ class _StreamingTextState extends State<StreamingText>
     // Calculate current position based on displayed text length
     int currentUnitIndex = 0;
     int displayedLength = 0;
-
+    
     for (int i = 0; i < units.length; i++) {
       final unit = units[i];
-      final unitLength =
-          unit == '\n' ? 1 : unit.length + (i > 0 ? 1 : 0); // +1 for space
+      final unitLength = unit == '\n' ? 1 : unit.length + (i > 0 ? 1 : 0); // +1 for space
       if (displayedLength + unitLength > _displayedText.length) {
         break;
       }
@@ -276,7 +264,7 @@ class _StreamingTextState extends State<StreamingText>
   void _resumeCharacterByCharacterTyping() {
     // Resume character-by-character typing from current position
     if (_isComplete) return;
-
+    
     List<String> units;
     if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(widget.text)) {
       units = _parseCharacterUnitsWithLatex();
@@ -301,20 +289,9 @@ class _StreamingTextState extends State<StreamingText>
     _streamSubscription = broadcastStream.listen(
       (data) {
         setState(() {
-          final previousLength = _displayedText.length;
           _displayedTextBuffer.write(data);
           _isError = false;
           _errorMessage = null;
-
-          // FIXED: Continue animation from last position instead of restarting
-          if (_isAnimationActive && previousLength > 0) {
-            _continueAnimationFrom(previousLength);
-          } else if (!_isAnimationActive) {
-            // Start new animation if none is active
-            _isAnimationActive = true;
-            _startAnimationFrom(previousLength);
-          }
-
           _updateProgress();
         });
       },
@@ -325,10 +302,7 @@ class _StreamingTextState extends State<StreamingText>
         });
       },
       onDone: () {
-        setState(() {
-          _isComplete = true;
-          _isAnimationActive = false;
-        });
+        setState(() => _isComplete = true);
         widget.controller?.markCompleted();
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
@@ -337,24 +311,6 @@ class _StreamingTextState extends State<StreamingText>
         });
       },
     );
-  }
-
-  void _continueAnimationFrom(int startIndex) {
-    // Only animate newly added content from the specified index
-    final newContent = _displayedText.substring(startIndex);
-    if (newContent.isNotEmpty && !_isComplete) {
-      // Update the animation to continue from where it left off
-
-      // Continue with the existing typing animation logic
-      // The existing timers will handle the new content
-    }
-  }
-
-  void _startAnimationFrom(int startIndex) {
-    // Start animation from specified index
-    if (!_isComplete) {
-      _startTyping();
-    }
   }
 
   void _createCharacterAnimation(int baseIndex, int length) {
@@ -382,7 +338,7 @@ class _StreamingTextState extends State<StreamingText>
 
   void _startWordByWordTyping() {
     List<String> units;
-
+    
     // If LaTeX is enabled, parse text into segments that preserve LaTeX expressions
     if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(widget.text)) {
       units = _parseTextUnitsWithLatex();
@@ -408,10 +364,7 @@ class _StreamingTextState extends State<StreamingText>
 
       if (unitIndex >= units.length) {
         timer.cancel();
-        setState(() {
-          _isComplete = true;
-          _isAnimationActive = false; // Animation is now complete
-        });
+        setState(() => _isComplete = true);
         widget.controller?.markCompleted();
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
@@ -431,16 +384,15 @@ class _StreamingTextState extends State<StreamingText>
             _displayedTextBuffer.write('\n');
           } else if (unit.startsWith('#')) {
             // Headers should be on their own line
-            if (_displayedTextBuffer.isNotEmpty &&
-                !_displayedTextBuffer.toString().endsWith('\n')) {
+            if (_displayedTextBuffer.isNotEmpty && !_displayedTextBuffer.toString().endsWith('\n')) {
               _displayedTextBuffer.write('\n');
             }
             _displayedTextBuffer.write(unit);
             _displayedTextBuffer.write('\n');
           } else {
             // Regular words - add space before if needed
-            if (_displayedTextBuffer.isNotEmpty &&
-                !_displayedTextBuffer.toString().endsWith(' ') &&
+            if (_displayedTextBuffer.isNotEmpty && 
+                !_displayedTextBuffer.toString().endsWith(' ') && 
                 !_displayedTextBuffer.toString().endsWith('\n')) {
               _displayedTextBuffer.write(' ');
             }
@@ -448,7 +400,7 @@ class _StreamingTextState extends State<StreamingText>
           }
         }
 
-        if (_fadeInAllowed &&
+        if (_fadeInAllowed && 
             !(widget.latexEnabled && _containsLatexInUnits(newUnits))) {
           final newlyAddedLength = newUnits.join(' ').length +
               (newUnits.length > 1 ? (newUnits.length - 1) : 0);
@@ -483,10 +435,7 @@ class _StreamingTextState extends State<StreamingText>
 
       if (unitIndex >= units.length) {
         timer.cancel();
-        setState(() {
-          _isComplete = true;
-          _isAnimationActive = false;
-        });
+        setState(() => _isComplete = true);
         widget.controller?.markCompleted();
         widget.onComplete?.call();
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -503,15 +452,14 @@ class _StreamingTextState extends State<StreamingText>
           if (unit == '\n') {
             _displayedTextBuffer.write('\n');
           } else if (unit.startsWith('#')) {
-            if (_displayedTextBuffer.isNotEmpty &&
-                !_displayedTextBuffer.toString().endsWith('\n')) {
+            if (_displayedTextBuffer.isNotEmpty && !_displayedTextBuffer.toString().endsWith('\n')) {
               _displayedTextBuffer.write('\n');
             }
             _displayedTextBuffer.write(unit);
             _displayedTextBuffer.write('\n');
           } else {
-            if (_displayedTextBuffer.isNotEmpty &&
-                !_displayedTextBuffer.toString().endsWith(' ') &&
+            if (_displayedTextBuffer.isNotEmpty && 
+                !_displayedTextBuffer.toString().endsWith(' ') && 
                 !_displayedTextBuffer.toString().endsWith('\n')) {
               _displayedTextBuffer.write(' ');
             }
@@ -525,8 +473,7 @@ class _StreamingTextState extends State<StreamingText>
     });
   }
 
-  void _startCharacterByCharacterTypingFromIndex(
-      List<String> units, int startIndex) {
+  void _startCharacterByCharacterTypingFromIndex(List<String> units, int startIndex) {
     int index = startIndex;
 
     _typeTimer?.cancel();
@@ -538,10 +485,7 @@ class _StreamingTextState extends State<StreamingText>
 
       if (index >= units.length) {
         timer.cancel();
-        setState(() {
-          _isComplete = true;
-          _isAnimationActive = false;
-        });
+        setState(() => _isComplete = true);
         widget.controller?.markCompleted();
         widget.onComplete?.call();
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -589,14 +533,12 @@ class _StreamingTextState extends State<StreamingText>
   List<String> _splitMarkdownAwareWords(String text) {
     final words = <String>[];
     final lines = text.split('\n');
-
+    
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
-
+      
       // Handle headers as single units to preserve formatting
-      if (line.startsWith('### ') ||
-          line.startsWith('## ') ||
-          line.startsWith('# ')) {
+      if (line.startsWith('### ') || line.startsWith('## ') || line.startsWith('# ')) {
         words.add(line);
       } else if (line.trim().isEmpty) {
         // Preserve empty lines
@@ -606,13 +548,13 @@ class _StreamingTextState extends State<StreamingText>
         final lineWords = line.split(RegExp(r'\s+'));
         words.addAll(lineWords.where((w) => w.isNotEmpty));
       }
-
+      
       // Add line break marker except for last line
       if (i < lines.length - 1) {
         words.add('\n');
       }
     }
-
+    
     return words;
   }
 
@@ -646,7 +588,7 @@ class _StreamingTextState extends State<StreamingText>
     }
 
     List<String> units;
-
+    
     // If LaTeX is enabled, use character units that preserve LaTeX expressions
     if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(widget.text)) {
       units = _parseCharacterUnitsWithLatex();
@@ -667,10 +609,7 @@ class _StreamingTextState extends State<StreamingText>
 
       if (index >= units.length) {
         timer.cancel();
-        setState(() {
-          _isComplete = true;
-          _isAnimationActive = false; // Animation is now complete
-        });
+        setState(() => _isComplete = true);
         widget.controller?.markCompleted();
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
@@ -690,11 +629,8 @@ class _StreamingTextState extends State<StreamingText>
         _displayedTextBuffer.write(chunk);
 
         // Don't animate LaTeX content with fade-in for performance
-        if (_fadeInAllowed &&
-            !(widget.latexEnabled &&
-                _containsLatexInUnits(units
-                    .getRange(index, index + currentChunkSize)
-                    .toList()))) {
+        if (_fadeInAllowed && 
+            !(widget.latexEnabled && _containsLatexInUnits(units.getRange(index, index + currentChunkSize).toList()))) {
           _createCharacterAnimation(
             _displayedText.length - chunk.length,
             chunk.length,
@@ -723,10 +659,7 @@ class _StreamingTextState extends State<StreamingText>
 
       if (groupIndex >= groups.length) {
         timer.cancel();
-        setState(() {
-          _isComplete = true;
-          _isAnimationActive = false;
-        });
+        setState(() => _isComplete = true);
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -822,7 +755,6 @@ class _StreamingTextState extends State<StreamingText>
           _displayedTextBuffer.clear();
           _displayedTextBuffer.write(widget.text);
           _isComplete = true;
-          _isAnimationActive = false;
         });
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
@@ -1043,7 +975,7 @@ class _StreamingTextState extends State<StreamingText>
   Widget _buildLatexMarkdown() {
     // Parse text segments and build widgets for each
     final segments = LaTeXProcessor.parseTextSegments(_displayedText);
-
+    
     if (segments.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -1051,42 +983,32 @@ class _StreamingTextState extends State<StreamingText>
     // For now, we'll render LaTeX as styled text with a math-like appearance
     // This is a simplified approach that works without external LaTeX renderers
     final children = <Widget>[];
-
+    
     for (final segment in segments) {
       if (segment.isLaTeX) {
         // Render LaTeX content with special styling
         children.add(
           Container(
-            padding: segment.type == SegmentType.blockLaTeX
+            padding: segment.type == SegmentType.blockLaTeX 
                 ? const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0)
                 : const EdgeInsets.symmetric(horizontal: 4.0),
-            margin: segment.type == SegmentType.blockLaTeX
+            margin: segment.type == SegmentType.blockLaTeX 
                 ? const EdgeInsets.symmetric(vertical: 8.0)
                 : EdgeInsets.zero,
-            decoration: segment.type == SegmentType.blockLaTeX
+            decoration: segment.type == SegmentType.blockLaTeX 
                 ? BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest
-                        .withValues(alpha: 0.3),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(8.0),
                     border: Border.all(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .outline
-                          .withValues(alpha: 0.2),
+                      color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
                     ),
                   )
                 : null,
             child: SelectableText(
               _formatLatexForDisplay(segment.content),
-              style: (widget.latexStyle ?? widget.style ?? const TextStyle())
-                  .copyWith(
+              style: (widget.latexStyle ?? widget.style ?? const TextStyle()).copyWith(
                 fontFamily: 'monospace',
-                fontSize: (widget.latexStyle?.fontSize ??
-                        widget.style?.fontSize ??
-                        14) *
-                    widget.latexScale,
+                fontSize: (widget.latexStyle?.fontSize ?? widget.style?.fontSize ?? 14) * widget.latexScale,
                 color: widget.latexStyle?.color ?? Colors.blue,
                 fontWeight: FontWeight.w500,
               ),
@@ -1117,54 +1039,30 @@ class _StreamingTextState extends State<StreamingText>
       );
     }
 
-    final currentText = _displayedText;
-
-    // FIXED: Only use cache when animation is complete and content hasn't changed
-    if (!_isAnimationActive &&
-        _isComplete &&
-        _completeMarkdownCache.containsKey(currentText)) {
-      return _completeMarkdownCache[currentText]!;
+    // Performance optimization: Only reprocess if text actually changed
+    if (_displayedText == _lastProcessedText && _markdownCache.containsKey(_displayedText)) {
+      return _markdownCache[_displayedText]!;
     }
 
     // Quick check: if text looks like it has no markdown, show as plain text
-    if (!_looksLikeMarkdown(currentText)) {
-      final widget = Text(currentText, style: this.widget.style);
-
-      // Cache only if animation is complete
-      if (!_isAnimationActive && _isComplete) {
-        _completeMarkdownCache[currentText] = widget;
-      }
-
+    if (!_looksLikeMarkdown(_displayedText)) {
+      final widget = Text(_displayedText, style: this.widget.style);
+      _markdownCache[_displayedText] = widget;
+      _lastProcessedText = _displayedText;
       return widget;
     }
 
-    // Build markdown content - progressive during animation, complete when done
-    final result = _isAnimationActive
-        ? _buildProgressiveMarkdown(currentText)
-        : _buildCompleteMarkdown(currentText);
-
-    // Cache only complete, final states
-    if (!_isAnimationActive && _isComplete) {
-      _completeMarkdownCache[currentText] = result;
-    }
-
+    // Process markdown (only when needed)
+    final result = _processMarkdownLines();
+    _markdownCache[_displayedText] = result;
+    _lastProcessedText = _displayedText;
+    
     return result;
   }
 
   bool _looksLikeMarkdown(String text) {
     // Quick checks to avoid expensive processing
     return text.contains('#') || text.contains('**') || text.contains('*');
-  }
-
-  Widget _buildProgressiveMarkdown(String text) {
-    // During animation, build markdown progressively without heavy caching
-    // This allows the UI to update smoothly during animation
-    return _processMarkdownLines();
-  }
-
-  Widget _buildCompleteMarkdown(String text) {
-    // When animation is complete, build the final markdown with full processing
-    return _processMarkdownLines();
   }
 
   Widget _processMarkdownLines() {
@@ -1210,7 +1108,7 @@ class _StreamingTextState extends State<StreamingText>
           children.add(Text(line, style: widget.style));
         }
       }
-
+      
       children.add(const SizedBox(height: 4));
     }
 
@@ -1222,11 +1120,11 @@ class _StreamingTextState extends State<StreamingText>
 
   Widget _buildFormattedText(String text) {
     final baseStyle = widget.style ?? const TextStyle();
-
+    
     // Performance: Simple string operations instead of complex regex
     final spans = <TextSpan>[];
     int currentIndex = 0;
-
+    
     while (currentIndex < text.length) {
       // Look for bold patterns **text**
       final boldStart = text.indexOf('**', currentIndex);
@@ -1249,15 +1147,14 @@ class _StreamingTextState extends State<StreamingText>
           continue;
         }
       }
-
+      
       // Look for italic patterns *text* (not part of bold)
       final italicStart = text.indexOf('*', currentIndex);
-      if (italicStart != -1 &&
-          (italicStart == 0 || text[italicStart - 1] != '*') &&
+      if (italicStart != -1 && 
+          (italicStart == 0 || text[italicStart - 1] != '*') && 
           (italicStart + 1 < text.length && text[italicStart + 1] != '*')) {
         final italicEnd = text.indexOf('*', italicStart + 1);
-        if (italicEnd != -1 &&
-            (italicEnd + 1 >= text.length || text[italicEnd + 1] != '*')) {
+        if (italicEnd != -1 && (italicEnd + 1 >= text.length || text[italicEnd + 1] != '*')) {
           // Add text before italic
           if (italicStart > currentIndex) {
             spans.add(TextSpan(
@@ -1274,7 +1171,7 @@ class _StreamingTextState extends State<StreamingText>
           continue;
         }
       }
-
+      
       // No more patterns found, add remaining text
       spans.add(TextSpan(
         text: text.substring(currentIndex),
@@ -1282,8 +1179,8 @@ class _StreamingTextState extends State<StreamingText>
       ));
       break;
     }
-
-    return spans.isEmpty
+    
+    return spans.isEmpty 
         ? Text(text, style: baseStyle)
         : Text.rich(TextSpan(children: spans));
   }
@@ -1351,17 +1248,16 @@ class _StreamingTextState extends State<StreamingText>
     _cursorController.dispose();
     _groupAnimationController.dispose();
     _cleanupAnimations();
-
+    
     // Clear caches to prevent memory leaks
     _markdownCache.clear();
-    _completeMarkdownCache.clear();
     _rtlGroupCache.clear();
-
+    
     // Remove controller listener
     if (widget.controller != null) {
       widget.controller!.removeListener(_handleControllerChange);
     }
-
+    
     super.dispose();
   }
 }

@@ -306,7 +306,8 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           latexEnabled: widget.latexEnabled,
           latexStyle: widget.latexStyle ?? _effectiveTheme.inlineLatexStyle,
           latexScale: widget.latexScale,
-          latexFadeInEnabled: widget.latexFadeInEnabled ?? _effectiveTheme.latexFadeInEnabled,
+          latexFadeInEnabled:
+              widget.latexFadeInEnabled ?? _effectiveTheme.latexFadeInEnabled,
           markdownStyleSheet: effectiveStyleSheet,
           fadeInEnabled: widget.fadeInEnabled,
           fadeInDuration: widget.fadeInDuration,

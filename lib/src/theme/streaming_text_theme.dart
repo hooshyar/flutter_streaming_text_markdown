@@ -39,7 +39,7 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
   factory StreamingTextTheme.defaults(BuildContext context) {
     final theme = Theme.of(context);
     final baseTextStyle = theme.textTheme.bodyLarge;
-    
+
     return StreamingTextTheme(
       textStyle: baseTextStyle,
       markdownStyle: baseTextStyle,
@@ -56,7 +56,6 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
       latexFadeInEnabled: false, // Disabled by default for performance
     );
   }
-
 
   @override
   StreamingTextTheme copyWith({
@@ -89,10 +88,13 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
       textStyle: TextStyle.lerp(textStyle, other.textStyle, t),
       markdownStyle: TextStyle.lerp(markdownStyle, other.markdownStyle, t),
       defaultPadding: EdgeInsets.lerp(defaultPadding, other.defaultPadding, t),
-      inlineLatexStyle: TextStyle.lerp(inlineLatexStyle, other.inlineLatexStyle, t),
-      blockLatexStyle: TextStyle.lerp(blockLatexStyle, other.blockLatexStyle, t),
+      inlineLatexStyle:
+          TextStyle.lerp(inlineLatexStyle, other.inlineLatexStyle, t),
+      blockLatexStyle:
+          TextStyle.lerp(blockLatexStyle, other.blockLatexStyle, t),
       latexScale: lerpDouble(latexScale, other.latexScale, t),
-      latexFadeInEnabled: t < 0.5 ? latexFadeInEnabled : other.latexFadeInEnabled,
+      latexFadeInEnabled:
+          t < 0.5 ? latexFadeInEnabled : other.latexFadeInEnabled,
     );
   }
 }

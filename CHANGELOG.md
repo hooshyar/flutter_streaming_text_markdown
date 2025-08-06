@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.1
+
+### 🐛 Critical Bug Fixes
+* **Fixed Issue #3: Markdown Animation Conflict** - Resolved critical issue where animations would freeze when markdown was enabled
+  - Implemented animation-aware caching system that only caches when animation is complete
+  - Added progressive markdown rendering during animation to prevent UI blocking
+  - All markdown + animation combinations now work correctly
+* **Fixed Issue #1: Animation Restart Bug** - Resolved streaming text restarting entire animation instead of continuing from new content
+  - Added incremental animation tracking with proper state management
+  - Streaming text now continues animation from where it left off instead of restarting
+  - Improved performance for real-time streaming scenarios
+
+### 🔧 Code Quality Improvements
+* **Static Analysis Cleanup** - Removed unused variables and fields to achieve perfect static analysis score
+* **Formatting** - Applied consistent Dart formatting across all source files
+* **Performance** - Optimized animation state management for better memory efficiency
+
+### 🧪 Testing Enhancements
+* **Comprehensive Test Coverage** - Added extensive test suite covering all reported issues
+* **Issue Reproduction Tests** - Added specific tests that reproduce and verify fixes for GitHub issues
+* **Streaming Behavior Tests** - Added tests validating proper incremental streaming animation
+
 ## 1.3.0
 
 ### 🔢 LaTeX Support

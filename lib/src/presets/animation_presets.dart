@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Animation presets optimized for LLM text streaming.
-/// 
+///
 /// These presets provide out-of-the-box configurations for common
 /// LLM use cases like ChatGPT-style streaming, Claude-style responses,
 /// and various chat interface patterns.
@@ -15,7 +15,7 @@ class LLMAnimationPresets {
     fadeInDuration: Duration(milliseconds: 150),
     fadeInCurve: Curves.easeOut,
   );
-  
+
   /// Claude-style streaming with smooth word-by-word animation
   static const StreamingTextConfig claude = StreamingTextConfig(
     typingSpeed: Duration(milliseconds: 80),
@@ -25,7 +25,7 @@ class LLMAnimationPresets {
     fadeInDuration: Duration(milliseconds: 200),
     fadeInCurve: Curves.easeInOut,
   );
-  
+
   /// Instant display for when speed is priority
   static const StreamingTextConfig instant = StreamingTextConfig(
     typingSpeed: Duration.zero,
@@ -35,7 +35,7 @@ class LLMAnimationPresets {
     fadeInDuration: Duration.zero,
     fadeInCurve: Curves.linear,
   );
-  
+
   /// Smooth typewriter effect for dramatic presentations
   static const StreamingTextConfig typewriter = StreamingTextConfig(
     typingSpeed: Duration(milliseconds: 50),
@@ -45,7 +45,7 @@ class LLMAnimationPresets {
     fadeInDuration: Duration.zero,
     fadeInCurve: Curves.linear,
   );
-  
+
   /// Gentle fade-in effect for subtle animations
   static const StreamingTextConfig gentle = StreamingTextConfig(
     typingSpeed: Duration(milliseconds: 100),
@@ -55,7 +55,7 @@ class LLMAnimationPresets {
     fadeInDuration: Duration(milliseconds: 400),
     fadeInCurve: Curves.easeInOut,
   );
-  
+
   /// Bouncy animation for playful interfaces
   static const StreamingTextConfig bouncy = StreamingTextConfig(
     typingSpeed: Duration(milliseconds: 60),
@@ -65,7 +65,7 @@ class LLMAnimationPresets {
     fadeInDuration: Duration(milliseconds: 300),
     fadeInCurve: Curves.bounceOut,
   );
-  
+
   /// Fast chunk-based streaming for long content
   static const StreamingTextConfig chunks = StreamingTextConfig(
     typingSpeed: Duration(milliseconds: 30),
@@ -75,7 +75,7 @@ class LLMAnimationPresets {
     fadeInDuration: Duration(milliseconds: 100),
     fadeInCurve: Curves.easeOut,
   );
-  
+
   /// Optimized for RTL languages like Arabic
   static const StreamingTextConfig rtlOptimized = StreamingTextConfig(
     typingSpeed: Duration(milliseconds: 100),
@@ -85,7 +85,7 @@ class LLMAnimationPresets {
     fadeInDuration: Duration.zero,
     fadeInCurve: Curves.linear,
   );
-  
+
   /// Professional presentation style
   static const StreamingTextConfig professional = StreamingTextConfig(
     typingSpeed: Duration(milliseconds: 40),
@@ -95,7 +95,7 @@ class LLMAnimationPresets {
     fadeInDuration: Duration(milliseconds: 250),
     fadeInCurve: Curves.decelerate,
   );
-  
+
   /// Creates a custom config based on speed preference
   static StreamingTextConfig bySpeed(AnimationSpeed speed) {
     switch (speed) {
@@ -155,7 +155,7 @@ class StreamingTextConfig {
   final bool fadeInEnabled;
   final Duration fadeInDuration;
   final Curve fadeInCurve;
-  
+
   const StreamingTextConfig({
     required this.typingSpeed,
     required this.wordByWord,
@@ -164,7 +164,7 @@ class StreamingTextConfig {
     required this.fadeInDuration,
     required this.fadeInCurve,
   });
-  
+
   /// Creates a copy with modified parameters
   StreamingTextConfig copyWith({
     Duration? typingSpeed,
@@ -183,7 +183,7 @@ class StreamingTextConfig {
       fadeInCurve: fadeInCurve ?? this.fadeInCurve,
     );
   }
-  
+
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
@@ -195,7 +195,7 @@ class StreamingTextConfig {
         other.fadeInDuration == fadeInDuration &&
         other.fadeInCurve == fadeInCurve;
   }
-  
+
   @override
   int get hashCode {
     return Object.hash(
@@ -207,7 +207,7 @@ class StreamingTextConfig {
       fadeInCurve,
     );
   }
-  
+
   @override
   String toString() {
     return 'StreamingTextConfig('

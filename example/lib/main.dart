@@ -55,7 +55,7 @@ class _MyAppState extends State<MyApp> {
         ),
       ),
       home: DefaultTabController(
-        length: 5,
+        length: 6,
         child: Scaffold(
           appBar: AppBar(
             title: const Text('LLM Streaming Demo'),
@@ -74,6 +74,7 @@ class _MyAppState extends State<MyApp> {
                 Tab(text: 'Claude Style'),
                 Tab(text: 'LaTeX Demo'),
                 Tab(text: 'Controller Demo'),
+                Tab(text: 'New Features'),
                 Tab(text: 'Custom Settings'),
               ],
             ),
@@ -84,6 +85,7 @@ class _MyAppState extends State<MyApp> {
               ClaudeDemoPage(isDarkMode: _isDarkMode),
               LaTeXDemoPage(isDarkMode: _isDarkMode),
               ControllerDemoPage(isDarkMode: _isDarkMode),
+              NewFeaturesDemoPage(isDarkMode: _isDarkMode),
               MyHomePage(
                 onThemeToggle: _toggleTheme,
                 isDarkMode: _isDarkMode,
@@ -121,7 +123,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _fadeInEnabled = true;
   bool _markdownEnabled = false;
   Curve _fadeInCurve = Curves.easeOut;
-  int _resetCounter = 0;
+  String _demoText = 'Initial demo text';
 
   final List<MapEntry<String, Curve>> _curves = [
     const MapEntry('Ease Out', Curves.easeOut),
@@ -159,7 +161,19 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _startStreaming() {
     setState(() {
-      _resetCounter++;
+      // Just trigger rebuild to restart animation
+    });
+  }
+
+  void _appendDemoText() {
+    setState(() {
+      _demoText += '\n\nAppended text: ${DateTime.now().second}s';
+    });
+  }
+
+  void _resetDemoText() {
+    setState(() {
+      _demoText = 'Initial demo text';
     });
   }
 
@@ -182,7 +196,6 @@ class _MyHomePageState extends State<MyHomePage> {
       if (fadeInEnabled != null) _fadeInEnabled = fadeInEnabled;
       if (markdownEnabled != null) _markdownEnabled = markdownEnabled;
       if (fadeInCurve != null) _fadeInCurve = fadeInCurve;
-      _resetCounter++;
     });
   }
 
@@ -222,7 +235,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ],
                   ),
                   child: StreamingTextMarkdown(
-                    key: ValueKey('streaming_text_$_resetCounter'),
+                    key: const ValueKey('streaming_text_demo'),
                     text: isArabic
                         ? _markdownEnabled
                             ? '''# مرحباً بكم! 🤖
@@ -362,6 +375,93 @@ Experience the future of text animation!''',
                     ),
                   ],
                 ),
+                const SizedBox(height: 16),
+                _buildSettingsCard(
+                  title: isArabic ? 'الميزات الجديدة - تجربة' : 'New Features Demo',
+                  icon: Icons.new_releases_outlined,
+                  children: [
+                    Text(
+                      isArabic 
+                        ? '🚀 استمرار الحركة عند إضافة النص\n🎛️ إيقاف الحركات تماماً'
+                        : '🚀 Animation continues when text is appended\n🎛️ Complete animation disable option',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _appendDemoText,
+                            icon: const Icon(Icons.add, size: 18),
+                            label: Text(
+                              isArabic ? 'إضافة نص' : 'Append Text',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _resetDemoText,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: Text(
+                              isArabic ? 'إعادة تعيين' : 'Reset',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                isArabic ? 'نص التجربة:' : 'Demo Text:',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _demoText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8),
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 24),
                 FilledButton.icon(
                   onPressed: _startStreaming,
@@ -451,7 +551,7 @@ Experience the future of text animation!''',
         Switch(
           value: value,
           onChanged: onChanged,
-          activeColor: theme.colorScheme.primary,
+          activeThumbColor: theme.colorScheme.primary,
         ),
       ],
     );
@@ -1294,3 +1394,161 @@ Sigmoid: \$\\sigma(z) = \\frac{1}{1 + e^{-z}}\$''',
     );
   }
 }
+
+// New Features demo page
+class NewFeaturesDemoPage extends StatefulWidget {
+  final bool isDarkMode;
+
+  const NewFeaturesDemoPage({super.key, required this.isDarkMode});
+
+  @override
+  State<NewFeaturesDemoPage> createState() => _NewFeaturesDemoPageState();
+}
+
+class _NewFeaturesDemoPageState extends State<NewFeaturesDemoPage> {
+  String _demoText = 'Initial text for animation continuation demo.';
+  bool _animationsEnabled = true;
+  int _updateCounter = 0;
+
+  void _appendText() {
+    setState(() {
+      _updateCounter++;
+      _demoText += '\n\nAppended text #$_updateCounter at ${DateTime.now().second}s';
+    });
+  }
+
+  void _resetText() {
+    setState(() {
+      _updateCounter = 0;
+      _demoText = 'Initial text for animation continuation demo.';
+    });
+  }
+
+  void _toggleAnimations() {
+    setState(() {
+      _animationsEnabled = !_animationsEnabled;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Feature description
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '🚀 New Features Demo',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Feature #1: Animation Continuation',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '✓ When text is appended, animation continues smoothly instead of restarting',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Feature #2: Animation Disable Option',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '✓ Complete control to disable animations when needed',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Controls
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: _appendText,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Append Text'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _resetText,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Reset'),
+              ),
+              const Spacer(),
+              Switch(
+                value: _animationsEnabled,
+                onChanged: (_) => _toggleAnimations(),
+              ),
+              const SizedBox(width: 8),
+              Text('Animations ${_animationsEnabled ? 'ON' : 'OFF'}'),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Demo area
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: StreamingTextMarkdown(
+                key: const ValueKey('new_features_demo'),
+                text: _demoText,
+                markdownEnabled: true,
+                wordByWord: true,
+                typingSpeed: const Duration(milliseconds: 50),
+                animationsEnabled: _animationsEnabled,
+                onComplete: () {
+                  // Animation completed - schedule snackbar for after build
+                  if (mounted) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('✅ Animation completed!'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      }
+                    });
+                  }
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

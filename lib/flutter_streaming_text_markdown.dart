@@ -107,6 +107,9 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Callback when animation completes
   final VoidCallback? onComplete;
 
+  /// Whether animations are enabled. When false, text appears instantly.
+  final bool animationsEnabled;
+
   const StreamingTextMarkdown({
     super.key,
     required this.text,
@@ -130,6 +133,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
+    this.animationsEnabled = true,
   });
 
   /// Creates a StreamingTextMarkdown with ChatGPT-style animation
@@ -151,6 +155,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
+    this.animationsEnabled = true,
   })  : fadeInEnabled = true,
         fadeInDuration = const Duration(milliseconds: 150),
         fadeInCurve = Curves.easeOut,
@@ -177,6 +182,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
+    this.animationsEnabled = true,
   })  : fadeInEnabled = true,
         fadeInDuration = const Duration(milliseconds: 200),
         fadeInCurve = Curves.easeInOut,
@@ -203,6 +209,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
+    this.animationsEnabled = true,
   })  : fadeInEnabled = false,
         fadeInDuration = Duration.zero,
         fadeInCurve = Curves.linear,
@@ -229,6 +236,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
+    this.animationsEnabled = false,
   })  : fadeInEnabled = false,
         fadeInDuration = Duration.zero,
         fadeInCurve = Curves.linear,
@@ -255,6 +263,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.latexFadeInEnabled,
     this.controller,
     this.onComplete,
+    this.animationsEnabled = true,
   })  : fadeInEnabled = preset.fadeInEnabled,
         fadeInDuration = preset.fadeInDuration,
         fadeInCurve = preset.fadeInCurve,
@@ -299,7 +308,7 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
         padding: effectivePadding,
         child: StreamingText(
           key: ValueKey(
-              '${widget.text}_${widget.wordByWord}_${widget.chunkSize}_${widget.typingSpeed.inMilliseconds}_${widget.latexEnabled}'),
+              'streaming_text_${widget.wordByWord}_${widget.chunkSize}_${widget.typingSpeed.inMilliseconds}_${widget.latexEnabled}'),
           text: widget.text,
           style: _effectiveTheme.textStyle,
           markdownEnabled: widget.markdownEnabled,
@@ -318,14 +327,20 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           textDirection: widget.textDirection,
           textAlign: widget.textAlign,
           controller: widget.controller,
+          animationsEnabled: widget.animationsEnabled,
           onComplete: () {
             // Handle auto-scrolling
             if (mounted && widget.autoScroll && _scrollController.hasClients) {
-              _scrollController.animateTo(
-                _scrollController.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-              );
+              // Use a post-frame callback to ensure the scroll controller is properly initialized
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _scrollController.hasClients) {
+                  _scrollController.animateTo(
+                    _scrollController.position.maxScrollExtent,
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                  );
+                }
+              });
             }
             // Call user's completion callback
             widget.onComplete?.call();

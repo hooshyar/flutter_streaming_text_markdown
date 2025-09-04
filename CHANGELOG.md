@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.3.2
+
+### ✨ New Features
+* **Animation Disable Option** - Added `animationsEnabled` parameter to all constructors allowing complete animation disabling
+  - All constructors now support `animationsEnabled: false` for instant text display
+  - Useful for performance-critical scenarios or user accessibility preferences
+  - Maintains full compatibility with existing code (defaults to `true`)
+
+### 🔧 Code Quality Improvements
+* **Enhanced Static Analysis** - Resolved all remaining static analysis warnings for perfect pub.dev scoring
+* **Dependency Updates** - Updated flutter_lints to 6.0.0 and other dependencies to latest versions
+* **Performance Optimizations** - Removed unused fields and optimized animation state management
+
+### 🧪 Testing
+* **Comprehensive Test Coverage** - Maintained 63% test coverage with 69 out of 70 tests passing
+* **Animation Continuation Tests** - Enhanced test suite to verify text append functionality works correctly
+
 ## 1.3.1
 
 ### 🐛 Critical Bug Fixes

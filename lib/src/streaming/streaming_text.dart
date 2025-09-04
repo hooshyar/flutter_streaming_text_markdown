@@ -62,6 +62,7 @@ class StreamingText extends StatefulWidget {
     this.chunkSize = 1,
     this.markdownStyleSheet,
     this.controller,
+    this.animationsEnabled = true,
   });
 
   final String text;
@@ -95,6 +96,9 @@ class StreamingText extends StatefulWidget {
   final Curve fadeInCurve;
   final TextStyle? markdownStyleSheet;
   final StreamingTextController? controller;
+  
+  /// Whether animations are enabled. When false, text appears instantly.
+  final bool animationsEnabled;
 
   @override
   State<StreamingText> createState() => _StreamingTextState();
@@ -105,7 +109,8 @@ class _StreamingTextState extends State<StreamingText>
   // If the text is Arabic, disable fade-in animation.
   bool get _fadeInAllowed {
     // Re-check the actual displayed text for Arabic:
-    return widget.fadeInEnabled &&
+    return widget.animationsEnabled &&
+        widget.fadeInEnabled &&
         widget.stream == null &&
         !_containsArabic(_displayedText);
   }
@@ -129,6 +134,7 @@ class _StreamingTextState extends State<StreamingText>
   bool _isAnimationActive = false; // Control caching behavior during animation
   final Map<String, Widget> _completeMarkdownCache =
       {}; // Only complete markdown states
+  
 
   @override
   void initState() {
@@ -144,6 +150,140 @@ class _StreamingTextState extends State<StreamingText>
     // Set up controller integration
     _setupController();
     _initializeText();
+  }
+  
+  @override
+  void didUpdateWidget(StreamingText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Check if configuration changed (requires restart) vs just text changed
+    final configChanged = _hasConfigurationChanged(oldWidget);
+    
+    if (configChanged) {
+      // Configuration changed - restart animation completely
+      _restartAnimation();
+    } else if (widget.text != oldWidget.text && !widget.animationsEnabled) {
+      // Animations disabled - show text instantly
+      _displayInstantText();
+    } else if (widget.text != oldWidget.text && widget.text.startsWith(oldWidget.text)) {
+      // Text was appended - continue animation from where we left off
+      _continueAnimationFromTextAppend(oldWidget.text, widget.text);
+    } else if (widget.text != oldWidget.text) {
+      // Text changed but not appended - restart animation
+      _restartAnimation();
+    }
+  }
+  
+  bool _hasConfigurationChanged(StreamingText oldWidget) {
+    return widget.typingSpeed != oldWidget.typingSpeed ||
+           widget.wordByWord != oldWidget.wordByWord ||
+           widget.chunkSize != oldWidget.chunkSize ||
+           widget.fadeInEnabled != oldWidget.fadeInEnabled ||
+           widget.fadeInDuration != oldWidget.fadeInDuration ||
+           widget.fadeInCurve != oldWidget.fadeInCurve ||
+           widget.markdownEnabled != oldWidget.markdownEnabled ||
+           widget.latexEnabled != oldWidget.latexEnabled ||
+           widget.animationsEnabled != oldWidget.animationsEnabled;
+  }
+  
+  void _displayInstantText() {
+    _typeTimer?.cancel();
+    setState(() {
+      _displayedTextBuffer.clear();
+      _displayedTextBuffer.write(widget.text);
+      _isComplete = true;
+      _isAnimationActive = false;
+    });
+    widget.controller?.markCompleted();
+    widget.onComplete?.call();
+  }
+  
+  void _continueAnimationFromTextAppend(String oldText, String newText) {
+    if (!widget.animationsEnabled) {
+      _displayInstantText();
+      return;
+    }
+    
+    // Cancel current typing timer
+    _typeTimer?.cancel();
+    _typeTimer = null;
+    
+    // Reset completion state since we have more text to animate
+    setState(() {
+      _isComplete = false;
+      _isAnimationActive = true;
+    });
+    
+    // The key insight: We need to continue from where we left off in the OLD text,
+    // then animate the appended portion
+    final currentProgress = _displayedText.length;
+    final appendedText = newText.substring(oldText.length);
+    
+    // If we're still animating the original text portion, continue that first
+    if (currentProgress < oldText.length) {
+      if (widget.wordByWord) {
+        _resumeWordByWordTypingFromOldText(oldText, appendedText);
+      } else {
+        _resumeCharacterByCharacterTypingFromOldText(oldText, appendedText);
+      }
+    } else {
+      // We finished the old text, now animate just the appended portion
+      _animateAppendedText(appendedText);
+    }
+  }
+  
+  void _animateAppendedText(String appendedText) {
+    if (appendedText.isEmpty) {
+      setState(() {
+        _isComplete = true;
+        _isAnimationActive = false;
+      });
+      widget.controller?.markCompleted();
+      widget.onComplete?.call();
+      return;
+    }
+    
+    List<String> appendedUnits;
+    if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(appendedText)) {
+      // Handle LaTeX in appended text
+      final segments = LaTeXProcessor.parseTextSegments(appendedText);
+      appendedUnits = [];
+      for (final segment in segments) {
+        if (segment.isLaTeX) {
+          appendedUnits.add(segment.content);  // Add LaTeX as single unit
+        } else {
+          if (widget.wordByWord) {
+            appendedUnits.addAll(segment.content.split(RegExp(r'\s+')));
+          } else {
+            appendedUnits.addAll(Characters(segment.content).toList());
+          }
+        }
+      }
+    } else {
+      appendedUnits = widget.wordByWord 
+        ? appendedText.split(RegExp(r'\s+'))
+        : Characters(appendedText).toList();
+    }
+    
+    int index = 0;
+    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+      if (!mounted || index >= appendedUnits.length) {
+        timer.cancel();
+        setState(() {
+          _isComplete = true;
+          _isAnimationActive = false;
+        });
+        widget.controller?.markCompleted();
+        widget.onComplete?.call();
+        return;
+      }
+      
+      setState(() {
+        _displayedTextBuffer.write(appendedUnits[index]);
+        index++;
+        _updateProgress();
+      });
+    });
   }
 
   void _setupController() {
@@ -229,6 +369,12 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _initializeText() {
+    // If animations are disabled, show text instantly
+    if (!widget.animationsEnabled) {
+      _displayInstantText();
+      return;
+    }
+    
     widget.controller?.updateState(StreamingTextState.animating);
 
     // Initialize state tracking
@@ -286,6 +432,39 @@ class _StreamingTextState extends State<StreamingText>
 
     final currentIndex = _displayedText.length;
     _startCharacterByCharacterTypingFromIndex(units, currentIndex);
+  }
+
+  void _resumeCharacterByCharacterTypingFromOldText(String oldText, String appendedText) {
+    if (_isComplete) return;
+
+    // Parse units for the OLD text only
+    List<String> oldTextUnits;
+    if (widget.latexEnabled && LaTeXProcessor.containsLaTeX(oldText)) {
+      final segments = LaTeXProcessor.parseTextSegments(oldText);
+      oldTextUnits = [];
+      for (final segment in segments) {
+        if (segment.isLaTeX) {
+          oldTextUnits.add(segment.content);
+        } else {
+          oldTextUnits.addAll(Characters(segment.content).toList());
+        }
+      }
+    } else {
+      oldTextUnits = Characters(oldText).toList();
+    }
+
+    final currentIndex = _displayedText.length;
+    
+    // Continue animating the old text first, then the appended text
+    _startCharacterByCharacterTypingFromIndexWithContinuation(oldTextUnits, currentIndex, appendedText);
+  }
+
+  void _resumeWordByWordTypingFromOldText(String oldText, String appendedText) {
+    // Similar logic for word-by-word mode
+    if (_isComplete) return;
+    
+    // For now, fall back to character mode - we can implement word mode later
+    _resumeCharacterByCharacterTypingFromOldText(oldText, appendedText);
   }
 
   void _updateProgress() {
@@ -521,6 +700,41 @@ class _StreamingTextState extends State<StreamingText>
 
         unitIndex = endIndex;
         _updateProgress();
+      });
+    });
+  }
+
+  void _startCharacterByCharacterTypingFromIndexWithContinuation(
+      List<String> oldTextUnits, int startIndex, String appendedText) {
+    int index = startIndex;
+
+    _typeTimer?.cancel();
+    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (index >= oldTextUnits.length) {
+        // Finished animating the old text, now animate the appended portion
+        timer.cancel();
+        _animateAppendedText(appendedText);
+        return;
+      }
+
+      final chunkSize = widget.chunkSize;
+      final remainingUnits = oldTextUnits.length - index;
+      final currentChunkSize =
+          chunkSize > remainingUnits ? remainingUnits : chunkSize;
+
+      setState(() {
+        for (int i = 0; i < currentChunkSize; i++) {
+          if (index < oldTextUnits.length) {
+            _displayedTextBuffer.write(oldTextUnits[index]);
+            index++;
+            _updateProgress();
+          }
+        }
       });
     });
   }

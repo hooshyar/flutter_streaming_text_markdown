@@ -17,3 +17,22 @@ coverage/
 
 # Example build files
 example/build/
+
+# Exclude gitignore files from publication
+.gitignore
+example/.gitignore
+example/android/.gitignore
+example/ios/.gitignore
+example/linux/.gitignore
+example/macos/.gitignore
+example/windows/.gitignore
+
+# Exclude Firebase debug files
+firebase-debug.log
+
+# Exclude backup files
+*.bak
+*~
+
+# Exclude modified Xcode project file
+example/ios/Runner.xcodeproj/project.pbxproj

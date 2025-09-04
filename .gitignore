@@ -16,6 +16,15 @@ migrate_working_dir/
 *.iws
 .idea/
 
+# Git files
+.gitignore
+example/.gitignore
+example/android/.gitignore
+example/ios/.gitignore
+example/linux/.gitignore
+example/macos/.gitignore
+example/windows/.gitignore
+
 logger.txt
 
 # The .vscode folder contains launch configuration and tasks you configure in
@@ -31,3 +40,10 @@ logger.txt
 .flutter-plugins
 .flutter-plugins-dependencies
 build/
+
+# Local memory
+.memory/
+.gitignore
+example/pubspec.lock
+example/coverage/lcov.info
+example/linux/.gitignore

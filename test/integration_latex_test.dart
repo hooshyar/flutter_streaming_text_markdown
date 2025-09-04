@@ -27,16 +27,16 @@ void main() {
 
       // Initial state - no text should be visible yet
       await tester.pump(const Duration(milliseconds: 50));
-      
+
       // Let some animation happen
       await tester.pump(const Duration(milliseconds: 200));
-      
+
       // Should have some partial text
       expect(find.textContaining('Equation'), findsOneWidget);
-      
+
       // Wait for animation to complete
       await tester.pump(const Duration(milliseconds: 500));
-      
+
       // Animation should be complete
       expect(animationCompleted, isTrue);
       expect(find.textContaining('famous'), findsOneWidget);
@@ -44,7 +44,7 @@ void main() {
 
     testWidgets('LaTeX streaming with real-time stream', (tester) async {
       final StreamController<String> controller = StreamController<String>();
-      
+
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -123,7 +123,7 @@ This is **important** mathematics.''';
 
       // Let animation progress
       await tester.pump(const Duration(milliseconds: 100));
-      
+
       // Complete animation
       await tester.pump(const Duration(milliseconds: 200));
 
@@ -136,7 +136,7 @@ This is **important** mathematics.''';
 
     testWidgets('LaTeX animation with controller pause/resume', (tester) async {
       final controller = StreamingTextController();
-      
+
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -154,15 +154,15 @@ This is **important** mathematics.''';
 
       // Start animation
       await tester.pump(const Duration(milliseconds: 100));
-      
+
       // Pause animation
       controller.pause();
       await tester.pump(const Duration(milliseconds: 100));
-      
+
       // Resume animation
       controller.resume();
       await tester.pump(const Duration(milliseconds: 100));
-      
+
       // Skip to end
       controller.skipToEnd();
       await tester.pump(const Duration(milliseconds: 100));
@@ -172,7 +172,7 @@ This is **important** mathematics.''';
 
     testWidgets('Character-by-character LaTeX streaming', (tester) async {
       bool completed = false;
-      
+
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -195,10 +195,11 @@ This is **important** mathematics.''';
       // Let animation run
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
-      
+
       // Should complete successfully
-      expect(completed, isTrue, reason: 'LaTeX character-by-character animation should complete');
-      
+      expect(completed, isTrue,
+          reason: 'LaTeX character-by-character animation should complete');
+
       // Check content is displayed
       expect(find.byType(Text), findsWidgets);
     });
@@ -221,7 +222,7 @@ This is **important** mathematics.''';
 
       // Let animation run with timeout protection
       await tester.pump(const Duration(milliseconds: 200));
-      
+
       // Wait for completion with timeout protection
       for (int i = 0; i < 8; i++) {
         await tester.pump(const Duration(milliseconds: 100));
@@ -252,7 +253,7 @@ This is **important** mathematics.''';
       // Let animation run with timeout protection
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 200));
-      
+
       // Wait for completion with timeout protection
       for (int i = 0; i < 8; i++) {
         await tester.pump(const Duration(milliseconds: 100));
@@ -267,7 +268,8 @@ This is **important** mathematics.''';
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
-              text: 'First \$x = 1\$ then \$y = 2\$ and \$\$z = 3\$\$ finally \$w = 4\$',
+              text:
+                  'First \$x = 1\$ then \$y = 2\$ and \$\$z = 3\$\$ finally \$w = 4\$',
               latexEnabled: true,
               markdownEnabled: true,
               wordByWord: true,
@@ -282,7 +284,7 @@ This is **important** mathematics.''';
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 500));
-      
+
       // Wait for completion with timeout protection
       for (int i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 100));
@@ -317,7 +319,8 @@ End of document.''';
                 latexEnabled: true,
                 markdownEnabled: true,
                 wordByWord: true,
-                typingSpeed: const Duration(milliseconds: 1), // Fast for testing
+                typingSpeed:
+                    const Duration(milliseconds: 1), // Fast for testing
               ),
             ),
           ),
@@ -330,7 +333,7 @@ End of document.''';
 
       // Should start animating in reasonable time (less than 1 second)
       expect(stopwatch.elapsedMilliseconds, lessThan(1000));
-      
+
       expect(find.textContaining('Large Document'), findsOneWidget);
       expect(find.textContaining('Final Formula'), findsOneWidget);
       expect(find.textContaining('End of document'), findsOneWidget);
@@ -355,7 +358,7 @@ End of document.''';
       // Should not crash - just pump a few frames
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
-      
+
       expect(find.textContaining('Good'), findsOneWidget);
     });
   });

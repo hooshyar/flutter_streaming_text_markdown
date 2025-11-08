@@ -1149,7 +1149,7 @@ class _StreamingTextState extends State<StreamingText>
     return GestureDetector(
       onTap: () {
         _typeTimer?.cancel();
-        setState(() {
+        _safeSetState(() {
           _displayedTextBuffer.clear();
           _displayedTextBuffer.write(widget.text);
           _isComplete = true;
@@ -1158,7 +1158,7 @@ class _StreamingTextState extends State<StreamingText>
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {});
+          _safeSetState(() {});
         });
       },
       child: _buildContent(context),

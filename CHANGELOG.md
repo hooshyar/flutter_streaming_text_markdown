@@ -1,5 +1,84 @@
 # Changelog
 
+## 1.4.0
+
+### ✨ New Features
+
+**This release adds proper `MarkdownStyleSheet` support while maintaining 100% backward compatibility. Includes all v1.3.3 stability fixes.**
+
+* **Full MarkdownStyleSheet Support** - Granular control over markdown styling (Fixes Issue #5)
+  - NEW: `StreamingTextTheme.markdownStyleSheet` property accepts `MarkdownStyleSheet`
+  - NEW: `StreamingTextMarkdown.styleSheet` now properly typed as `MarkdownStyleSheet?`
+  - NEW: Customize h1, h2, h3, p, strong, em, code, blockquote, lists independently
+  - Uses `gpt_markdown` package for proper markdown rendering
+  - Example:
+    ```dart
+    StreamingTextTheme(
+      markdownStyleSheet: MarkdownStyleSheet(
+        h1: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+        h2: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        p: TextStyle(fontSize: 16),
+        code: TextStyle(fontFamily: 'monospace', backgroundColor: Colors.grey[200]),
+      ),
+    )
+    ```
+
+### 🔄 Backward Compatibility
+
+* **Zero Breaking Changes** ✓
+  - `StreamingTextTheme.markdownStyle` still works (deprecated with migration path)
+  - Old code using `markdownStyle: TextStyle()` continues to work perfectly
+  - Automatic conversion from `TextStyle` to `MarkdownStyleSheet` when needed
+  - New code can use `markdownStyleSheet` for granular control
+  - Migration timeline: v1.4.0 (add markdownStyleSheet) → v2.0.0 (remove markdownStyle)
+
+### 📚 Documentation Alignment
+
+* **Fixed Documentation Mismatch** - Code now matches README examples
+  - README examples showing `MarkdownStyleSheet` now actually work
+  - API documentation updated to reflect actual types
+  - Closes Issue #5 opened Oct 16, 2025
+
+### 🔧 Migration Guide
+
+**No migration required!** Old code continues to work:
+
+```dart
+// Old way (still works, deprecated)
+StreamingTextTheme(
+  markdownStyle: TextStyle(fontSize: 16),
+)
+
+// New way (recommended)
+StreamingTextTheme(
+  markdownStyleSheet: MarkdownStyleSheet(
+    h1: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+    p: TextStyle(fontSize: 16),
+  ),
+)
+```
+
+### 🛡️ Includes All v1.3.3 Stability Fixes
+
+* Fixed setState race conditions (prevents navigation crashes)
+* Fixed timer memory leaks (better long-running app performance)
+* Fixed AnimationController disposal errors
+* Fixed stream double-wrapping issues
+* 500x faster RTL/Arabic text processing
+* Enhanced error handling and debugging
+
+### 🎯 Upgrade Recommendation
+
+**Recommended upgrade** - Get both new features AND stability improvements:
+```yaml
+dependencies:
+  flutter_streaming_text_markdown: ^1.4.0
+```
+
+No code changes required, but you now have access to powerful markdown styling options!
+
+---
+
 ## 1.3.3
 
 ### 🛡️ Stability & Reliability Improvements

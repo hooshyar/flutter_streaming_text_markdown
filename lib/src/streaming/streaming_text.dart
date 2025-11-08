@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:gpt_markdown/gpt_markdown.dart';
 import '../controller/streaming_text_controller.dart';
 import '../utils/latex_processor.dart';
 
@@ -94,7 +95,7 @@ class StreamingText extends StatefulWidget {
   final bool fadeInEnabled;
   final Duration fadeInDuration;
   final Curve fadeInCurve;
-  final TextStyle? markdownStyleSheet;
+  final MarkdownStyleSheet? markdownStyleSheet;
   final StreamingTextController? controller;
 
   /// Whether animations are enabled. When false, text appears instantly.
@@ -1457,100 +1458,25 @@ class _StreamingTextState extends State<StreamingText>
       return _completeMarkdownCache[currentText]!;
     }
 
-    // Quick check: if text looks like it has no markdown, show as plain text
-    if (!_looksLikeMarkdown(currentText)) {
-      final widget = Text(currentText, style: this.widget.style);
-
-      // Cache only if animation is complete
-      if (!_isAnimationActive && _isComplete) {
-        _completeMarkdownCache[currentText] = widget;
-      }
-
-      return widget;
-    }
-
-    // Build markdown content - progressive during animation, complete when done
-    final result = _isAnimationActive
-        ? _buildProgressiveMarkdown(currentText)
-        : _buildCompleteMarkdown(currentText);
+    // Use gpt_markdown for proper MarkdownStyleSheet support
+    final markdownWidget = MarkdownBody(
+      data: currentText,
+      styleSheet: widget.markdownStyleSheet,
+      selectable: widget.selectable,
+      fitContent: true,
+      shrinkWrap: true,
+    );
 
     // Cache only complete, final states
     if (!_isAnimationActive && _isComplete) {
-      _completeMarkdownCache[currentText] = result;
+      _completeMarkdownCache[currentText] = markdownWidget;
     }
 
-    return result;
+    return markdownWidget;
   }
 
-  bool _looksLikeMarkdown(String text) {
-    // Quick checks to avoid expensive processing
-    return text.contains('#') || text.contains('**') || text.contains('*');
-  }
-
-  Widget _buildProgressiveMarkdown(String text) {
-    // During animation, build markdown progressively without heavy caching
-    // This allows the UI to update smoothly during animation
-    return _processMarkdownLines();
-  }
-
-  Widget _buildCompleteMarkdown(String text) {
-    // When animation is complete, build the final markdown with full processing
-    return _processMarkdownLines();
-  }
-
-  Widget _processMarkdownLines() {
-    final lines = _displayedText.split('\n');
-    final children = <Widget>[];
-
-    for (final line in lines) {
-      if (line.trim().isEmpty) {
-        children.add(const SizedBox(height: 8));
-        continue;
-      }
-
-      // Headers - only process if complete
-      if (line.startsWith('### ') && line.length > 4) {
-        children.add(Text(
-          line.substring(4),
-          style: (widget.style ?? const TextStyle()).copyWith(
-            fontSize: (widget.style?.fontSize ?? 16) * 1.2,
-            fontWeight: FontWeight.w600,
-          ),
-        ));
-      } else if (line.startsWith('## ') && line.length > 3) {
-        children.add(Text(
-          line.substring(3),
-          style: (widget.style ?? const TextStyle()).copyWith(
-            fontSize: (widget.style?.fontSize ?? 16) * 1.4,
-            fontWeight: FontWeight.w700,
-          ),
-        ));
-      } else if (line.startsWith('# ') && line.length > 2) {
-        children.add(Text(
-          line.substring(2),
-          style: (widget.style ?? const TextStyle()).copyWith(
-            fontSize: (widget.style?.fontSize ?? 16) * 1.6,
-            fontWeight: FontWeight.w800,
-          ),
-        ));
-      } else {
-        // Only process inline formatting if line contains markdown markers
-        if (line.contains('**') || line.contains('*')) {
-          children.add(_buildFormattedText(line));
-        } else {
-          children.add(Text(line, style: widget.style));
-        }
-      }
-
-      children.add(const SizedBox(height: 4));
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: children,
-    );
-  }
-
+  /// Helper method to render formatted text for LaTeX segments
+  /// Kept for LaTeX mixed content rendering
   Widget _buildFormattedText(String text) {
     final baseStyle = widget.style ?? const TextStyle();
 

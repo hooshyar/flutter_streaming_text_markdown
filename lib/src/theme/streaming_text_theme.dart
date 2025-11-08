@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
 import 'dart:ui' show lerpDouble;
 
 /// Theme extension for StreamingTextMarkdown widget
@@ -7,7 +8,19 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
   final TextStyle? textStyle;
 
   /// The style for markdown content
+  ///
+  /// DEPRECATED: Use [markdownStyleSheet] instead for granular control over
+  /// different markdown elements (h1, h2, p, etc.). This property is kept for
+  /// backward compatibility and will be removed in v2.0.0.
+  @Deprecated('Use markdownStyleSheet instead. Will be removed in v2.0.0')
   final TextStyle? markdownStyle;
+
+  /// Style sheet for markdown elements
+  ///
+  /// Provides granular control over individual markdown elements like headers,
+  /// paragraphs, lists, etc. If not provided, defaults will be generated from
+  /// [markdownStyle] (if available) or from the theme's text styles.
+  final MarkdownStyleSheet? markdownStyleSheet;
 
   /// The default padding for the widget
   final EdgeInsets? defaultPadding;
@@ -27,7 +40,8 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
   /// Creates a [StreamingTextTheme]
   const StreamingTextTheme({
     this.textStyle,
-    this.markdownStyle,
+    @Deprecated('Use markdownStyleSheet instead') this.markdownStyle,
+    this.markdownStyleSheet,
     this.defaultPadding,
     this.inlineLatexStyle,
     this.blockLatexStyle,
@@ -60,7 +74,8 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
   @override
   StreamingTextTheme copyWith({
     TextStyle? textStyle,
-    TextStyle? markdownStyle,
+    @Deprecated('Use markdownStyleSheet instead') TextStyle? markdownStyle,
+    MarkdownStyleSheet? markdownStyleSheet,
     EdgeInsets? defaultPadding,
     TextStyle? inlineLatexStyle,
     TextStyle? blockLatexStyle,
@@ -70,6 +85,7 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
     return StreamingTextTheme(
       textStyle: textStyle ?? this.textStyle,
       markdownStyle: markdownStyle ?? this.markdownStyle,
+      markdownStyleSheet: markdownStyleSheet ?? this.markdownStyleSheet,
       defaultPadding: defaultPadding ?? this.defaultPadding,
       inlineLatexStyle: inlineLatexStyle ?? this.inlineLatexStyle,
       blockLatexStyle: blockLatexStyle ?? this.blockLatexStyle,
@@ -87,6 +103,7 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
     return StreamingTextTheme(
       textStyle: TextStyle.lerp(textStyle, other.textStyle, t),
       markdownStyle: TextStyle.lerp(markdownStyle, other.markdownStyle, t),
+      markdownStyleSheet: t < 0.5 ? markdownStyleSheet : other.markdownStyleSheet,
       defaultPadding: EdgeInsets.lerp(defaultPadding, other.defaultPadding, t),
       inlineLatexStyle:
           TextStyle.lerp(inlineLatexStyle, other.inlineLatexStyle, t),

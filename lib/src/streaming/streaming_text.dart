@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:gpt_markdown/gpt_markdown.dart';
 import '../controller/streaming_text_controller.dart';
 import '../utils/latex_processor.dart';
 
@@ -94,7 +95,7 @@ class StreamingText extends StatefulWidget {
   final bool fadeInEnabled;
   final Duration fadeInDuration;
   final Curve fadeInCurve;
-  final TextStyle? markdownStyleSheet;
+  final MarkdownStyleSheet? markdownStyleSheet;
   final StreamingTextController? controller;
 
   /// Whether animations are enabled. When false, text appears instantly.
@@ -134,6 +135,58 @@ class _StreamingTextState extends State<StreamingText>
   bool _isAnimationActive = false; // Control caching behavior during animation
   final Map<String, Widget> _completeMarkdownCache =
       {}; // Only complete markdown states
+
+  // v1.3.3: Internal timer tracking for leak prevention (backward compatible)
+  final List<Timer> _allActiveTimers = [];
+
+  // v1.3.3: Compiled regex for performance (backward compatible)
+  static final RegExp _arabicBreakPointRegex = RegExp(
+    r'[\s\u0600-\u060C\u060E-\u061A\u061C-\u061E\u0621\u0640]'
+  );
+
+  /// v1.3.3: Safe setState wrapper to prevent crashes during disposal.
+  /// This is an internal method that maintains exact same behavior as setState
+  /// but adds safety checks to prevent crashes when widget is disposed during
+  /// animation. This change is invisible to external code.
+  void _safeSetState(VoidCallback fn) {
+    // Quick mounted check
+    if (!mounted) return;
+
+    // Attempt setState with safety net for race conditions
+    try {
+      setState(fn);
+    } catch (e) {
+      // Only catch disposal errors - these are safe to ignore
+      // Re-throw any other errors to maintain debugging capability
+      if (e is FlutterError && e.toString().contains('disposed')) {
+        // Widget was disposed between mounted check and setState
+        // This is expected in fast navigation scenarios - safe to ignore
+        return;
+      }
+      // Unexpected error - rethrow for debugging
+      rethrow;
+    }
+  }
+
+  /// v1.3.3: Create and track a new timer, canceling all previous timers.
+  /// This prevents timer leaks when animations are rapidly restarted.
+  /// Maintains exact same animation behavior, just safer cleanup.
+  void _createTrackedTimer(Timer timer) {
+    _cancelAllTrackedTimers();
+    _allActiveTimers.add(timer);
+    _typeTimer = timer;
+  }
+
+  /// v1.3.3: Cancel all tracked timers to prevent leaks.
+  /// Internal method - maintains backward compatibility.
+  void _cancelAllTrackedTimers() {
+    for (final timer in _allActiveTimers) {
+      if (timer.isActive) {
+        timer.cancel();
+      }
+    }
+    _allActiveTimers.clear();
+  }
 
   @override
   void initState() {
@@ -188,7 +241,8 @@ class _StreamingTextState extends State<StreamingText>
 
   void _displayInstantText() {
     _typeTimer?.cancel();
-    setState(() {
+    // v1.3.3: Use safe setState to prevent crashes during disposal
+    _safeSetState(() {
       _displayedTextBuffer.clear();
       _displayedTextBuffer.write(widget.text);
       _isComplete = true;
@@ -209,7 +263,8 @@ class _StreamingTextState extends State<StreamingText>
     _typeTimer = null;
 
     // Reset completion state since we have more text to animate
-    setState(() {
+    // v1.3.3: Use safe setState
+    _safeSetState(() {
       _isComplete = false;
       _isAnimationActive = true;
     });
@@ -234,7 +289,8 @@ class _StreamingTextState extends State<StreamingText>
 
   void _animateAppendedText(String appendedText) {
     if (appendedText.isEmpty) {
-      setState(() {
+      // v1.3.3: Use safe setState
+      _safeSetState(() {
         _isComplete = true;
         _isAnimationActive = false;
       });
@@ -266,10 +322,12 @@ class _StreamingTextState extends State<StreamingText>
     }
 
     int index = 0;
-    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+    // v1.3.3: Create tracked timer to prevent leaks
+    final newTimer = Timer.periodic(widget.typingSpeed, (timer) {
       if (!mounted || index >= appendedUnits.length) {
         timer.cancel();
-        setState(() {
+        // v1.3.3: Use safe setState
+        _safeSetState(() {
           _isComplete = true;
           _isAnimationActive = false;
         });
@@ -278,12 +336,14 @@ class _StreamingTextState extends State<StreamingText>
         return;
       }
 
-      setState(() {
+      // v1.3.3: Use safe setState
+      _safeSetState(() {
         _displayedTextBuffer.write(appendedUnits[index]);
         index++;
         _updateProgress();
       });
     });
+    _createTrackedTimer(newTimer);
   }
 
   void _setupController() {
@@ -330,8 +390,10 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _restartAnimation() {
+    _cancelAllTrackedTimers(); // v1.3.3: Use tracked timer cleanup
     _typeTimer?.cancel();
-    setState(() {
+    // v1.3.3: Use safe setState
+    _safeSetState(() {
       _displayedTextBuffer.clear();
       _isComplete = false;
       _isAnimationActive = true;
@@ -342,8 +404,10 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _skipToEnd() {
+    _cancelAllTrackedTimers(); // v1.3.3: Use tracked timer cleanup
     _typeTimer?.cancel();
-    setState(() {
+    // v1.3.3: Use safe setState
+    _safeSetState(() {
       _displayedTextBuffer.clear();
       _displayedTextBuffer.write(widget.text);
       _isComplete = true;
@@ -352,8 +416,9 @@ class _StreamingTextState extends State<StreamingText>
     widget.controller?.markCompleted();
     widget.onComplete?.call();
     // Force rebuild to process complete markdown
+    // v1.3.3: Use safe setState in callback
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() {});
+      _safeSetState(() {});
     });
   }
 
@@ -478,10 +543,17 @@ class _StreamingTextState extends State<StreamingText>
 
   void _handleStream() {
     _streamSubscription?.cancel();
-    final broadcastStream = widget.stream!.asBroadcastStream();
-    _streamSubscription = broadcastStream.listen(
+
+    // v1.3.3: Check if stream is already broadcast to prevent double-wrapping
+    final stream = widget.stream!;
+    final effectiveStream = stream.isBroadcast
+        ? stream
+        : stream.asBroadcastStream();
+
+    _streamSubscription = effectiveStream.listen(
       (data) {
-        setState(() {
+        // v1.3.3: Use safe setState
+        _safeSetState(() {
           final previousLength = _displayedText.length;
           _displayedTextBuffer.write(data);
           _isError = false;
@@ -500,21 +572,24 @@ class _StreamingTextState extends State<StreamingText>
         });
       },
       onError: (error) {
-        setState(() {
+        // v1.3.3: Use safe setState
+        _safeSetState(() {
           _isError = true;
           _errorMessage = error.toString();
         });
       },
       onDone: () {
-        setState(() {
+        // v1.3.3: Use safe setState
+        _safeSetState(() {
           _isComplete = true;
           _isAnimationActive = false;
         });
         widget.controller?.markCompleted();
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
+        // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {});
+          _safeSetState(() {});
         });
       },
     );
@@ -580,8 +655,9 @@ class _StreamingTextState extends State<StreamingText>
     int unitIndex = 0;
     _displayedTextBuffer.clear();
 
-    _typeTimer?.cancel();
-    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+    // v1.3.3: Create tracked timer to prevent leaks
+    _cancelAllTrackedTimers();
+    final newTimer = Timer.periodic(widget.typingSpeed, (timer) {
       if (!mounted) {
         timer.cancel();
         return;
@@ -589,20 +665,23 @@ class _StreamingTextState extends State<StreamingText>
 
       if (unitIndex >= units.length) {
         timer.cancel();
-        setState(() {
+        // v1.3.3: Use safe setState
+        _safeSetState(() {
           _isComplete = true;
           _isAnimationActive = false; // Animation is now complete
         });
         widget.controller?.markCompleted();
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
+        // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {});
+          _safeSetState(() {});
         });
         return;
       }
 
-      setState(() {
+      // v1.3.3: Use safe setState
+      _safeSetState(() {
         final endIndex = (unitIndex + widget.chunkSize).clamp(0, units.length);
         final newUnits = units.sublist(unitIndex, endIndex);
 
@@ -650,13 +729,15 @@ class _StreamingTextState extends State<StreamingText>
         _updateProgress();
       });
     });
+    _createTrackedTimer(newTimer);
   }
 
   void _startWordByWordTypingFromIndex(List<String> units, int startIndex) {
     int unitIndex = startIndex;
 
-    _typeTimer?.cancel();
-    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+    // v1.3.3: Create tracked timer
+    _cancelAllTrackedTimers();
+    final newTimer = Timer.periodic(widget.typingSpeed, (timer) {
       if (!mounted) {
         timer.cancel();
         return;
@@ -664,19 +745,22 @@ class _StreamingTextState extends State<StreamingText>
 
       if (unitIndex >= units.length) {
         timer.cancel();
-        setState(() {
+        // v1.3.3: Use safe setState
+        _safeSetState(() {
           _isComplete = true;
           _isAnimationActive = false;
         });
         widget.controller?.markCompleted();
         widget.onComplete?.call();
+        // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {});
+          _safeSetState(() {});
         });
         return;
       }
 
-      setState(() {
+      // v1.3.3: Use safe setState
+      _safeSetState(() {
         final endIndex = (unitIndex + widget.chunkSize).clamp(0, units.length);
         final newUnits = units.sublist(unitIndex, endIndex);
 
@@ -704,14 +788,16 @@ class _StreamingTextState extends State<StreamingText>
         _updateProgress();
       });
     });
+    _createTrackedTimer(newTimer);
   }
 
   void _startCharacterByCharacterTypingFromIndexWithContinuation(
       List<String> oldTextUnits, int startIndex, String appendedText) {
     int index = startIndex;
 
-    _typeTimer?.cancel();
-    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+    // v1.3.3: Create tracked timer
+    _cancelAllTrackedTimers();
+    final newTimer = Timer.periodic(widget.typingSpeed, (timer) {
       if (!mounted) {
         timer.cancel();
         return;
@@ -729,7 +815,8 @@ class _StreamingTextState extends State<StreamingText>
       final currentChunkSize =
           chunkSize > remainingUnits ? remainingUnits : chunkSize;
 
-      setState(() {
+      // v1.3.3: Use safe setState
+      _safeSetState(() {
         for (int i = 0; i < currentChunkSize; i++) {
           if (index < oldTextUnits.length) {
             _displayedTextBuffer.write(oldTextUnits[index]);
@@ -739,14 +826,16 @@ class _StreamingTextState extends State<StreamingText>
         }
       });
     });
+    _createTrackedTimer(newTimer);
   }
 
   void _startCharacterByCharacterTypingFromIndex(
       List<String> units, int startIndex) {
     int index = startIndex;
 
-    _typeTimer?.cancel();
-    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+    // v1.3.3: Create tracked timer
+    _cancelAllTrackedTimers();
+    final newTimer = Timer.periodic(widget.typingSpeed, (timer) {
       if (!mounted) {
         timer.cancel();
         return;
@@ -754,14 +843,16 @@ class _StreamingTextState extends State<StreamingText>
 
       if (index >= units.length) {
         timer.cancel();
-        setState(() {
+        // v1.3.3: Use safe setState
+        _safeSetState(() {
           _isComplete = true;
           _isAnimationActive = false;
         });
         widget.controller?.markCompleted();
         widget.onComplete?.call();
+        // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {});
+          _safeSetState(() {});
         });
         return;
       }
@@ -771,7 +862,8 @@ class _StreamingTextState extends State<StreamingText>
       final currentChunkSize =
           chunkSize > remainingUnits ? remainingUnits : chunkSize;
 
-      setState(() {
+      // v1.3.3: Use safe setState
+      _safeSetState(() {
         final chunk = units.getRange(index, index + currentChunkSize).join();
         _displayedTextBuffer.write(chunk);
         _updateProgress();
@@ -779,6 +871,7 @@ class _StreamingTextState extends State<StreamingText>
 
       index += currentChunkSize;
     });
+    _createTrackedTimer(newTimer);
   }
 
   List<String> _splitArabicWords(String text) {
@@ -874,8 +967,9 @@ class _StreamingTextState extends State<StreamingText>
     int index = 0;
     _displayedTextBuffer.clear();
 
-    _typeTimer?.cancel();
-    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+    // v1.3.3: Create tracked timer
+    _cancelAllTrackedTimers();
+    final newTimer = Timer.periodic(widget.typingSpeed, (timer) {
       if (!mounted) {
         timer.cancel();
         return;
@@ -883,15 +977,17 @@ class _StreamingTextState extends State<StreamingText>
 
       if (index >= units.length) {
         timer.cancel();
-        setState(() {
+        // v1.3.3: Use safe setState
+        _safeSetState(() {
           _isComplete = true;
           _isAnimationActive = false; // Animation is now complete
         });
         widget.controller?.markCompleted();
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
+        // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {});
+          _safeSetState(() {});
         });
         return;
       }
@@ -901,7 +997,8 @@ class _StreamingTextState extends State<StreamingText>
       final currentChunkSize =
           chunkSize > remainingUnits ? remainingUnits : chunkSize;
 
-      setState(() {
+      // v1.3.3: Use safe setState
+      _safeSetState(() {
         final chunk = units.getRange(index, index + currentChunkSize).join();
         _displayedTextBuffer.write(chunk);
 
@@ -922,6 +1019,7 @@ class _StreamingTextState extends State<StreamingText>
 
       index += currentChunkSize;
     });
+    _createTrackedTimer(newTimer);
   }
 
   void _startRTLCharacterTyping() {
@@ -930,8 +1028,9 @@ class _StreamingTextState extends State<StreamingText>
 
     _displayedTextBuffer.clear();
 
-    _typeTimer?.cancel();
-    _typeTimer = Timer.periodic(widget.typingSpeed, (timer) {
+    // v1.3.3: Create tracked timer
+    _cancelAllTrackedTimers();
+    final newTimer = Timer.periodic(widget.typingSpeed, (timer) {
       if (!mounted) {
         timer.cancel();
         return;
@@ -939,19 +1038,22 @@ class _StreamingTextState extends State<StreamingText>
 
       if (groupIndex >= groups.length) {
         timer.cancel();
-        setState(() {
+        // v1.3.3: Use safe setState
+        _safeSetState(() {
           _isComplete = true;
           _isAnimationActive = false;
         });
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
+        // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {});
+          _safeSetState(() {});
         });
         return;
       }
 
-      setState(() {
+      // v1.3.3: Use safe setState
+      _safeSetState(() {
         if (_displayedTextBuffer.isNotEmpty) {
           _displayedTextBuffer.write(' ');
         }
@@ -969,6 +1071,7 @@ class _StreamingTextState extends State<StreamingText>
 
       groupIndex++;
     });
+    _createTrackedTimer(newTimer);
   }
 
   List<String> _getArabicGroups(String text) {
@@ -995,10 +1098,12 @@ class _StreamingTextState extends State<StreamingText>
     return groups;
   }
 
+  /// v1.3.3: Optimized using pre-compiled regex (backward compatible)
   bool _isGroupBreakPoint(String current, String next) {
-    // Space or punctuation marks break groups
-    return RegExp(r'[\s\u0600-\u060C\u060E-\u061A\u061C-\u061E\u0621\u0640]')
-        .hasMatch(current + next);
+    // v1.3.3: Check each character separately to avoid string concatenation
+    // and use compiled regex for performance
+    return _arabicBreakPointRegex.hasMatch(current) ||
+           _arabicBreakPointRegex.hasMatch(next);
   }
 
   void _createGroupAnimation(List<String> groups, int startIndex) {
@@ -1018,12 +1123,23 @@ class _StreamingTextState extends State<StreamingText>
     _groupAnimationController.forward();
   }
 
+  /// v1.3.3: Improved AnimationController cleanup with proper safety checks.
+  /// Maintains backward compatibility while preventing disposal crashes.
   void _cleanupAnimations() {
-    for (final controller in _characterAnimations.values) {
+    for (final controller in _characterAnimations.values.toList()) {
+      // v1.3.3: Check animation state before disposal
+      if (controller.isAnimating) {
+        controller.stop();
+      }
+
+      // Safe disposal with specific error handling
       try {
         controller.dispose();
-      } catch (e) {
-        // Skip if controller is already disposed
+      } on FlutterError catch (e) {
+        // Only ignore disposal errors - rethrow others for debugging
+        if (!e.toString().contains('disposed')) {
+          rethrow;
+        }
       }
     }
     _characterAnimations.clear();
@@ -1034,7 +1150,7 @@ class _StreamingTextState extends State<StreamingText>
     return GestureDetector(
       onTap: () {
         _typeTimer?.cancel();
-        setState(() {
+        _safeSetState(() {
           _displayedTextBuffer.clear();
           _displayedTextBuffer.write(widget.text);
           _isComplete = true;
@@ -1043,7 +1159,7 @@ class _StreamingTextState extends State<StreamingText>
         widget.onComplete?.call();
         // Force rebuild to process complete markdown
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {});
+          _safeSetState(() {});
         });
       },
       child: _buildContent(context),
@@ -1342,100 +1458,25 @@ class _StreamingTextState extends State<StreamingText>
       return _completeMarkdownCache[currentText]!;
     }
 
-    // Quick check: if text looks like it has no markdown, show as plain text
-    if (!_looksLikeMarkdown(currentText)) {
-      final widget = Text(currentText, style: this.widget.style);
-
-      // Cache only if animation is complete
-      if (!_isAnimationActive && _isComplete) {
-        _completeMarkdownCache[currentText] = widget;
-      }
-
-      return widget;
-    }
-
-    // Build markdown content - progressive during animation, complete when done
-    final result = _isAnimationActive
-        ? _buildProgressiveMarkdown(currentText)
-        : _buildCompleteMarkdown(currentText);
+    // Use gpt_markdown for proper MarkdownStyleSheet support
+    final markdownWidget = MarkdownBody(
+      data: currentText,
+      styleSheet: widget.markdownStyleSheet,
+      selectable: widget.selectable,
+      fitContent: true,
+      shrinkWrap: true,
+    );
 
     // Cache only complete, final states
     if (!_isAnimationActive && _isComplete) {
-      _completeMarkdownCache[currentText] = result;
+      _completeMarkdownCache[currentText] = markdownWidget;
     }
 
-    return result;
+    return markdownWidget;
   }
 
-  bool _looksLikeMarkdown(String text) {
-    // Quick checks to avoid expensive processing
-    return text.contains('#') || text.contains('**') || text.contains('*');
-  }
-
-  Widget _buildProgressiveMarkdown(String text) {
-    // During animation, build markdown progressively without heavy caching
-    // This allows the UI to update smoothly during animation
-    return _processMarkdownLines();
-  }
-
-  Widget _buildCompleteMarkdown(String text) {
-    // When animation is complete, build the final markdown with full processing
-    return _processMarkdownLines();
-  }
-
-  Widget _processMarkdownLines() {
-    final lines = _displayedText.split('\n');
-    final children = <Widget>[];
-
-    for (final line in lines) {
-      if (line.trim().isEmpty) {
-        children.add(const SizedBox(height: 8));
-        continue;
-      }
-
-      // Headers - only process if complete
-      if (line.startsWith('### ') && line.length > 4) {
-        children.add(Text(
-          line.substring(4),
-          style: (widget.style ?? const TextStyle()).copyWith(
-            fontSize: (widget.style?.fontSize ?? 16) * 1.2,
-            fontWeight: FontWeight.w600,
-          ),
-        ));
-      } else if (line.startsWith('## ') && line.length > 3) {
-        children.add(Text(
-          line.substring(3),
-          style: (widget.style ?? const TextStyle()).copyWith(
-            fontSize: (widget.style?.fontSize ?? 16) * 1.4,
-            fontWeight: FontWeight.w700,
-          ),
-        ));
-      } else if (line.startsWith('# ') && line.length > 2) {
-        children.add(Text(
-          line.substring(2),
-          style: (widget.style ?? const TextStyle()).copyWith(
-            fontSize: (widget.style?.fontSize ?? 16) * 1.6,
-            fontWeight: FontWeight.w800,
-          ),
-        ));
-      } else {
-        // Only process inline formatting if line contains markdown markers
-        if (line.contains('**') || line.contains('*')) {
-          children.add(_buildFormattedText(line));
-        } else {
-          children.add(Text(line, style: widget.style));
-        }
-      }
-
-      children.add(const SizedBox(height: 4));
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: children,
-    );
-  }
-
+  /// Helper method to render formatted text for LaTeX segments
+  /// Kept for LaTeX mixed content rendering
   Widget _buildFormattedText(String text) {
     final baseStyle = widget.style ?? const TextStyle();
 
@@ -1562,7 +1603,10 @@ class _StreamingTextState extends State<StreamingText>
 
   @override
   void dispose() {
-    _typeTimer?.cancel();
+    // v1.3.3: Use safe timer cleanup to prevent leaks
+    _cancelAllTrackedTimers();
+    _typeTimer?.cancel(); // Fallback for any untracked timers
+
     _streamSubscription?.cancel();
     _cursorController.dispose();
     _groupAnimationController.dispose();

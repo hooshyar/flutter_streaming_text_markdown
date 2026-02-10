@@ -4,13 +4,13 @@
 
 [![pub package](https://img.shields.io/pub/v/flutter_streaming_text_markdown.svg)](https://pub.dev/packages/flutter_streaming_text_markdown)
 
-## 🐛 v1.3.2 - Enhanced Code Quality  
+## 🆕 v1.4.0 - Styling & LaTeX
+- ✅ **New**: `styleSheet` parameter accepts `TextStyle` for full markdown styling control (Issue #5)
+- ✅ **New**: LaTeX support with inline `$...$` and block `$$...$$` expressions (Issue #2)
+- ✅ **New**: Theme system with `StreamingTextTheme` extension
 - ✅ **Fixed**: Markdown animations no longer freeze (Issue #3)
-- ✅ **Fixed**: Streaming text continues properly instead of restarting (Issue #1)  
-- ✅ **Improved**: Perfect static analysis score for pub.dev
-- ✅ **Enhanced**: Comprehensive test coverage (63% coverage)
-- ✅ **Added**: Animation disable option for all constructors
-- ✅ **Optimized**: Package publication with clean validation
+- ✅ **Fixed**: Streaming text continues properly instead of restarting (Issue #1)
+- ✅ **Enhanced**: 70 tests passing, 0 analysis issues
 
 ## ✨ Features
 
@@ -24,13 +24,27 @@
 - ⏱️ **Real-time Streaming** - Direct `Stream<String>` integration
 - 🎯 **Interactive Controls** - Tap-to-skip and programmatic control
 
+## 🎬 Demo
+
+The example app showcases all features across multiple tabs:
+
+| Tab | Description |
+|-----|-------------|
+| **ChatGPT Style** | Fast character-by-character streaming with fade |
+| **Claude Style** | Smooth word-by-word animation |
+| **LaTeX Demo** | Mathematical equations with inline & block LaTeX |
+| **RTL Support** | Arabic text with right-to-left streaming |
+| **Controller** | Pause, resume, skip, and speed controls |
+
+> 📹 **Demo video coming soon!** Run the example app yourself: `cd example && flutter run`
+
 ## Installation
 
 Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_streaming_text_markdown: ^1.3.2
+  flutter_streaming_text_markdown: ^1.4.0
 ```
 
 ## 🚀 Quick Start
@@ -335,9 +349,10 @@ The package now supports a professional theme system that allows you to customiz
 // Create a custom theme
 final customTheme = StreamingTextTheme(
   textStyle: TextStyle(fontSize: 16, color: Colors.blue),
-  markdownStyleSheet: MarkdownStyleSheet(
-    h1: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-    p: TextStyle(fontSize: 16),
+  markdownStyleSheet: TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w400,
+    color: Colors.black87,
   ),
   defaultPadding: EdgeInsets.all(20),
 );
@@ -354,7 +369,7 @@ MaterialApp(
     extensions: [
       StreamingTextTheme(
         textStyle: TextStyle(/* ... */),
-        markdownStyleSheet: MarkdownStyleSheet(/* ... */),
+        markdownStyleSheet: TextStyle(/* ... */),
       ),
     ],
   ),

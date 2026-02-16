@@ -2,7 +2,7 @@ name: Deploy Example to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/markdown-fade-in]
   workflow_dispatch:
 
 permissions:

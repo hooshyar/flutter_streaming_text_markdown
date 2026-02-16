@@ -4,21 +4,19 @@
 
 ### ✨ New Features
 
-**This release adds proper `MarkdownStyleSheet` support while maintaining 100% backward compatibility. Includes all v1.3.3 stability fixes.**
+**This release adds a dedicated `markdownStyleSheet` property (typed as `TextStyle`) while maintaining 100% backward compatibility. Includes all v1.3.3 stability fixes.**
 
-* **Full MarkdownStyleSheet Support** - Granular control over markdown styling (Fixes Issue #5)
-  - NEW: `StreamingTextTheme.markdownStyleSheet` property accepts `MarkdownStyleSheet`
-  - NEW: `StreamingTextMarkdown.styleSheet` now properly typed as `MarkdownStyleSheet?`
-  - NEW: Customize h1, h2, h3, p, strong, em, code, blockquote, lists independently
+* **Dedicated Markdown Style Property** - Cleaner API for markdown styling (Fixes Issue #5)
+  - NEW: `StreamingTextTheme.markdownStyleSheet` property accepts `TextStyle`
+  - NEW: `StreamingTextMarkdown.styleSheet` now properly typed as `TextStyle?`
   - Uses `gpt_markdown` package for proper markdown rendering
   - Example:
     ```dart
     StreamingTextTheme(
-      markdownStyleSheet: MarkdownStyleSheet(
-        h1: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-        h2: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        p: TextStyle(fontSize: 16),
-        code: TextStyle(fontFamily: 'monospace', backgroundColor: Colors.grey[200]),
+      markdownStyleSheet: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w400,
+        color: Colors.black87,
       ),
     )
     ```
@@ -28,14 +26,13 @@
 * **Zero Breaking Changes** ✓
   - `StreamingTextTheme.markdownStyle` still works (deprecated with migration path)
   - Old code using `markdownStyle: TextStyle()` continues to work perfectly
-  - Automatic conversion from `TextStyle` to `MarkdownStyleSheet` when needed
-  - New code can use `markdownStyleSheet` for granular control
+  - New code can use `markdownStyleSheet` for a clearer API
   - Migration timeline: v1.4.0 (add markdownStyleSheet) → v2.0.0 (remove markdownStyle)
 
 ### 📚 Documentation Alignment
 
 * **Fixed Documentation Mismatch** - Code now matches README examples
-  - README examples showing `MarkdownStyleSheet` now actually work
+  - README examples now accurately show `TextStyle` usage
   - API documentation updated to reflect actual types
   - Closes Issue #5 opened Oct 16, 2025
 
@@ -51,9 +48,10 @@ StreamingTextTheme(
 
 // New way (recommended)
 StreamingTextTheme(
-  markdownStyleSheet: MarkdownStyleSheet(
-    h1: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-    p: TextStyle(fontSize: 16),
+  markdownStyleSheet: TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w400,
+    color: Colors.black87,
   ),
 )
 ```

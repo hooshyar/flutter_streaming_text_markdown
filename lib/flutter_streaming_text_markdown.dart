@@ -22,10 +22,7 @@ export 'src/streaming/streaming.dart';
 export 'src/theme/streaming_text_theme.dart';
 export 'src/controller/streaming_text_controller.dart';
 export 'src/presets/animation_presets.dart';
-export 'package:gpt_markdown/gpt_markdown.dart' show MarkdownStyleSheet;
-
 import 'package:flutter/material.dart';
-import 'package:gpt_markdown/gpt_markdown.dart';
 import 'src/streaming/streaming_text.dart';
 import 'src/theme/streaming_text_theme.dart';
 import 'src/controller/streaming_text_controller.dart';
@@ -52,8 +49,8 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Initial text to display before the animation starts
   final String initialText;
 
-  /// Markdown style configuration
-  final MarkdownStyleSheet? styleSheet;
+  /// Markdown style configuration (TextStyle applied to the markdown renderer)
+  final TextStyle? styleSheet;
 
   /// Custom theme for the widget
   final StreamingTextTheme? theme;
@@ -294,60 +291,13 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
     super.dispose();
   }
 
-  /// Helper method to convert TextStyle to MarkdownStyleSheet for backward compatibility
-  MarkdownStyleSheet _createStyleSheetFromTextStyle(TextStyle? baseStyle, BuildContext context) {
-    final style = baseStyle ?? Theme.of(context).textTheme.bodyLarge ?? const TextStyle();
-
-    return MarkdownStyleSheet(
-      p: style,
-      h1: style.copyWith(
-        fontSize: (style.fontSize ?? 14) * 2.0,
-        fontWeight: FontWeight.bold,
-      ),
-      h2: style.copyWith(
-        fontSize: (style.fontSize ?? 14) * 1.5,
-        fontWeight: FontWeight.bold,
-      ),
-      h3: style.copyWith(
-        fontSize: (style.fontSize ?? 14) * 1.25,
-        fontWeight: FontWeight.bold,
-      ),
-      h4: style.copyWith(
-        fontSize: (style.fontSize ?? 14) * 1.1,
-        fontWeight: FontWeight.bold,
-      ),
-      h5: style.copyWith(
-        fontSize: style.fontSize,
-        fontWeight: FontWeight.bold,
-      ),
-      h6: style.copyWith(
-        fontSize: style.fontSize,
-        fontWeight: FontWeight.bold,
-      ),
-      strong: style.copyWith(fontWeight: FontWeight.bold),
-      em: style.copyWith(fontStyle: FontStyle.italic),
-      code: style.copyWith(
-        fontFamily: 'monospace',
-        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-      ),
-      blockquote: style.copyWith(
-        color: style.color?.withValues(alpha: 0.7),
-        fontStyle: FontStyle.italic,
-      ),
-      listBullet: style,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Resolve MarkdownStyleSheet with proper fallback chain
+    // Resolve TextStyle with proper fallback chain
     // Priority: widget.styleSheet > theme.markdownStyleSheet > theme.markdownStyle (deprecated) > default
     final effectiveStyleSheet = widget.styleSheet ??
         _effectiveTheme.markdownStyleSheet ??
-        _createStyleSheetFromTextStyle(
-          _effectiveTheme.markdownStyle ?? Theme.of(context).textTheme.bodyLarge,
-          context,
-        );
+        Theme.of(context).textTheme.bodyLarge;
 
     final effectivePadding = widget.padding ??
         _effectiveTheme.defaultPadding ??

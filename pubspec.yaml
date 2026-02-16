@@ -11,6 +11,16 @@ topics:
   - animation
   - ai
 
+issue_tracker: https://github.com/hooshyar/flutter_streaming_text_markdown/issues
+
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  web:
+  windows:
+
 environment:
   sdk: '>=3.0.0 <4.0.0'
   flutter: ">=3.10.0"
@@ -19,7 +29,7 @@ dependencies:
   flutter:
     sdk: flutter
   gpt_markdown: ^1.1.2
-  characters: ^1.4.0
+  characters: '>=1.4.0 <2.0.0'
 
 dev_dependencies:
   flutter_test:

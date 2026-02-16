@@ -95,7 +95,7 @@ class StreamingText extends StatefulWidget {
   final bool fadeInEnabled;
   final Duration fadeInDuration;
   final Curve fadeInCurve;
-  final MarkdownStyleSheet? markdownStyleSheet;
+  final TextStyle? markdownStyleSheet;
   final StreamingTextController? controller;
 
   /// Whether animations are enabled. When false, text appears instantly.
@@ -1458,13 +1458,13 @@ class _StreamingTextState extends State<StreamingText>
       return _completeMarkdownCache[currentText]!;
     }
 
-    // Use gpt_markdown for proper MarkdownStyleSheet support
-    final markdownWidget = MarkdownBody(
-      data: currentText,
-      styleSheet: widget.markdownStyleSheet,
-      selectable: widget.selectable,
-      fitContent: true,
-      shrinkWrap: true,
+    // Use gpt_markdown's GptMarkdown widget
+    final markdownWidget = GptMarkdown(
+      currentText,
+      style: widget.markdownStyleSheet,
+      textDirection: widget.textDirection ?? TextDirection.ltr,
+      textAlign: widget.textAlign,
+      textScaler: widget.textScaler,
     );
 
     // Cache only complete, final states

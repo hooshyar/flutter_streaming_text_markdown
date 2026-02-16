@@ -107,13 +107,44 @@ class StreamingText extends StatefulWidget {
 
 class _StreamingTextState extends State<StreamingText>
     with TickerProviderStateMixin {
-  // If the text is Arabic, disable fade-in animation.
+  // If the text is Arabic, disable fade-in animation (per-character path).
   bool get _fadeInAllowed {
     // Re-check the actual displayed text for Arabic:
     return widget.animationsEnabled &&
         widget.fadeInEnabled &&
         widget.stream == null &&
         !_containsArabic(_displayedText);
+  }
+
+  /// Whether markdown-compatible trailing-edge fade is allowed.
+  /// More permissive than _fadeInAllowed — works with Arabic and markdown.
+  bool get _markdownFadeAllowed {
+    return widget.animationsEnabled &&
+        widget.fadeInEnabled &&
+        widget.markdownEnabled &&
+        !_isComplete;
+  }
+
+  /// Triggers the trailing-edge fade animation for markdown content.
+  /// Called each time a new chunk of text is added to the display buffer.
+  void _triggerMarkdownFade() {
+    if (_markdownFadeAllowed && mounted) {
+      _groupAnimationController.reset();
+      _groupAnimationController.forward();
+    }
+  }
+
+  /// Whether the currently streaming text ends inside a block LaTeX expression.
+  bool get _isInsideBlockLatex {
+    final text = _displayedText;
+    // Count $$ occurrences — odd means we're inside a block
+    int count = 0;
+    int idx = 0;
+    while ((idx = text.indexOf('\$\$', idx)) != -1) {
+      count++;
+      idx += 2;
+    }
+    return count.isOdd;
   }
 
   final StringBuffer _displayedTextBuffer = StringBuffer();
@@ -539,6 +570,8 @@ class _StreamingTextState extends State<StreamingText>
       final progress = _displayedText.length / widget.text.length;
       widget.controller!.updateProgress(progress);
     }
+    // Trigger trailing-edge fade for markdown content
+    _triggerMarkdownFade();
   }
 
   void _handleStream() {
@@ -1186,17 +1219,76 @@ class _StreamingTextState extends State<StreamingText>
 
     // If markdown is enabled, wrap with RTL directionality
     if (widget.markdownEnabled) {
+      Widget markdownContent = Container(
+        width: double.infinity,
+        alignment: effectiveAlignment == TextAlign.right
+            ? Alignment.centerRight
+            : (effectiveAlignment == TextAlign.center
+                ? Alignment.center
+                : Alignment.centerLeft),
+        child: _buildMarkdownBody(),
+      );
+
+      // Apply trailing-edge fade when streaming with markdown
+      if (_markdownFadeAllowed) {
+        if (_isInsideBlockLatex) {
+          // Inside a block LaTeX: use whole-widget opacity pulse
+          markdownContent = AnimatedBuilder(
+            animation: _groupAnimationController,
+            builder: (context, child) {
+              final value = widget.fadeInCurve.transform(
+                _groupAnimationController.value.clamp(0.0, 1.0),
+              );
+              // Pulse between 0.7 and 1.0 to avoid full disappearance
+              return Opacity(
+                opacity: 0.7 + (0.3 * value),
+                child: child,
+              );
+            },
+            child: markdownContent,
+          );
+        } else {
+          // Normal markdown: trailing-edge gradient fade
+          markdownContent = AnimatedBuilder(
+            animation: _groupAnimationController,
+            builder: (context, child) {
+              final value = widget.fadeInCurve.transform(
+                _groupAnimationController.value.clamp(0.0, 1.0),
+              );
+              // When animation is complete (1.0), show fully opaque
+              // When animation starts (0.0), fade the bottom edge
+              return ShaderMask(
+                shaderCallback: (Rect bounds) {
+                  if (bounds.height <= 0) {
+                    // Safety: no content to fade
+                    return const LinearGradient(
+                      colors: [Colors.white, Colors.white],
+                    ).createShader(bounds);
+                  }
+                  // Fade the bottom 40px of the content
+                  final fadeHeight = 40.0 * (1.0 - value);
+                  final fadeStart = (bounds.height - fadeHeight)
+                      .clamp(0.0, bounds.height);
+                  final stop = (fadeStart / bounds.height).clamp(0.0, 0.999);
+                  return LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: const [Colors.white, Colors.white, Colors.transparent],
+                    stops: [0.0, stop, 1.0],
+                  ).createShader(bounds);
+                },
+                blendMode: BlendMode.dstIn,
+                child: child,
+              );
+            },
+            child: markdownContent,
+          );
+        }
+      }
+
       return Directionality(
         textDirection: effectiveTextDirection,
-        child: Container(
-          width: double.infinity,
-          alignment: effectiveAlignment == TextAlign.right
-              ? Alignment.centerRight
-              : (effectiveAlignment == TextAlign.center
-                  ? Alignment.center
-                  : Alignment.centerLeft),
-          child: _buildMarkdownBody(),
-        ),
+        child: markdownContent,
       );
     }
 

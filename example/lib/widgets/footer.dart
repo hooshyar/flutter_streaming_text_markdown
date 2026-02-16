@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class DemoFooter extends StatelessWidget {
   const DemoFooter({super.key});
@@ -25,9 +24,12 @@ class DemoFooter extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'flutter pub add flutter_streaming_text_markdown',
-                  style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: isDark ? Colors.white70 : Colors.black87),
+                Flexible(
+                  child: Text(
+                    'flutter pub add flutter_streaming_text_markdown',
+                    style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: isDark ? Colors.white70 : Colors.black87),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Icon(Icons.copy, size: 14, color: isDark ? Colors.white38 : Colors.black38),
@@ -39,9 +41,9 @@ class DemoFooter extends StatelessWidget {
         Wrap(
           spacing: 16,
           children: [
-            _link('pub.dev', 'https://pub.dev/packages/flutter_streaming_text_markdown', isDark),
-            _link('GitHub', 'https://github.com/hooshyar/flutter_streaming_text_markdown', isDark),
-            _link('License', 'https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/LICENSE', isDark),
+            _link('pub.dev', isDark),
+            _link('GitHub', isDark),
+            _link('License', isDark),
           ],
         ),
         const SizedBox(height: 32),
@@ -49,10 +51,7 @@ class DemoFooter extends StatelessWidget {
     );
   }
 
-  Widget _link(String label, String url, bool isDark) {
-    return GestureDetector(
-      onTap: () => launchUrl(Uri.parse(url)),
-      child: Text(label, style: TextStyle(fontSize: 13, color: isDark ? const Color(0xFF80DEEA) : const Color(0xFF00838F))),
-    );
+  Widget _link(String label, bool isDark) {
+    return Text(label, style: TextStyle(fontSize: 13, color: isDark ? const Color(0xFF80DEEA) : const Color(0xFF00838F)));
   }
 }

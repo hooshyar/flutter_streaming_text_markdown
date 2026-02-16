@@ -24,19 +24,6 @@ class _PlaygroundState extends State<Playground> {
   bool _fadeIn = true;
   bool _showCustomize = false;
 
-  StreamingTextConfig get _config {
-    if (_presetIndex == 0) return LLMAnimationPresets.chatGPT;
-    if (_presetIndex == 1) return LLMAnimationPresets.claude;
-    return StreamingTextConfig(
-      typingSpeed: Duration(milliseconds: _speed.round()),
-      wordByWord: _wordByWord,
-      chunkSize: 1,
-      fadeInEnabled: _fadeIn,
-      fadeInDuration: const Duration(milliseconds: 200),
-      fadeInCurve: Curves.easeOut,
-    );
-  }
-
   void _generate() {
     setState(() {
       _responseIndex = (_responseIndex + 1) % _responses.length;
@@ -53,10 +40,41 @@ class _PlaygroundState extends State<Playground> {
     });
   }
 
+  Widget _buildStreamingWidget() {
+    final text = _responses[_responseIndex];
+    switch (_presetIndex) {
+      case 0:
+        return StreamingTextMarkdown.chatGPT(
+          key: ValueKey(_textKey),
+          text: text,
+          markdownEnabled: true,
+          padding: const EdgeInsets.all(16),
+        );
+      case 1:
+        return StreamingTextMarkdown.claude(
+          key: ValueKey(_textKey),
+          text: text,
+          markdownEnabled: true,
+          padding: const EdgeInsets.all(16),
+        );
+      default:
+        return StreamingTextMarkdown(
+          key: ValueKey(_textKey),
+          text: text,
+          markdownEnabled: true,
+          typingSpeed: Duration(milliseconds: _speed.round()),
+          wordByWord: _wordByWord,
+          fadeInEnabled: _fadeIn,
+          fadeInDuration: const Duration(milliseconds: 200),
+          fadeInCurve: Curves.easeOut,
+          padding: const EdgeInsets.all(16),
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cfg = _config;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -77,23 +95,12 @@ class _PlaygroundState extends State<Playground> {
         Container(
           width: double.infinity,
           constraints: const BoxConstraints(minHeight: 180),
-          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF111111) : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
           ),
-          child: StreamingText(
-            key: ValueKey(_textKey),
-            text: _responses[_responseIndex],
-            typingSpeed: cfg.typingSpeed,
-            wordByWord: cfg.wordByWord,
-            fadeInEnabled: cfg.fadeInEnabled,
-            fadeInDuration: cfg.fadeInDuration,
-            fadeInCurve: cfg.fadeInCurve,
-            showCursor: true,
-            cursorColor: const Color(0xFF00BCD4),
-          ),
+          child: _buildStreamingWidget(),
         ),
         const SizedBox(height: 12),
         Center(
@@ -107,11 +114,20 @@ class _PlaygroundState extends State<Playground> {
         const SizedBox(height: 8),
         Center(
           child: TextButton(
-            onPressed: () => setState(() => _showCustomize = !_showCustomize),
+            onPressed: () {
+              setState(() {
+                _showCustomize = !_showCustomize;
+                // Auto-switch to Custom when opening Customize
+                if (_showCustomize && _presetIndex != 2) {
+                  _presetIndex = 2;
+                  _textKey++;
+                }
+              });
+            },
             child: Text(_showCustomize ? 'Hide Customize ▲' : 'Customize ▼', style: const TextStyle(fontSize: 13)),
           ),
         ),
-        if (_showCustomize && _presetIndex == 2) ...[
+        if (_showCustomize) ...[
           Row(
             children: [
               Text('Speed: ${_speed.round()}ms', style: TextStyle(fontSize: 13, color: isDark ? Colors.white60 : Colors.black54)),
@@ -121,11 +137,6 @@ class _PlaygroundState extends State<Playground> {
           SwitchListTile(dense: true, title: const Text('Word-by-word', style: TextStyle(fontSize: 13)), value: _wordByWord, onChanged: (v) => setState(() => _wordByWord = v), activeTrackColor: const Color(0xFF00BCD4)),
           SwitchListTile(dense: true, title: const Text('Fade-in', style: TextStyle(fontSize: 13)), value: _fadeIn, onChanged: (v) => setState(() => _fadeIn = v), activeTrackColor: const Color(0xFF00BCD4)),
         ],
-        if (_showCustomize && _presetIndex != 2)
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Text('Select "Custom" preset to adjust settings.', style: TextStyle(fontSize: 13, color: isDark ? Colors.white38 : Colors.black38)),
-          ),
         const SizedBox(height: 32),
       ],
     );

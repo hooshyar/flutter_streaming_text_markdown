@@ -7,7 +7,7 @@ class FeatureCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    final cards = [
+    final cards = <Widget>[
       const _RTLCard(),
       const _LatexCard(),
       const _ControlCard(),
@@ -26,7 +26,8 @@ class _CardShell extends StatelessWidget {
   final String emoji;
   final String title;
   final Widget child;
-  const _CardShell({required this.emoji, required this.title, required this.child});
+  final VoidCallback? onReplay;
+  const _CardShell({required this.emoji, required this.title, required this.child, this.onReplay});
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +42,19 @@ class _CardShell extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$emoji  $title', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          Row(
+            children: [
+              Expanded(child: Text('$emoji  $title', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+              if (onReplay != null)
+                IconButton(
+                  icon: const Icon(Icons.replay, size: 18),
+                  tooltip: 'Replay',
+                  onPressed: onReplay,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+            ],
+          ),
           const SizedBox(height: 12),
           child,
         ],
@@ -50,38 +63,56 @@ class _CardShell extends StatelessWidget {
   }
 }
 
-class _RTLCard extends StatelessWidget {
+class _RTLCard extends StatefulWidget {
   const _RTLCard();
+  @override
+  State<_RTLCard> createState() => _RTLCardState();
+}
+
+class _RTLCardState extends State<_RTLCard> {
+  int _key = 0;
+
   @override
   Widget build(BuildContext context) {
     return _CardShell(
       emoji: '🌍',
       title: 'RTL Support',
-      child: StreamingText(
+      onReplay: () => setState(() => _key++),
+      child: StreamingTextMarkdown(
+        key: ValueKey(_key),
         text: 'مرحباً بالعالم! هذا **نص عربي** يتدفق بشكل جميل من اليمين إلى اليسار.',
         textDirection: TextDirection.rtl,
         typingSpeed: const Duration(milliseconds: 100),
         wordByWord: true,
-        showCursor: true,
-        cursorColor: const Color(0xFF00BCD4),
+        markdownEnabled: true,
+        padding: const EdgeInsets.all(0),
       ),
     );
   }
 }
 
-class _LatexCard extends StatelessWidget {
+class _LatexCard extends StatefulWidget {
   const _LatexCard();
+  @override
+  State<_LatexCard> createState() => _LatexCardState();
+}
+
+class _LatexCardState extends State<_LatexCard> {
+  int _key = 0;
+
   @override
   Widget build(BuildContext context) {
     return _CardShell(
       emoji: '📐',
       title: 'LaTeX',
-      child: StreamingText(
+      onReplay: () => setState(() => _key++),
+      child: StreamingTextMarkdown(
+        key: ValueKey(_key),
         text: r'Euler: $e^{i\pi} + 1 = 0$. Quadratic: $x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}$',
         typingSpeed: const Duration(milliseconds: 40),
         latexEnabled: true,
-        showCursor: true,
-        cursorColor: const Color(0xFF00BCD4),
+        markdownEnabled: true,
+        padding: const EdgeInsets.all(0),
       ),
     );
   }
@@ -109,13 +140,13 @@ class _ControlCardState extends State<_ControlCard> {
       title: 'Programmatic Control',
       child: Column(
         children: [
-          StreamingText(
+          StreamingTextMarkdown(
             text: 'This animation can be **paused**, **resumed**, or **skipped** programmatically via the controller API.',
             typingSpeed: const Duration(milliseconds: 60),
             wordByWord: true,
+            markdownEnabled: true,
             controller: _ctrl,
-            showCursor: true,
-            cursorColor: const Color(0xFF00BCD4),
+            padding: const EdgeInsets.all(0),
           ),
           const SizedBox(height: 12),
           Row(

@@ -125,13 +125,12 @@ class _StreamingTextState extends State<StreamingText>
         !_isComplete;
   }
 
-  /// Triggers the trailing-edge fade animation for markdown content.
+  /// Triggers the trailing-edge fade animation for streaming content.
   /// Called each time a new chunk of text is added to the display buffer.
-  void _triggerMarkdownFade() {
-    if (_markdownFadeAllowed && mounted) {
-      _groupAnimationController.reset();
-      _groupAnimationController.forward();
-    }
+  void _triggerTrailingFade() {
+    if (!mounted || !widget.animationsEnabled || !widget.fadeInEnabled || _isComplete) return;
+    _groupAnimationController.reset();
+    _groupAnimationController.forward();
   }
 
   /// Whether the currently streaming text ends inside a block LaTeX expression.
@@ -571,7 +570,7 @@ class _StreamingTextState extends State<StreamingText>
       widget.controller!.updateProgress(progress);
     }
     // Trigger trailing-edge fade for markdown content
-    _triggerMarkdownFade();
+    _triggerTrailingFade();
   }
 
   void _handleStream() {
@@ -1347,6 +1346,54 @@ class _StreamingTextState extends State<StreamingText>
             ),
           );
         }).toList(),
+      );
+    }
+
+    // Trailing-edge fade for non-markdown content (including RTL/Arabic)
+    if (widget.animationsEnabled &&
+        widget.fadeInEnabled &&
+        !widget.markdownEnabled &&
+        !_isComplete) {
+      Widget plainContent = Text(
+        _displayedText,
+        style: effectiveStyle,
+        textAlign: effectiveAlignment,
+        textDirection: effectiveTextDirection,
+        softWrap: widget.softWrap ?? true,
+        overflow: widget.overflow ?? TextOverflow.clip,
+        textScaler: widget.textScaler ?? MediaQuery.textScalerOf(context),
+        maxLines: widget.maxLines,
+        strutStyle: widget.strutStyle,
+      );
+      return AnimatedBuilder(
+        animation: _groupAnimationController,
+        builder: (context, child) {
+          final value = widget.fadeInCurve.transform(
+            _groupAnimationController.value.clamp(0.0, 1.0),
+          );
+          return ShaderMask(
+            shaderCallback: (Rect bounds) {
+              if (bounds.height <= 0) {
+                return const LinearGradient(
+                  colors: [Colors.white, Colors.white],
+                ).createShader(bounds);
+              }
+              final fadeHeight = 40.0 * (1.0 - value);
+              final fadeStart = (bounds.height - fadeHeight)
+                  .clamp(0.0, bounds.height);
+              final stop = (fadeStart / bounds.height).clamp(0.0, 0.999);
+              return LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: const [Colors.white, Colors.white, Colors.transparent],
+                stops: [0.0, stop, 1.0],
+              ).createShader(bounds);
+            },
+            blendMode: BlendMode.dstIn,
+            child: child,
+          );
+        },
+        child: plainContent,
       );
     }
 

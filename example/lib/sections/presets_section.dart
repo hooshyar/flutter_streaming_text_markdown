@@ -135,7 +135,7 @@ class _PresetsSectionState extends State<PresetsSection> {
                 crossAxisCount: crossAxisCount,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
-                childAspectRatio: 1.4,
+                childAspectRatio: 1.3,
               ),
               itemCount: _presets.length,
               itemBuilder: (context, i) {

@@ -15,7 +15,7 @@ class _ControllerSectionState extends State<ControllerSection> {
   double _progress = 0.0;
   StreamingTextState _state = StreamingTextState.idle;
   double _speed = 1.0;
-  int _key = 0;
+  final int _key = 0;
 
   static const _text =
       '## Streaming Text Controller\n\n'
@@ -112,14 +112,10 @@ class _ControllerSectionState extends State<ControllerSection> {
                   _controlBtn(Icons.play_arrow, 'Resume', () => _controller.resume(), isDark),
                   _controlBtn(Icons.skip_next, 'Skip', () => _controller.skipToEnd(), isDark),
                   _controlBtn(Icons.replay, 'Restart', () {
+                    _controller.restart();
                     setState(() {
-                      _key++;
                       _progress = 0;
-                      _state = StreamingTextState.idle;
-                    });
-                    // Controller needs fresh setup after key change
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      _controller.restart();
+                      _state = StreamingTextState.animating;
                     });
                   }, isDark),
                   _controlBtn(Icons.stop, 'Stop', () => _controller.stop(), isDark),

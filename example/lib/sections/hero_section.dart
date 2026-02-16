@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../shared/demo_card.dart';
 
 class HeroSection extends StatefulWidget {
@@ -65,8 +66,8 @@ class _HeroSectionState extends State<HeroSection> {
         Wrap(
           spacing: 8,
           children: [
-            _chip('pub.dev', accent),
-            _chip('GitHub', accent),
+            _chip('pub.dev', accent, url: 'https://pub.dev/packages/flutter_streaming_text_markdown'),
+            _chip('GitHub', accent, url: 'https://github.com/hooshyar/flutter_streaming_text_markdown'),
             _chip('v1.4.0', isDark ? Colors.white24 : Colors.black26),
           ],
         ),
@@ -129,8 +130,8 @@ class _HeroSectionState extends State<HeroSection> {
     );
   }
 
-  Widget _chip(String label, Color color) {
-    return Container(
+  Widget _chip(String label, Color color, {String? url}) {
+    final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(6),
@@ -141,5 +142,12 @@ class _HeroSectionState extends State<HeroSection> {
         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: color),
       ),
     );
+    if (url != null) {
+      return GestureDetector(
+        onTap: () => launchUrl(Uri.parse(url)),
+        child: MouseRegion(cursor: SystemMouseCursors.click, child: chip),
+      );
+    }
+    return chip;
   }
 }

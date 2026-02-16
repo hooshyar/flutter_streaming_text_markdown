@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../shared/section_header.dart';
 import '../shared/demo_card.dart';
 
@@ -59,11 +60,11 @@ class FooterSection extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _link('pub.dev', accent),
+            _link('pub.dev', accent, 'https://pub.dev/packages/flutter_streaming_text_markdown'),
             const SizedBox(width: 24),
-            _link('GitHub', accent),
+            _link('GitHub', accent, 'https://github.com/hooshyar/flutter_streaming_text_markdown'),
             const SizedBox(width: 24),
-            _link('MIT License', mutedColor),
+            _link('MIT License', mutedColor, 'https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/LICENSE'),
           ],
         ),
         const SizedBox(height: 48),
@@ -71,13 +72,19 @@ class FooterSection extends StatelessWidget {
     );
   }
 
-  Widget _link(String label, Color color) {
-    return Text(
-      label,
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        color: color,
+  Widget _link(String label, Color color, String url) {
+    return GestureDetector(
+      onTap: () => launchUrl(Uri.parse(url)),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: color,
+          ),
+        ),
       ),
     );
   }

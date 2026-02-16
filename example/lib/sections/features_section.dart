@@ -92,15 +92,13 @@ class _FeaturesSectionState extends State<FeaturesSection> {
             if (isWide) {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: children
-                    .map((c) => Expanded(child: c))
-                    .toList()
-                    .expand((w) sync* {
-                      yield w;
-                      yield const SizedBox(width: 12);
-                    })
-                    .toList()
-                  ..removeLast(),
+                children: [
+                  Expanded(child: children[0]),
+                  const SizedBox(width: 12),
+                  Expanded(child: children[1]),
+                  const SizedBox(width: 12),
+                  Expanded(child: children[2]),
+                ],
               );
             }
             return Column(

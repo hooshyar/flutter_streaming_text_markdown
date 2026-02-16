@@ -27,12 +27,28 @@ example/linux/.gitignore
 example/macos/.gitignore
 example/windows/.gitignore
 
+# Exclude lock files
+example/pubspec.lock
+
 # Exclude Firebase debug files
 firebase-debug.log
 
 # Exclude backup files
 *.bak
+*.backup
 *~
+
+# Exclude development documentation
+CLAUDE.md
+BACKWARD_COMPATIBILITY_PLAN.md
+ISSUE_FIXES_SUMMARY.md
+LATEX_INTEGRATION_PLAN.md
+V1.3.3_RELEASE_SUMMARY.md
+doc/
+devtools_options.yaml
+
+# Exclude DerivedData
+example/macos/DerivedData/
 
 # Exclude modified Xcode project file
 example/ios/Runner.xcodeproj/project.pbxproj

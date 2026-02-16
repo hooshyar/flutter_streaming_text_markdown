@@ -12,6 +12,7 @@ dependencies:
   flutter_streaming_text_markdown:
     path: ../
   cupertino_icons: ^1.0.2
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

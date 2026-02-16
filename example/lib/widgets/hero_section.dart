@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HeroSection extends StatefulWidget {
   const HeroSection({super.key});
@@ -91,17 +92,20 @@ class _LinkChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF00BCD4).withValues(alpha: 0.5)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 13,
-          color: isDark ? const Color(0xFF80DEEA) : const Color(0xFF00838F),
+    return GestureDetector(
+      onTap: () => launchUrl(Uri.parse(url)),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFF00BCD4).withValues(alpha: 0.5)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? const Color(0xFF80DEEA) : const Color(0xFF00838F),
+          ),
         ),
       ),
     );

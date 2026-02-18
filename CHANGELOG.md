@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.5.0
+
+### ✨ New Features
+
+**Trailing-edge fade animation for markdown and RTL content**
+
+Previously, `fadeInEnabled: true` only worked with plain text (`markdownEnabled: false`). This release brings smooth streaming animations to all content types.
+
+* **Markdown fade-in** — When `fadeInEnabled: true` and `markdownEnabled: true`, a trailing-edge gradient fade animates at the bottom of the content as new text streams in, using the configured `fadeInCurve` and `fadeInDuration`
+* **RTL/Arabic support** — Fade animations now work correctly with Arabic and Hebrew text (previously disabled for RTL languages)
+* **Block LaTeX protection** — When streaming inside a `$$...$$` block, uses a gentle opacity pulse instead of gradient mask to avoid visually cutting through equations
+* **Revolutionary example page** — Complete showcase redesign with all 17 package features: named constructors, 9 presets, full controller API, markdown, LaTeX, RTL, theme system, live customization playground, and GitHub Pages deployment
+* **GitHub Pages live demo** — https://hooshyar.github.io/flutter_streaming_text_markdown/
+
+### 🔧 Improvements
+
+* Example page rebuilt from scratch: 11 files, 1300+ lines, dark/light mode, responsive
+* All links in example are now clickable (pub.dev, GitHub, License)
+* Preset grid shows all 9 `LLMAnimationPresets` with live mini-previews
+* Controller section demonstrates full `StreamingTextController` API with progress bar, state display, speed multiplier
+* Added pub.dev badge count in hero section
+
+### ✅ Compatibility
+
+Fully backward compatible — existing code unchanged. Fade-in for markdown only activates when both `fadeInEnabled: true` AND `markdownEnabled: true` are set.
+
+---
+
 ## 1.4.0
 
 ### ✨ New Features

@@ -525,7 +525,7 @@ class _StreamingTextState extends State<StreamingText>
       units = Characters(widget.text).toList();
     }
 
-    final currentIndex = _displayedText.length;
+    final currentIndex = _displayedText.characters.length;
     _startCharacterByCharacterTypingFromIndex(units, currentIndex);
   }
 
@@ -549,7 +549,7 @@ class _StreamingTextState extends State<StreamingText>
       oldTextUnits = Characters(oldText).toList();
     }
 
-    final currentIndex = _displayedText.length;
+    final currentIndex = _displayedText.characters.length;
 
     // Continue animating the old text first, then the appended text
     _startCharacterByCharacterTypingFromIndexWithContinuation(

@@ -27,6 +27,7 @@ import 'src/streaming/streaming_text.dart';
 import 'src/theme/streaming_text_theme.dart';
 import 'src/controller/streaming_text_controller.dart';
 import 'src/presets/animation_presets.dart';
+import 'src/widgets/streaming_shimmer.dart';
 
 /// A widget that displays streaming text with Markdown support.
 ///
@@ -109,6 +110,27 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Whether animations are enabled. When false, text appears instantly.
   final bool animationsEnabled;
 
+  /// Whether to show a shimmer skeleton placeholder instead of the text widget.
+  ///
+  /// Set to `true` while waiting for the first LLM token to arrive
+  /// (TTFT — Time To First Token). The shimmer automatically disappears
+  /// when you set this back to `false`.
+  ///
+  /// Defaults to `false` — existing code is completely unaffected.
+  ///
+  /// Example:
+  /// ```dart
+  /// StreamingTextMarkdown(
+  ///   text: _streamedText,
+  ///   isLoading: _waitingForFirstToken,
+  /// )
+  /// ```
+  final bool isLoading;
+
+  /// Number of shimmer skeleton lines shown while [isLoading] is true.
+  /// Defaults to 3.
+  final int shimmerLineCount;
+
   const StreamingTextMarkdown({
     super.key,
     required this.text,
@@ -133,6 +155,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = true,
+    this.isLoading = false,
+    this.shimmerLineCount = 3,
   });
 
   /// Creates a StreamingTextMarkdown with ChatGPT-style animation
@@ -155,6 +179,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = true,
+    this.isLoading = false,
+    this.shimmerLineCount = 3,
   })  : fadeInEnabled = true,
         fadeInDuration = const Duration(milliseconds: 150),
         fadeInCurve = Curves.easeOut,
@@ -182,6 +208,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = true,
+    this.isLoading = false,
+    this.shimmerLineCount = 3,
   })  : fadeInEnabled = true,
         fadeInDuration = const Duration(milliseconds: 200),
         fadeInCurve = Curves.easeInOut,
@@ -209,6 +237,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = true,
+    this.isLoading = false,
+    this.shimmerLineCount = 3,
   })  : fadeInEnabled = false,
         fadeInDuration = Duration.zero,
         fadeInCurve = Curves.linear,
@@ -236,6 +266,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = false,
+    this.isLoading = false,
+    this.shimmerLineCount = 3,
   })  : fadeInEnabled = false,
         fadeInDuration = Duration.zero,
         fadeInCurve = Curves.linear,
@@ -263,6 +295,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = true,
+    this.isLoading = false,
+    this.shimmerLineCount = 3,
   })  : fadeInEnabled = preset.fadeInEnabled,
         fadeInDuration = preset.fadeInDuration,
         fadeInCurve = preset.fadeInCurve,
@@ -302,6 +336,14 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
     final effectivePadding = widget.padding ??
         _effectiveTheme.defaultPadding ??
         const EdgeInsets.all(16.0);
+
+    // Show shimmer skeleton while waiting for first LLM token
+    if (widget.isLoading) {
+      return Padding(
+        padding: effectivePadding,
+        child: StreamingShimmer(lineCount: widget.shimmerLineCount),
+      );
+    }
 
     return SingleChildScrollView(
       controller: _scrollController,

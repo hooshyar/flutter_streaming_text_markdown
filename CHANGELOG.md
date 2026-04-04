@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.6.0
+
+### ✨ New Features
+
+**Shimmer loading state — `isLoading` parameter**
+
+Show an animated skeleton placeholder while waiting for the first LLM token (TTFT).
+No more blank screen between sending a request and the first character appearing.
+
+* **`isLoading: false`** — New parameter on all constructors and named variants. When `true`, displays an animated shimmer skeleton instead of the text widget. Defaults to `false` — all existing code is completely unaffected.
+* **`shimmerLineCount: 3`** — Controls how many skeleton lines are shown. Defaults to 3.
+* **Pure Flutter implementation** — No external shimmer package. Uses `AnimationController` + `LinearGradient` sweep. Adapts to light/dark theme automatically.
+* **Markdown tables confirmed** — gpt_markdown renders tables natively. Added documentation and example.
+
+```dart
+// Usage example
+StreamingTextMarkdown.chatGPT(
+  text: _accumulatedText,
+  isLoading: _waitingForFirstToken,  // true until first token, then false
+)
+```
+
+### 🔧 Improvements
+
+* Upgraded `gpt_markdown` dependency to `^1.1.6` — picks up table column alignment fix, ordered list bug fix, Flutter 3.35 compatibility, and heading style customization fixes
+
 ## 1.5.0
 
 ### ✨ New Features

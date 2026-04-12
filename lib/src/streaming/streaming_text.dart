@@ -64,6 +64,13 @@ class StreamingText extends StatefulWidget {
     this.markdownStyleSheet,
     this.controller,
     this.animationsEnabled = true,
+    this.imageBuilder,
+    this.onLinkTap,
+    this.codeBuilder,
+    this.latexBuilder,
+    this.sourceTagBuilder,
+    this.highlightBuilder,
+    this.linkBuilder,
   });
 
   final String text;
@@ -100,6 +107,27 @@ class StreamingText extends StatefulWidget {
 
   /// Whether animations are enabled. When false, text appears instantly.
   final bool animationsEnabled;
+
+  /// Custom builder for images in markdown content.
+  final Widget Function(BuildContext context, String imageUrl)? imageBuilder;
+
+  /// Callback when a link is tapped in markdown content.
+  final void Function(String url, String title)? onLinkTap;
+
+  /// Custom builder for code blocks in markdown content.
+  final Widget Function(BuildContext context, String name, String code, bool closed)? codeBuilder;
+
+  /// Custom builder for LaTeX expressions in markdown content.
+  final Widget Function(BuildContext context, String tex, TextStyle textStyle, bool inline)? latexBuilder;
+
+  /// Custom builder for source tags in markdown content.
+  final Widget Function(BuildContext context, String content, TextStyle textStyle)? sourceTagBuilder;
+
+  /// Custom builder for highlighted text in markdown content.
+  final Widget Function(BuildContext context, String text, TextStyle style)? highlightBuilder;
+
+  /// Custom builder for links in markdown content.
+  final Widget Function(BuildContext context, InlineSpan text, String url, TextStyle style)? linkBuilder;
 
   @override
   State<StreamingText> createState() => _StreamingTextState();
@@ -525,7 +553,7 @@ class _StreamingTextState extends State<StreamingText>
       units = Characters(widget.text).toList();
     }
 
-    final currentIndex = _displayedText.length;
+    final currentIndex = _displayedText.characters.length;
     _startCharacterByCharacterTypingFromIndex(units, currentIndex);
   }
 
@@ -549,7 +577,7 @@ class _StreamingTextState extends State<StreamingText>
       oldTextUnits = Characters(oldText).toList();
     }
 
-    final currentIndex = _displayedText.length;
+    final currentIndex = _displayedText.characters.length;
 
     // Continue animating the old text first, then the appended text
     _startCharacterByCharacterTypingFromIndexWithContinuation(
@@ -1604,6 +1632,13 @@ class _StreamingTextState extends State<StreamingText>
       textDirection: widget.textDirection ?? TextDirection.ltr,
       textAlign: widget.textAlign,
       textScaler: widget.textScaler,
+      imageBuilder: widget.imageBuilder,
+      onLinkTap: widget.onLinkTap,
+      codeBuilder: widget.codeBuilder,
+      latexBuilder: widget.latexBuilder,
+      sourceTagBuilder: widget.sourceTagBuilder,
+      highlightBuilder: widget.highlightBuilder,
+      linkBuilder: widget.linkBuilder,
     );
 
     // Cache only complete, final states

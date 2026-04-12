@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.7.0
+
+### New Features
+
+**Custom markdown builders** (closes #10)
+
+Expose `gpt_markdown`'s builder callbacks so you can customize how images, links, code blocks, and more are rendered inside streaming text.
+
+* `imageBuilder` — custom widget for markdown images
+* `onLinkTap` — callback when a link is tapped
+* `codeBuilder` — custom widget for code blocks
+* `latexBuilder` — custom widget for LaTeX expressions
+* `sourceTagBuilder` — custom widget for source tags
+* `highlightBuilder` — custom widget for highlighted text
+* `linkBuilder` — custom widget for links
+
+All parameters are optional and available on every constructor including `.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, and `.fromPreset()`.
+
+```dart
+StreamingTextMarkdown.chatGPT(
+  text: response,
+  markdownEnabled: true,
+  imageBuilder: (context, url) => CachedNetworkImage(imageUrl: url),
+  onLinkTap: (url, title) => launchUrl(Uri.parse(url)),
+  codeBuilder: (context, name, code, closed) => MyCodeBlock(code: code),
+);
+```
+
+### Bug Fixes
+
+* **Fix emoji character skipping during animation resume** (closes PR #9) — `_displayedText.length` returned UTF-16 code units but was used as an index into grapheme cluster lists, causing characters after emoji to be dropped. Now uses `_displayedText.characters.length`.
+
 ## 1.6.0
 
 ### ✨ New Features

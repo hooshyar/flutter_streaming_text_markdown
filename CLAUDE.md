@@ -4,172 +4,67 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a Flutter package (`flutter_streaming_text_markdown`) that provides animated text display with markdown support. The package enables character-by-character or word-by-word typing animations with RTL language support, fade-in effects, and real-time text streaming capabilities.
+Flutter package (`flutter_streaming_text_markdown`) for animated text display with markdown and LaTeX support. Designed for LLM chat interfaces — provides typing animations (character-by-character or word-by-word), fade-in effects, RTL/Arabic support, and real-time text streaming. Published on pub.dev.
 
 ## Development Commands
 
-### Flutter Package Development
 ```bash
 flutter pub get              # Install dependencies
-flutter pub deps             # Show dependency tree
-flutter analyze             # Static analysis
-flutter test                # Run unit tests
-flutter test --coverage     # Run tests with coverage
+flutter analyze              # Static analysis
+flutter test                 # Run all tests
+flutter test test/latex_processor_test.dart  # Run a single test file
 dart format lib/ test/       # Format code
+dart pub publish --dry-run   # Validate before publishing
 ```
 
-### Example App Development
+Example app (do NOT run unless explicitly asked):
 ```bash
-cd example
-flutter pub get              # Install example dependencies
-flutter run                 # Run the example app
-flutter run -d chrome       # Run on web
-flutter build apk           # Build Android APK
-flutter build ios           # Build iOS app
+cd example && flutter pub get && flutter run
 ```
 
-### Package Publishing
-```bash
-dart pub publish --dry-run   # Validate package before publishing
-dart pub publish             # Publish to pub.dev
-```
+## Architecture
 
-## Project Architecture
+### Widget Hierarchy
 
-### Core Components
+`StreamingTextMarkdown` (public API, in `lib/flutter_streaming_text_markdown.dart`)
+  → wraps `StreamingText` (internal engine, `lib/src/streaming/streaming_text.dart`)
 
-The package follows a layered architecture with clear separation of concerns:
+`StreamingTextMarkdown` handles scrolling, theme resolution, and shimmer loading state. `StreamingText` handles all animation logic, text chunking, Arabic detection, and markdown rendering via `gpt_markdown` (NOT `flutter_markdown`).
 
-**Main Widget Layer**:
-- `StreamingTextMarkdown` - High-level widget combining scrolling, theming, and streaming text
-- Handles auto-scrolling, theme resolution, and widget lifecycle management
+### Named Constructors as Presets
 
-**Core Text Engine**:
-- `StreamingText` - Core text animation engine with comprehensive RTL support
-- Manages character/word-by-word animations, fade-in effects, and Arabic text handling
-- Contains sophisticated Arabic text processing with proper word boundary detection
+The main widget has named constructors for common LLM patterns: `.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, `.fromPreset()`. These set animation defaults (typing speed, word-by-word, fade-in, chunk size). The `LLMAnimationPresets` class in `lib/src/presets/animation_presets.dart` provides the same configs as `StreamingTextConfig` objects.
 
-**Theme System**:
-- `StreamingTextTheme` - Professional theme extension system
-- Supports both normal text styling and markdown style sheets
-- Follows Flutter's theme inheritance pattern with fallback mechanisms
+### Theme System
 
-**Streaming Architecture**:
-- `StreamProvider` interface for pluggable text sources
-- `DefaultStreamProvider` for static text with typing animation
-- Support for real-time `Stream<String>` integration
+`StreamingTextTheme` extends `ThemeExtension<StreamingTextTheme>` — it plugs into Flutter's standard theme system. Resolution order:
+1. Widget-level `theme` parameter
+2. `Theme.of(context).extension<StreamingTextTheme>()`
+3. `StreamingTextTheme.defaults(context)` — derives from Material theme
 
-### RTL and Arabic Text Support
+The `context.streamingTextTheme` extension provides convenient access.
 
-The package includes sophisticated Arabic and RTL text handling:
+Note: `markdownStyle` is deprecated in favor of `markdownStyleSheet` — removal planned for v2.0.0.
 
-- **Arabic Detection**: Comprehensive Unicode range detection (U+0600-U+06FF, etc.)
-- **Word Boundary Detection**: Custom Arabic word splitting logic
-- **Animation Strategy**: Specialized grouping for Arabic character sequences
-- **Direction Handling**: Automatic text direction detection and proper alignment
+### LaTeX Support
 
-### Animation System
+`LaTeXProcessor` (`lib/src/utils/latex_processor.dart`) parses text into `TextSegment`s (regular, inlineLaTeX, blockLaTeX). Block expressions (`$$...$$`) take priority over inline (`$...$`). LaTeX fade-in is disabled by default for performance.
 
-**Character-by-Character Mode**:
-- Uses `Characters` package for proper Unicode handling
-- Supports custom chunk sizes for batch character revelation
-- RTL-aware animation sequencing
+### RTL / Arabic Text
 
-**Word-by-Word Mode**:
-- Intelligent word boundary detection for multiple languages
-- Arabic-specific word splitting with cultural considerations
-- Configurable word chunk sizes
+Arabic detection uses Unicode ranges (U+0600-U+06FF etc.) in `StreamingText`. Key behaviors:
+- Fade-in is automatically disabled for Arabic text (performance)
+- Word-by-word mode uses custom Arabic word boundary detection
+- `Directionality` widget wraps output for proper layout
 
-**Fade-in Animations**:
-- Per-character animation controllers with memory management
-- Customizable curves (easeOut, bounceOut, elasticOut, etc.)
-- Automatic disable for Arabic text (performance optimization)
+### Controller
 
-### Theme Integration
+`StreamingTextController` extends `ChangeNotifier` — provides pause/resume/restart/skipToEnd/stop and progress tracking (0.0–1.0). States: idle → animating → paused/completed/error.
 
-**Theme Hierarchy**:
-1. Widget-level theme (explicit `theme` parameter)
-2. Global theme extension (`StreamingTextTheme` in app theme)
-3. Default theme based on Material Design context
+### Shimmer Loading
 
-**Style Resolution**:
-- Automatic fallback to Material Design defaults
-- Support for both light and dark themes
-- Customizable padding, text styles, and markdown styling
+`StreamingShimmer` widget (`lib/src/widgets/streaming_shimmer.dart`) shows skeleton placeholder while `isLoading: true`. Used for TTFT (Time To First Token) in LLM contexts.
 
-## Key Features
+### Exports
 
-### Markdown Support
-- Headers (`#`, `##`, `###`)
-- Bold (`**text**`) and italic (`*text*`)
-- Lists (ordered and unordered)
-- Custom `MarkdownStyleSheet` integration
-
-### Real-time Streaming
-- `Stream<String>` support for live text updates
-- Error handling and completion callbacks
-- Broadcasting capability for multiple listeners
-
-### Performance Optimizations
-- Animation controller pooling and cleanup
-- RTL text grouping cache
-- Conditional fade-in based on text content
-- Memory-efficient character animation management
-
-### Accessibility
-- Semantic label support
-- Proper text scaling with `TextScaler`
-- Tap-to-complete functionality
-- RTL navigation support
-
-## Testing Strategy
-
-### Unit Tests
-- Widget rendering verification
-- Animation property validation
-- RTL text handling tests
-- Stream integration tests
-- Theme system tests
-
-### Example App
-The example app serves as both a demo and integration test with:
-- Basic configuration demo with live settings
-- LLM simulation demo showing real-time streaming
-- Arabic and English text samples
-- All animation modes and settings
-
-## Code Conventions
-
-### State Management
-- Use `AnimationController` with proper disposal
-- Timer-based typing animation with cancellation
-- Stream subscription management with cleanup
-
-### RTL Considerations
-- Always check text direction before applying animations
-- Use `Directionality` widgets for proper layout
-- Arabic text should disable fade-in for performance
-
-### Error Handling
-- Graceful stream error display
-- Animation cleanup on widget disposal
-- Null-safe parameter handling throughout
-
-## Development Notes
-
-### Adding New Features
-- Consider RTL implications for any text-related features
-- Test with both Arabic and English content
-- Ensure theme system compatibility
-- Add corresponding example demonstrations
-
-### Performance Considerations
-- Arabic text animations use different strategies than LTR text
-- Large texts should consider chunk-based processing
-- Animation controllers require careful memory management
-- Stream subscriptions must be properly cancelled
-
-### Package Dependencies
-- `flutter_markdown: ^0.7.6` - Core markdown rendering
-- `characters: ^1.3.0` - Proper Unicode character handling
-- `flutter_lints: ^3.0.1` - Linting for code quality
+`lib/flutter_streaming_text_markdown.dart` is the barrel file. It exports: `streaming.dart` (StreamProvider, DefaultStreamProvider, StreamingText), `streaming_text_theme.dart`, `streaming_text_controller.dart`, `animation_presets.dart`. The `StreamingText` widget is imported but not re-exported (internal).

@@ -131,6 +131,27 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Defaults to 3.
   final int shimmerLineCount;
 
+  /// Custom builder for images in markdown content.
+  final Widget Function(BuildContext context, String imageUrl)? imageBuilder;
+
+  /// Callback when a link is tapped in markdown content.
+  final void Function(String url, String title)? onLinkTap;
+
+  /// Custom builder for code blocks in markdown content.
+  final Widget Function(BuildContext context, String name, String code, bool closed)? codeBuilder;
+
+  /// Custom builder for LaTeX expressions in markdown content.
+  final Widget Function(BuildContext context, String tex, TextStyle textStyle, bool inline)? latexBuilder;
+
+  /// Custom builder for source tags in markdown content.
+  final Widget Function(BuildContext context, String content, TextStyle textStyle)? sourceTagBuilder;
+
+  /// Custom builder for highlighted text in markdown content.
+  final Widget Function(BuildContext context, String text, TextStyle style)? highlightBuilder;
+
+  /// Custom builder for links in markdown content.
+  final Widget Function(BuildContext context, InlineSpan text, String url, TextStyle style)? linkBuilder;
+
   const StreamingTextMarkdown({
     super.key,
     required this.text,
@@ -157,6 +178,13 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.animationsEnabled = true,
     this.isLoading = false,
     this.shimmerLineCount = 3,
+    this.imageBuilder,
+    this.onLinkTap,
+    this.codeBuilder,
+    this.latexBuilder,
+    this.sourceTagBuilder,
+    this.highlightBuilder,
+    this.linkBuilder,
   });
 
   /// Creates a StreamingTextMarkdown with ChatGPT-style animation
@@ -181,6 +209,13 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.animationsEnabled = true,
     this.isLoading = false,
     this.shimmerLineCount = 3,
+    this.imageBuilder,
+    this.onLinkTap,
+    this.codeBuilder,
+    this.latexBuilder,
+    this.sourceTagBuilder,
+    this.highlightBuilder,
+    this.linkBuilder,
   })  : fadeInEnabled = true,
         fadeInDuration = const Duration(milliseconds: 150),
         fadeInCurve = Curves.easeOut,
@@ -210,6 +245,13 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.animationsEnabled = true,
     this.isLoading = false,
     this.shimmerLineCount = 3,
+    this.imageBuilder,
+    this.onLinkTap,
+    this.codeBuilder,
+    this.latexBuilder,
+    this.sourceTagBuilder,
+    this.highlightBuilder,
+    this.linkBuilder,
   })  : fadeInEnabled = true,
         fadeInDuration = const Duration(milliseconds: 200),
         fadeInCurve = Curves.easeInOut,
@@ -239,6 +281,13 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.animationsEnabled = true,
     this.isLoading = false,
     this.shimmerLineCount = 3,
+    this.imageBuilder,
+    this.onLinkTap,
+    this.codeBuilder,
+    this.latexBuilder,
+    this.sourceTagBuilder,
+    this.highlightBuilder,
+    this.linkBuilder,
   })  : fadeInEnabled = false,
         fadeInDuration = Duration.zero,
         fadeInCurve = Curves.linear,
@@ -268,6 +317,13 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.animationsEnabled = false,
     this.isLoading = false,
     this.shimmerLineCount = 3,
+    this.imageBuilder,
+    this.onLinkTap,
+    this.codeBuilder,
+    this.latexBuilder,
+    this.sourceTagBuilder,
+    this.highlightBuilder,
+    this.linkBuilder,
   })  : fadeInEnabled = false,
         fadeInDuration = Duration.zero,
         fadeInCurve = Curves.linear,
@@ -297,6 +353,13 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.animationsEnabled = true,
     this.isLoading = false,
     this.shimmerLineCount = 3,
+    this.imageBuilder,
+    this.onLinkTap,
+    this.codeBuilder,
+    this.latexBuilder,
+    this.sourceTagBuilder,
+    this.highlightBuilder,
+    this.linkBuilder,
   })  : fadeInEnabled = preset.fadeInEnabled,
         fadeInDuration = preset.fadeInDuration,
         fadeInCurve = preset.fadeInCurve,
@@ -371,6 +434,13 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           textAlign: widget.textAlign,
           controller: widget.controller,
           animationsEnabled: widget.animationsEnabled,
+          imageBuilder: widget.imageBuilder,
+          onLinkTap: widget.onLinkTap,
+          codeBuilder: widget.codeBuilder,
+          latexBuilder: widget.latexBuilder,
+          sourceTagBuilder: widget.sourceTagBuilder,
+          highlightBuilder: widget.highlightBuilder,
+          linkBuilder: widget.linkBuilder,
           onComplete: () {
             // Handle auto-scrolling
             if (mounted && widget.autoScroll && _scrollController.hasClients) {

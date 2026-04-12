@@ -129,5 +129,73 @@ void main() {
       await tester.pump();
       expect(find.byType(StreamingText), findsOneWidget);
     });
+
+    testWidgets('handles text with emoji (grapheme clusters)', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StreamingText(
+            text: 'Great 👍 Keep going',
+            typingSpeed: Duration(milliseconds: 10),
+            markdownEnabled: false,
+          ),
+        ),
+      );
+
+      // Let animation run
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(StreamingText), findsOneWidget);
+    });
+  });
+
+  group('Custom builders', () {
+    testWidgets('accepts imageBuilder parameter', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: '![alt](https://example.com/image.png)',
+            markdownEnabled: true,
+            imageBuilder: (context, url) => const Icon(Icons.image),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+    });
+
+    testWidgets('accepts onLinkTap callback', (tester) async {
+      String? tappedUrl;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: '[link](https://example.com)',
+            markdownEnabled: true,
+            onLinkTap: (url, title) {
+              tappedUrl = url;
+            },
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+    });
+
+    testWidgets('accepts codeBuilder parameter', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: '```dart\nprint("hello");\n```',
+            markdownEnabled: true,
+            codeBuilder: (context, name, code, closed) =>
+                Text('Code: $code'),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+    });
   });
 }

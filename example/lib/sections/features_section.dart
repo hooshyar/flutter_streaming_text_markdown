@@ -55,6 +55,7 @@ class _FeaturesSectionState extends State<FeaturesSection> {
                   text: _markdownText,
                   autoScroll: false,
                   padding: EdgeInsets.zero,
+                  trailingFadeEnabled: true,
                 ),
               ),
               _featureCard(

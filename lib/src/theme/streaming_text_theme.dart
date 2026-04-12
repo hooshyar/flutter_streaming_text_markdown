@@ -85,7 +85,9 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
       // ignore: deprecated_member_use_from_same_package
       markdownStyle: markdownStyle ?? this.markdownStyle,
       // ignore: deprecated_member_use_from_same_package
-      markdownStyleSheet: markdownStyleSheet ?? this.markdownStyleSheet ?? (markdownStyle ?? this.markdownStyle),
+      markdownStyleSheet: markdownStyleSheet ??
+          this.markdownStyleSheet ??
+          (markdownStyle ?? this.markdownStyle),
       defaultPadding: defaultPadding ?? this.defaultPadding,
       inlineLatexStyle: inlineLatexStyle ?? this.inlineLatexStyle,
       blockLatexStyle: blockLatexStyle ?? this.blockLatexStyle,
@@ -104,7 +106,8 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
       textStyle: TextStyle.lerp(textStyle, other.textStyle, t),
       // ignore: deprecated_member_use_from_same_package
       markdownStyle: TextStyle.lerp(markdownStyle, other.markdownStyle, t),
-      markdownStyleSheet: TextStyle.lerp(markdownStyleSheet, other.markdownStyleSheet, t),
+      markdownStyleSheet:
+          TextStyle.lerp(markdownStyleSheet, other.markdownStyleSheet, t),
       defaultPadding: EdgeInsets.lerp(defaultPadding, other.defaultPadding, t),
       inlineLatexStyle:
           TextStyle.lerp(inlineLatexStyle, other.inlineLatexStyle, t),

@@ -76,8 +76,8 @@ class _StreamingShimmerState extends State<StreamingShimmer>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final base = widget.baseColor ??
-        colorScheme.onSurface.withAlpha(30); // ~12% opacity
+    final base =
+        widget.baseColor ?? colorScheme.onSurface.withAlpha(30); // ~12% opacity
     final highlight = widget.highlightColor ??
         colorScheme.onSurface.withAlpha(10); // ~4% opacity
 

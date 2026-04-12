@@ -64,6 +64,7 @@ class StreamingText extends StatefulWidget {
     this.markdownStyleSheet,
     this.controller,
     this.animationsEnabled = true,
+    this.trailingFadeEnabled = false,
     this.imageBuilder,
     this.onLinkTap,
     this.codeBuilder,
@@ -108,6 +109,11 @@ class StreamingText extends StatefulWidget {
   /// Whether animations are enabled. When false, text appears instantly.
   final bool animationsEnabled;
 
+  /// Whether to show a trailing gradient fade at the bottom edge while
+  /// text is streaming. The fade animates away when streaming completes.
+  /// Defaults to `false`.
+  final bool trailingFadeEnabled;
+
   /// Custom builder for images in markdown content.
   final Widget Function(BuildContext context, String imageUrl)? imageBuilder;
 
@@ -115,19 +121,27 @@ class StreamingText extends StatefulWidget {
   final void Function(String url, String title)? onLinkTap;
 
   /// Custom builder for code blocks in markdown content.
-  final Widget Function(BuildContext context, String name, String code, bool closed)? codeBuilder;
+  final Widget Function(
+      BuildContext context, String name, String code, bool closed)? codeBuilder;
 
   /// Custom builder for LaTeX expressions in markdown content.
-  final Widget Function(BuildContext context, String tex, TextStyle textStyle, bool inline)? latexBuilder;
+  final Widget Function(
+          BuildContext context, String tex, TextStyle textStyle, bool inline)?
+      latexBuilder;
 
   /// Custom builder for source tags in markdown content.
-  final Widget Function(BuildContext context, String content, TextStyle textStyle)? sourceTagBuilder;
+  final Widget Function(
+          BuildContext context, String content, TextStyle textStyle)?
+      sourceTagBuilder;
 
   /// Custom builder for highlighted text in markdown content.
-  final Widget Function(BuildContext context, String text, TextStyle style)? highlightBuilder;
+  final Widget Function(BuildContext context, String text, TextStyle style)?
+      highlightBuilder;
 
   /// Custom builder for links in markdown content.
-  final Widget Function(BuildContext context, InlineSpan text, String url, TextStyle style)? linkBuilder;
+  final Widget Function(
+          BuildContext context, InlineSpan text, String url, TextStyle style)?
+      linkBuilder;
 
   @override
   State<StreamingText> createState() => _StreamingTextState();
@@ -145,20 +159,28 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   /// Whether markdown-compatible trailing-edge fade is allowed.
-  /// More permissive than _fadeInAllowed — works with Arabic and markdown.
+  /// Controlled by [trailingFadeEnabled], independent of [fadeInEnabled].
+  /// Stays true while the fade-out animation is still playing after completion.
   bool get _markdownFadeAllowed {
     return widget.animationsEnabled &&
-        widget.fadeInEnabled &&
+        widget.trailingFadeEnabled &&
         widget.markdownEnabled &&
-        !_isComplete;
+        (!_isComplete || _groupAnimationController.value < 1.0);
   }
 
   /// Triggers the trailing-edge fade animation for streaming content.
-  /// Called each time a new chunk of text is added to the display buffer.
+  /// While streaming is active, the fade stays applied (controller at 0).
+  /// When streaming completes, the fade animates away (controller goes to 1).
   void _triggerTrailingFade() {
-    if (!mounted || !widget.animationsEnabled || !widget.fadeInEnabled || _isComplete) return;
-    _groupAnimationController.reset();
-    _groupAnimationController.forward();
+    if (!mounted || !widget.animationsEnabled || !widget.trailingFadeEnabled)
+      return;
+    if (_isComplete) {
+      // Streaming finished — animate the trailing fade away smoothly
+      if (!_groupAnimationController.isAnimating) {
+        _groupAnimationController.forward();
+      }
+    }
+    // While streaming, controller stays at 0 (set in initState) — no action needed
   }
 
   /// Whether the currently streaming text ends inside a block LaTeX expression.
@@ -198,9 +220,8 @@ class _StreamingTextState extends State<StreamingText>
   final List<Timer> _allActiveTimers = [];
 
   // v1.3.3: Compiled regex for performance (backward compatible)
-  static final RegExp _arabicBreakPointRegex = RegExp(
-    r'[\s\u0600-\u060C\u060E-\u061A\u061C-\u061E\u0621\u0640]'
-  );
+  static final RegExp _arabicBreakPointRegex =
+      RegExp(r'[\s\u0600-\u060C\u060E-\u061A\u061C-\u061E\u0621\u0640]');
 
   /// v1.3.3: Safe setState wrapper to prevent crashes during disposal.
   /// This is an internal method that maintains exact same behavior as setState
@@ -606,9 +627,8 @@ class _StreamingTextState extends State<StreamingText>
 
     // v1.3.3: Check if stream is already broadcast to prevent double-wrapping
     final stream = widget.stream!;
-    final effectiveStream = stream.isBroadcast
-        ? stream
-        : stream.asBroadcastStream();
+    final effectiveStream =
+        stream.isBroadcast ? stream : stream.asBroadcastStream();
 
     _streamSubscription = effectiveStream.listen(
       (data) {
@@ -935,24 +955,38 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   List<String> _splitArabicWords(String text) {
-    // Split on Arabic word boundaries and spaces
+    // Use the same markdown-aware splitting as LTR text.
+    // Arabic words are separated by whitespace — do NOT strip Arabic
+    // punctuation or letters (hamza, tatweel, etc.) as delimiters.
     final words = <String>[];
-    final pattern =
-        RegExp(r'[\s\u0600-\u060C\u060E-\u061A\u061C-\u061E\u0621\u0640]+');
+    final lines = text.split('\n');
 
-    int start = 0;
-    for (final match in pattern.allMatches(text)) {
-      if (match.start > start) {
-        words.add(text.substring(start, match.start));
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+
+      if (line.startsWith('### ') ||
+          line.startsWith('## ') ||
+          line.startsWith('# ')) {
+        words.add(line);
+      } else if (line.trim().startsWith('> ')) {
+        words.add(line);
+      } else if (line.trim().startsWith('- ') ||
+          line.trim().startsWith('* ') ||
+          RegExp(r'^\d+\.\s').hasMatch(line.trim())) {
+        words.add(line);
+      } else if (line.trim().isEmpty) {
+        words.add(line);
+      } else {
+        final lineWords = line.split(RegExp(r'\s+'));
+        words.addAll(lineWords.where((w) => w.isNotEmpty));
       }
-      start = match.end;
+
+      if (i < lines.length - 1) {
+        words.add('\n');
+      }
     }
 
-    if (start < text.length) {
-      words.add(text.substring(start));
-    }
-
-    return words.where((w) => w.trim().isNotEmpty).toList();
+    return words;
   }
 
   List<String> _splitMarkdownAwareWords(String text) {
@@ -1163,7 +1197,7 @@ class _StreamingTextState extends State<StreamingText>
     // v1.3.3: Check each character separately to avoid string concatenation
     // and use compiled regex for performance
     return _arabicBreakPointRegex.hasMatch(current) ||
-           _arabicBreakPointRegex.hasMatch(next);
+        _arabicBreakPointRegex.hasMatch(next);
   }
 
   void _createGroupAnimation(List<String> groups, int startIndex) {
@@ -1294,13 +1328,17 @@ class _StreamingTextState extends State<StreamingText>
                   }
                   // Fade the bottom 40px of the content
                   final fadeHeight = 40.0 * (1.0 - value);
-                  final fadeStart = (bounds.height - fadeHeight)
-                      .clamp(0.0, bounds.height);
+                  final fadeStart =
+                      (bounds.height - fadeHeight).clamp(0.0, bounds.height);
                   final stop = (fadeStart / bounds.height).clamp(0.0, 0.999);
                   return LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: const [Colors.white, Colors.white, Colors.transparent],
+                    colors: const [
+                      Colors.white,
+                      Colors.white,
+                      Colors.transparent
+                    ],
                     stops: [0.0, stop, 1.0],
                   ).createShader(bounds);
                 },
@@ -1407,8 +1445,8 @@ class _StreamingTextState extends State<StreamingText>
                 ).createShader(bounds);
               }
               final fadeHeight = 40.0 * (1.0 - value);
-              final fadeStart = (bounds.height - fadeHeight)
-                  .clamp(0.0, bounds.height);
+              final fadeStart =
+                  (bounds.height - fadeHeight).clamp(0.0, bounds.height);
               final stop = (fadeStart / bounds.height).clamp(0.0, 0.999);
               return LinearGradient(
                 begin: Alignment.topCenter,

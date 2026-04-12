@@ -26,6 +26,16 @@ class _HeroSectionState extends State<HeroSection> {
       '- ✍️ Typing animations\n\n'
       '> Built with love for the Flutter community.';
 
+  static const _heroTextRtl =
+      '## مرحباً بالعالم! 👋\n\n'
+      'هذه حزمة **flutter_streaming_text_markdown** لعرض '
+      'النص المتدفق مع دعم كامل لـ **Markdown**.\n\n'
+      'مثالية لبناء:\n'
+      '- 🤖 واجهات الدردشة الذكية\n'
+      '- 💬 المراسلة الفورية\n'
+      '- ✍️ تأثيرات الكتابة المتحركة\n\n'
+      '> صُنعت بحب لمجتمع فلاتر.';
+
   @override
   void didUpdateWidget(HeroSection old) {
     super.didUpdateWidget(old);
@@ -68,7 +78,7 @@ class _HeroSectionState extends State<HeroSection> {
           children: [
             _chip('pub.dev', accent, url: 'https://pub.dev/packages/flutter_streaming_text_markdown'),
             _chip('GitHub', accent, url: 'https://github.com/hooshyar/flutter_streaming_text_markdown'),
-            _chip('v1.4.0', isDark ? Colors.white24 : Colors.black26),
+            _chip('v1.7.0', isDark ? Colors.white24 : Colors.black26),
           ],
         ),
         const SizedBox(height: 32),
@@ -109,11 +119,16 @@ class _HeroSectionState extends State<HeroSection> {
               if (preset != null)
                 StreamingTextMarkdown.fromPreset(
                   key: ValueKey('hero_$_heroKey'),
-                  text: _heroText,
+                  text: widget.activePresetName == 'rtlOptimized'
+                      ? _heroTextRtl
+                      : _heroText,
                   preset: preset,
                   markdownEnabled: true,
                   autoScroll: false,
                   padding: EdgeInsets.zero,
+                  textDirection: widget.activePresetName == 'rtlOptimized'
+                      ? TextDirection.rtl
+                      : null,
                 )
               else
                 StreamingTextMarkdown.chatGPT(

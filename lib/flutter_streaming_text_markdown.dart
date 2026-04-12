@@ -110,6 +110,11 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Whether animations are enabled. When false, text appears instantly.
   final bool animationsEnabled;
 
+  /// Whether to show a trailing gradient fade at the bottom edge while
+  /// text is streaming. The fade animates away when streaming completes.
+  /// Defaults to `false`.
+  final bool trailingFadeEnabled;
+
   /// Whether to show a shimmer skeleton placeholder instead of the text widget.
   ///
   /// Set to `true` while waiting for the first LLM token to arrive
@@ -138,19 +143,27 @@ class StreamingTextMarkdown extends StatefulWidget {
   final void Function(String url, String title)? onLinkTap;
 
   /// Custom builder for code blocks in markdown content.
-  final Widget Function(BuildContext context, String name, String code, bool closed)? codeBuilder;
+  final Widget Function(
+      BuildContext context, String name, String code, bool closed)? codeBuilder;
 
   /// Custom builder for LaTeX expressions in markdown content.
-  final Widget Function(BuildContext context, String tex, TextStyle textStyle, bool inline)? latexBuilder;
+  final Widget Function(
+          BuildContext context, String tex, TextStyle textStyle, bool inline)?
+      latexBuilder;
 
   /// Custom builder for source tags in markdown content.
-  final Widget Function(BuildContext context, String content, TextStyle textStyle)? sourceTagBuilder;
+  final Widget Function(
+          BuildContext context, String content, TextStyle textStyle)?
+      sourceTagBuilder;
 
   /// Custom builder for highlighted text in markdown content.
-  final Widget Function(BuildContext context, String text, TextStyle style)? highlightBuilder;
+  final Widget Function(BuildContext context, String text, TextStyle style)?
+      highlightBuilder;
 
   /// Custom builder for links in markdown content.
-  final Widget Function(BuildContext context, InlineSpan text, String url, TextStyle style)? linkBuilder;
+  final Widget Function(
+          BuildContext context, InlineSpan text, String url, TextStyle style)?
+      linkBuilder;
 
   const StreamingTextMarkdown({
     super.key,
@@ -176,6 +189,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = true,
+    this.trailingFadeEnabled = false,
     this.isLoading = false,
     this.shimmerLineCount = 3,
     this.imageBuilder,
@@ -207,6 +221,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = true,
+    this.trailingFadeEnabled = false,
     this.isLoading = false,
     this.shimmerLineCount = 3,
     this.imageBuilder,
@@ -243,6 +258,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = true,
+    this.trailingFadeEnabled = false,
     this.isLoading = false,
     this.shimmerLineCount = 3,
     this.imageBuilder,
@@ -279,6 +295,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = true,
+    this.trailingFadeEnabled = false,
     this.isLoading = false,
     this.shimmerLineCount = 3,
     this.imageBuilder,
@@ -315,6 +332,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = false,
+    this.trailingFadeEnabled = false,
     this.isLoading = false,
     this.shimmerLineCount = 3,
     this.imageBuilder,
@@ -351,6 +369,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.controller,
     this.onComplete,
     this.animationsEnabled = true,
+    this.trailingFadeEnabled = false,
     this.isLoading = false,
     this.shimmerLineCount = 3,
     this.imageBuilder,
@@ -434,6 +453,7 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           textAlign: widget.textAlign,
           controller: widget.controller,
           animationsEnabled: widget.animationsEnabled,
+          trailingFadeEnabled: widget.trailingFadeEnabled,
           imageBuilder: widget.imageBuilder,
           onLinkTap: widget.onLinkTap,
           codeBuilder: widget.codeBuilder,

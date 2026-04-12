@@ -16,7 +16,7 @@ class _ShimmerTestAppState extends State<ShimmerTestApp> {
 
 This is the new **shimmer loading state** feature.
 
-When \`isLoading: true\`, you see an animated skeleton placeholder instead of blank space.
+When `isLoading: true`, you see an animated skeleton placeholder instead of blank space.
 
 Now you can:
 - Show a nice loading indicator while waiting for the first LLM token

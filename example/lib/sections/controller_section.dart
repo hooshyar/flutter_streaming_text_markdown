@@ -35,13 +35,25 @@ class _ControllerSectionState extends State<ControllerSection> {
 
   void _setupCallbacks() {
     _controller.onProgressChanged((p) {
-      if (mounted) setState(() => _progress = p);
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _progress = p);
+        });
+      }
     });
     _controller.onStateChanged((s) {
-      if (mounted) setState(() => _state = s);
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _state = s);
+        });
+      }
     });
     _controller.onCompleted(() {
-      if (mounted) setState(() => _state = StreamingTextState.completed);
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _state = StreamingTextState.completed);
+        });
+      }
     });
   }
 

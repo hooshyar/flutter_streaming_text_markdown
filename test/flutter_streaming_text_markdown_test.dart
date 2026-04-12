@@ -188,14 +188,73 @@ void main() {
           home: StreamingTextMarkdown(
             text: '```dart\nprint("hello");\n```',
             markdownEnabled: true,
-            codeBuilder: (context, name, code, closed) =>
-                Text('Code: $code'),
+            codeBuilder: (context, name, code, closed) => Text('Code: $code'),
           ),
         ),
       );
 
       await tester.pump();
       expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+    });
+  });
+
+  group('Trailing fade', () {
+    testWidgets('trailingFadeEnabled defaults to false', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StreamingTextMarkdown(
+            text: 'Hello world',
+            markdownEnabled: true,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      final widget = tester.widget<StreamingTextMarkdown>(
+        find.byType(StreamingTextMarkdown),
+      );
+      expect(widget.trailingFadeEnabled, false);
+    });
+
+    testWidgets('trailingFadeEnabled can be set to true', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StreamingTextMarkdown(
+            text: '## Hello\n\nStreaming text with trailing fade.',
+            markdownEnabled: true,
+            trailingFadeEnabled: true,
+            typingSpeed: Duration(milliseconds: 20),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      final widget = tester.widget<StreamingTextMarkdown>(
+        find.byType(StreamingTextMarkdown),
+      );
+      expect(widget.trailingFadeEnabled, true);
+
+      // Let animation run and complete without errors
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+    });
+
+    testWidgets('named constructors default trailingFadeEnabled to false',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StreamingTextMarkdown.claude(
+            text: 'Test text',
+          ),
+        ),
+      );
+
+      await tester.pump();
+      final widget = tester.widget<StreamingTextMarkdown>(
+        find.byType(StreamingTextMarkdown),
+      );
+      expect(widget.trailingFadeEnabled, false);
     });
   });
 }

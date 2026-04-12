@@ -4,13 +4,13 @@
 
 [![pub package](https://img.shields.io/pub/v/flutter_streaming_text_markdown.svg)](https://pub.dev/packages/flutter_streaming_text_markdown)
 
-## 🆕 v1.4.0 - Styling & LaTeX
-- ✅ **New**: `styleSheet` parameter accepts `TextStyle` for full markdown styling control (Issue #5)
-- ✅ **New**: LaTeX support with inline `$...$` and block `$$...$$` expressions (Issue #2)
-- ✅ **New**: Theme system with `StreamingTextTheme` extension
-- ✅ **Fixed**: Markdown animations no longer freeze (Issue #3)
-- ✅ **Fixed**: Streaming text continues properly instead of restarting (Issue #1)
-- ✅ **Enhanced**: 70 tests passing, 0 analysis issues
+## 🆕 v1.7.0 - Custom Builders & RTL Fixes
+- ✅ **New**: Custom markdown builders — `imageBuilder`, `onLinkTap`, `codeBuilder`, `latexBuilder`, `linkBuilder`, and more (Issue #10)
+- ✅ **New**: `trailingFadeEnabled` — optional trailing gradient fade during streaming
+- ✅ **Fixed**: Emoji/Unicode characters no longer skipped during animation resume (PR #9)
+- ✅ **Fixed**: Arabic/RTL word splitting preserves markdown syntax and punctuation
+- ✅ **Fixed**: Trailing fade no longer blinks during streaming
+- ✅ **Enhanced**: 74 tests passing, 0 analysis issues
 
 ## ✨ Features
 

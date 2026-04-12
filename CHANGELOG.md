@@ -28,9 +28,16 @@ StreamingTextMarkdown.chatGPT(
 );
 ```
 
+**Trailing fade effect** — new `trailingFadeEnabled` parameter
+
+Optional trailing gradient fade at the bottom edge while text is streaming. The fade holds steady during streaming and smoothly animates away when complete. Opt-in via `trailingFadeEnabled: true` — disabled by default.
+
 ### Bug Fixes
 
 * **Fix emoji character skipping during animation resume** (closes PR #9) — `_displayedText.length` returned UTF-16 code units but was used as an index into grapheme cluster lists, causing characters after emoji to be dropped. Now uses `_displayedText.characters.length`.
+* **Fix Arabic/RTL word splitting** — the previous regex stripped Arabic punctuation and hamza (ء) as delimiters and didn't preserve markdown syntax (headers, blockquotes, lists). Now uses the same markdown-aware splitting as LTR text.
+* **Fix trailing fade blinking** — the trailing gradient was resetting on every animation tick, causing visible flashing. Now holds steady during streaming and animates away once on completion.
+* **Fix setState during build in example** — `StreamingTextController` callbacks in the example's ControllerSection could fire during the build phase. Deferred with `addPostFrameCallback`.
 
 ## 1.6.0
 

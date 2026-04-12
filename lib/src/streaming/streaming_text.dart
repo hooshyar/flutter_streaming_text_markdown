@@ -172,8 +172,9 @@ class _StreamingTextState extends State<StreamingText>
   /// While streaming is active, the fade stays applied (controller at 0).
   /// When streaming completes, the fade animates away (controller goes to 1).
   void _triggerTrailingFade() {
-    if (!mounted || !widget.animationsEnabled || !widget.trailingFadeEnabled)
+    if (!mounted || !widget.animationsEnabled || !widget.trailingFadeEnabled) {
       return;
+    }
     if (_isComplete) {
       // Streaming finished — animate the trailing fade away smoothly
       if (!_groupAnimationController.isAnimating) {

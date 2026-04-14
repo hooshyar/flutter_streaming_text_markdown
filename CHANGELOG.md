@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.1
+
+* Fix lint info (curly braces) for full 160/160 pub.dev score
+* All trailing fade, Arabic word splitting, and setState fixes included
+
 ## 1.7.0
 
 ### New Features

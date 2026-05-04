@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.7.2
+
+### Bug fixes
+
+* **Trailing fade now actually dismisses on completion** (closes #12). Previously the trailing-edge gradient would stay applied forever after typing/streaming finished — `_triggerTrailingFade()` was called during streaming via `_updateProgress`, but every completion path set `_isComplete = true` without re-triggering the dismiss animation. Centralized completion through a new `_handleCompletion()` helper that fires `onComplete` and triggers the fade-out together. Affected all 11 completion sites (typing finish, stream `onDone`, skip-to-end, tap-to-skip, append-completion, etc.).
+
+### Documentation
+
+* Documented the silent fade-in suppression for streams and Arabic content (#11). `fadeInEnabled` and `stream` now have explicit dartdoc on the interaction; README has a "Choosing a fade for streaming content" table.
+
+### Tests
+
+* Added regression tests covering both completion paths (`text` prop + `Stream<String>`) with `trailingFadeEnabled: true`.
+
 ## 1.7.1
 
 * Fix lint info (curly braces) for full 160/160 pub.dev score

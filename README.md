@@ -186,8 +186,9 @@ controller.speedMultiplier = 0.5;  // Half speed
 | `typingSpeed` | `Duration` | Speed of typing animation |
 | `wordByWord` | `bool` | Whether to animate word by word |
 | `chunkSize` | `int` | Number of characters to reveal at once |
-| `fadeInEnabled` | `bool` | Enable fade-in animation |
-| `fadeInDuration` | `Duration` | Duration of fade-in animation |
+| `fadeInEnabled` | `bool` | Per-character fade-in. Auto-disabled for Arabic/RTL and for `Stream<String>` sources — use `trailingFadeEnabled` for streams. |
+| `fadeInDuration` | `Duration` | Duration of fade-in animation (also used for trailing-fade dismiss) |
+| `trailingFadeEnabled` | `bool` | Bottom-edge gradient fade while streaming. Animates away on completion. Recommended for `Stream<String>` and markdown content. |
 | `textDirection` | `TextDirection?` | Text direction (LTR or RTL) |
 | `textAlign` | `TextAlign?` | Text alignment |
 | `markdownEnabled` | `bool` | Enable markdown rendering |
@@ -195,6 +196,14 @@ controller.speedMultiplier = 0.5;  // Half speed
 | `latexStyle` | `TextStyle?` | Style for LaTeX expressions |
 | `latexScale` | `double` | Scale factor for LaTeX rendering |
 | `latexFadeInEnabled` | `bool?` | Enable fade-in for LaTeX (null = auto) |
+
+#### Choosing a fade for streaming content
+
+| Source | Recommended | Why |
+|--------|-------------|-----|
+| Static `text` (LTR) | `fadeInEnabled: true` | Cheap per-character fade, looks great |
+| Static `text` (Arabic/RTL) | `trailingFadeEnabled: true` | Per-character fade auto-disabled for RTL |
+| `Stream<String>` | `trailingFadeEnabled: true` | Per-character fade auto-disabled to avoid an unbounded number of `AnimationController`s |
 
 ## Markdown Support
 

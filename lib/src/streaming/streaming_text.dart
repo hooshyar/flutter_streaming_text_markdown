@@ -94,13 +94,33 @@ class StreamingText extends StatefulWidget {
   final bool showCursor;
   final Color? cursorColor;
   final VoidCallback? onComplete;
+
+  /// Optional stream of text chunks. When provided, [text] is ignored as the
+  /// initial source and content arrives via the stream instead.
+  ///
+  /// Note: per-character [fadeInEnabled] is automatically suppressed when a
+  /// stream is set — animating one [AnimationController] per glyph on an
+  /// unbounded stream causes memory and frame-rate issues. For a smooth reveal
+  /// on streaming content, use [trailingFadeEnabled] instead.
   final Stream<String>? stream;
+
   final bool markdownEnabled;
   final bool latexEnabled;
   final TextStyle? latexStyle;
   final double latexScale;
   final bool? latexFadeInEnabled;
+
+  /// Whether each character (or word, in word-by-word mode) fades in as it is
+  /// revealed.
+  ///
+  /// **Disabled automatically** when:
+  /// - [stream] is non-null (use [trailingFadeEnabled] for streams)
+  /// - The displayed text contains Arabic — RTL Unicode ranges trigger an
+  ///   automatic fallback for performance
+  ///
+  /// Defaults to `false`.
   final bool fadeInEnabled;
+
   final Duration fadeInDuration;
   final Curve fadeInCurve;
   final TextStyle? markdownStyleSheet;
@@ -109,8 +129,13 @@ class StreamingText extends StatefulWidget {
   /// Whether animations are enabled. When false, text appears instantly.
   final bool animationsEnabled;
 
-  /// Whether to show a trailing gradient fade at the bottom edge while
-  /// text is streaming. The fade animates away when streaming completes.
+  /// Whether to show a trailing gradient fade at the bottom edge while text is
+  /// streaming. The fade animates away when streaming completes (using
+  /// [fadeInDuration] / [fadeInCurve] for the dismiss animation).
+  ///
+  /// Recommended for stream-based usage where [fadeInEnabled] is suppressed.
+  /// Works alongside [markdownEnabled] and RTL/Arabic content.
+  ///
   /// Defaults to `false`.
   final bool trailingFadeEnabled;
 
@@ -182,6 +207,15 @@ class _StreamingTextState extends State<StreamingText>
       }
     }
     // While streaming, controller stays at 0 (set in initState) — no action needed
+  }
+
+  /// Centralized completion hook. Fires the user's onComplete callback and
+  /// dismisses the trailing-edge fade. Call after `_isComplete` is set to true.
+  /// Does NOT call controller.markCompleted — that's not idempotent and stays
+  /// at the call sites that need it.
+  void _handleCompletion() {
+    widget.onComplete?.call();
+    _triggerTrailingFade();
   }
 
   /// Whether the currently streaming text ends inside a block LaTeX expression.
@@ -329,7 +363,7 @@ class _StreamingTextState extends State<StreamingText>
       _isAnimationActive = false;
     });
     widget.controller?.markCompleted();
-    widget.onComplete?.call();
+    _handleCompletion();
   }
 
   void _continueAnimationFromTextAppend(String oldText, String newText) {
@@ -375,7 +409,7 @@ class _StreamingTextState extends State<StreamingText>
         _isAnimationActive = false;
       });
       widget.controller?.markCompleted();
-      widget.onComplete?.call();
+      _handleCompletion();
       return;
     }
 
@@ -412,7 +446,7 @@ class _StreamingTextState extends State<StreamingText>
           _isAnimationActive = false;
         });
         widget.controller?.markCompleted();
-        widget.onComplete?.call();
+        _handleCompletion();
         return;
       }
 
@@ -494,7 +528,7 @@ class _StreamingTextState extends State<StreamingText>
       _isAnimationActive = false;
     });
     widget.controller?.markCompleted();
-    widget.onComplete?.call();
+    _handleCompletion();
     // Force rebuild to process complete markdown
     // v1.3.3: Use safe setState in callback
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -666,7 +700,7 @@ class _StreamingTextState extends State<StreamingText>
           _isAnimationActive = false;
         });
         widget.controller?.markCompleted();
-        widget.onComplete?.call();
+        _handleCompletion();
         // Force rebuild to process complete markdown
         // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -752,7 +786,7 @@ class _StreamingTextState extends State<StreamingText>
           _isAnimationActive = false; // Animation is now complete
         });
         widget.controller?.markCompleted();
-        widget.onComplete?.call();
+        _handleCompletion();
         // Force rebuild to process complete markdown
         // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -832,7 +866,7 @@ class _StreamingTextState extends State<StreamingText>
           _isAnimationActive = false;
         });
         widget.controller?.markCompleted();
-        widget.onComplete?.call();
+        _handleCompletion();
         // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _safeSetState(() {});
@@ -930,7 +964,7 @@ class _StreamingTextState extends State<StreamingText>
           _isAnimationActive = false;
         });
         widget.controller?.markCompleted();
-        widget.onComplete?.call();
+        _handleCompletion();
         // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _safeSetState(() {});
@@ -1078,7 +1112,7 @@ class _StreamingTextState extends State<StreamingText>
           _isAnimationActive = false; // Animation is now complete
         });
         widget.controller?.markCompleted();
-        widget.onComplete?.call();
+        _handleCompletion();
         // Force rebuild to process complete markdown
         // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1138,7 +1172,7 @@ class _StreamingTextState extends State<StreamingText>
           _isComplete = true;
           _isAnimationActive = false;
         });
-        widget.onComplete?.call();
+        _handleCompletion();
         // Force rebuild to process complete markdown
         // v1.3.3: Use safe setState in callback
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1251,7 +1285,7 @@ class _StreamingTextState extends State<StreamingText>
           _isComplete = true;
           _isAnimationActive = false;
         });
-        widget.onComplete?.call();
+        _handleCompletion();
         // Force rebuild to process complete markdown
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _safeSetState(() {});

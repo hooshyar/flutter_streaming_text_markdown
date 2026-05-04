@@ -256,5 +256,61 @@ void main() {
       );
       expect(widget.trailingFadeEnabled, false);
     });
+
+    testWidgets(
+        'completes typing exactly once with trailingFadeEnabled (regression: #12)',
+        (tester) async {
+      var completed = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: 'short',
+            markdownEnabled: true,
+            trailingFadeEnabled: true,
+            typingSpeed: const Duration(milliseconds: 5),
+            fadeInDuration: const Duration(milliseconds: 50),
+            onComplete: () => completed++,
+          ),
+        ),
+      );
+
+      // Pump past typing animation and fade-out window
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(completed, 1, reason: 'onComplete must fire exactly once');
+    });
+
+    testWidgets(
+        'completes stream exactly once with trailingFadeEnabled (regression: #12)',
+        (tester) async {
+      final controller = StreamController<String>();
+      var completed = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingText(
+            text: '',
+            stream: controller.stream,
+            markdownEnabled: true,
+            trailingFadeEnabled: true,
+            fadeInDuration: const Duration(milliseconds: 50),
+            onComplete: () => completed++,
+          ),
+        ),
+      );
+
+      controller.add('hello');
+      await tester.pump(const Duration(milliseconds: 100));
+      await controller.close();
+      // Pump past async stream-done dispatch and fade-out
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(completed, 1,
+          reason: 'onComplete must fire exactly once on stream done');
+    });
   });
 }

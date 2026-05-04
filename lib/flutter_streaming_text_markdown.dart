@@ -62,7 +62,9 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Whether to scroll automatically as new text arrives
   final bool autoScroll;
 
-  /// Whether to enable fade-in animation for each character
+  /// Whether each character (or word, in word-by-word mode) fades in as it is
+  /// revealed. Disabled automatically for Arabic/RTL content. For stream-based
+  /// usage in [StreamingText], use [trailingFadeEnabled] instead.
   final bool fadeInEnabled;
 
   /// Duration of the fade-in animation
@@ -110,8 +112,10 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Whether animations are enabled. When false, text appears instantly.
   final bool animationsEnabled;
 
-  /// Whether to show a trailing gradient fade at the bottom edge while
-  /// text is streaming. The fade animates away when streaming completes.
+  /// Whether to show a trailing gradient fade at the bottom edge while text is
+  /// streaming. The fade animates away when streaming completes (using
+  /// [fadeInDuration] / [fadeInCurve] for the dismiss animation). Recommended
+  /// for stream-based usage and works with markdown + RTL content.
   /// Defaults to `false`.
   final bool trailingFadeEnabled;
 

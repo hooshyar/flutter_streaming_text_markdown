@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.3
+
+### Bug fixes
+
+* **Fix pub.dev static analysis failure causing 90/160 score.** `gpt_markdown` 1.1.7 changed the `ImageBuilder` typedef from 2 args to 4 args (added optional `width`/`height` parsed from image alt text). Our constraint `^1.1.6` permitted 1.1.7, so pana resolved to it and the `imageBuilder` argument at `streaming_text.dart:1708` failed type-checking — which cascaded into platform-support detection also reporting 0/20. Bumped the dependency to `^1.1.7` and added a thin internal adapter so the public `imageBuilder(BuildContext, String)` signature stays unchanged. No user code changes required. Restores full 160/160 pub.dev score.
+
 ## 1.7.2
 
 ### Bug fixes

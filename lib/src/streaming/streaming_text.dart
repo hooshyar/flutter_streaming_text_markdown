@@ -1705,7 +1705,9 @@ class _StreamingTextState extends State<StreamingText>
       textDirection: widget.textDirection ?? TextDirection.ltr,
       textAlign: widget.textAlign,
       textScaler: widget.textScaler,
-      imageBuilder: widget.imageBuilder,
+      imageBuilder: widget.imageBuilder == null
+          ? null
+          : (ctx, url, width, height) => widget.imageBuilder!(ctx, url),
       onLinkTap: widget.onLinkTap,
       codeBuilder: widget.codeBuilder,
       latexBuilder: widget.latexBuilder,

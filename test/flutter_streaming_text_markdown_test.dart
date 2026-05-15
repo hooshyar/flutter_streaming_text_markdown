@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpt_markdown/gpt_markdown.dart' show MarkdownComponent;
 
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 
@@ -174,6 +175,23 @@ void main() {
             onLinkTap: (url, title) {
               tappedUrl = url;
             },
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+    });
+
+    testWidgets('accepts components and inlineComponents parameters',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: '# Header\n**bold** *italic*',
+            markdownEnabled: true,
+            components: const <MarkdownComponent>[],
+            inlineComponents: const <MarkdownComponent>[],
           ),
         ),
       );

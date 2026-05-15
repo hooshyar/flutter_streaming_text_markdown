@@ -72,6 +72,8 @@ class StreamingText extends StatefulWidget {
     this.sourceTagBuilder,
     this.highlightBuilder,
     this.linkBuilder,
+    this.components,
+    this.inlineComponents,
   });
 
   final String text;
@@ -167,6 +169,17 @@ class StreamingText extends StatefulWidget {
   final Widget Function(
           BuildContext context, InlineSpan text, String url, TextStyle style)?
       linkBuilder;
+
+  /// Custom block-level markdown components. Forwarded as-is to
+  /// `gpt_markdown`'s `GptMarkdown.components`. Use this to override how
+  /// headers, lists, bold, italic, tables, etc. are rendered. When `null`,
+  /// `gpt_markdown`'s default component list is used.
+  final List<MarkdownComponent>? components;
+
+  /// Custom inline markdown components. Forwarded as-is to
+  /// `gpt_markdown`'s `GptMarkdown.inlineComponents`. When `null`,
+  /// `gpt_markdown`'s default inline component list is used.
+  final List<MarkdownComponent>? inlineComponents;
 
   @override
   State<StreamingText> createState() => _StreamingTextState();
@@ -1714,6 +1727,8 @@ class _StreamingTextState extends State<StreamingText>
       sourceTagBuilder: widget.sourceTagBuilder,
       highlightBuilder: widget.highlightBuilder,
       linkBuilder: widget.linkBuilder,
+      components: widget.components,
+      inlineComponents: widget.inlineComponents,
     );
 
     // Cache only complete, final states

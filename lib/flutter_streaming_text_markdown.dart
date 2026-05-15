@@ -23,6 +23,7 @@ export 'src/theme/streaming_text_theme.dart';
 export 'src/controller/streaming_text_controller.dart';
 export 'src/presets/animation_presets.dart';
 import 'package:flutter/material.dart';
+import 'package:gpt_markdown/gpt_markdown.dart' show MarkdownComponent;
 import 'src/streaming/streaming_text.dart';
 import 'src/theme/streaming_text_theme.dart';
 import 'src/controller/streaming_text_controller.dart';
@@ -169,6 +170,17 @@ class StreamingTextMarkdown extends StatefulWidget {
           BuildContext context, InlineSpan text, String url, TextStyle style)?
       linkBuilder;
 
+  /// Custom block-level markdown components forwarded to `gpt_markdown`'s
+  /// `GptMarkdown.components`. Use this to override how headers, lists,
+  /// bold, italic, tables, etc. are rendered. When `null`, the default
+  /// `gpt_markdown` component list is used.
+  final List<MarkdownComponent>? components;
+
+  /// Custom inline markdown components forwarded to `gpt_markdown`'s
+  /// `GptMarkdown.inlineComponents`. When `null`, the default inline
+  /// component list is used.
+  final List<MarkdownComponent>? inlineComponents;
+
   const StreamingTextMarkdown({
     super.key,
     required this.text,
@@ -203,6 +215,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.sourceTagBuilder,
     this.highlightBuilder,
     this.linkBuilder,
+    this.components,
+    this.inlineComponents,
   });
 
   /// Creates a StreamingTextMarkdown with ChatGPT-style animation
@@ -235,6 +249,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.sourceTagBuilder,
     this.highlightBuilder,
     this.linkBuilder,
+    this.components,
+    this.inlineComponents,
   })  : fadeInEnabled = true,
         fadeInDuration = const Duration(milliseconds: 150),
         fadeInCurve = Curves.easeOut,
@@ -272,6 +288,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.sourceTagBuilder,
     this.highlightBuilder,
     this.linkBuilder,
+    this.components,
+    this.inlineComponents,
   })  : fadeInEnabled = true,
         fadeInDuration = const Duration(milliseconds: 200),
         fadeInCurve = Curves.easeInOut,
@@ -309,6 +327,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.sourceTagBuilder,
     this.highlightBuilder,
     this.linkBuilder,
+    this.components,
+    this.inlineComponents,
   })  : fadeInEnabled = false,
         fadeInDuration = Duration.zero,
         fadeInCurve = Curves.linear,
@@ -346,6 +366,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.sourceTagBuilder,
     this.highlightBuilder,
     this.linkBuilder,
+    this.components,
+    this.inlineComponents,
   })  : fadeInEnabled = false,
         fadeInDuration = Duration.zero,
         fadeInCurve = Curves.linear,
@@ -383,6 +405,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.sourceTagBuilder,
     this.highlightBuilder,
     this.linkBuilder,
+    this.components,
+    this.inlineComponents,
   })  : fadeInEnabled = preset.fadeInEnabled,
         fadeInDuration = preset.fadeInDuration,
         fadeInCurve = preset.fadeInCurve,
@@ -465,6 +489,8 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           sourceTagBuilder: widget.sourceTagBuilder,
           highlightBuilder: widget.highlightBuilder,
           linkBuilder: widget.linkBuilder,
+          components: widget.components,
+          inlineComponents: widget.inlineComponents,
           onComplete: () {
             // Handle auto-scrolling
             if (mounted && widget.autoScroll && _scrollController.hasClients) {

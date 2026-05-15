@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.8.0
+
+### New Features
+
+**Custom markdown components** (closes #13)
+
+Expose `gpt_markdown`'s component lists so you can override how block- and inline-level markdown elements are rendered — headers, lists, bold, italic, tables, etc. Both parameters are forwarded as-is to the underlying `GptMarkdown` widget; passing `null` (the default) keeps `gpt_markdown`'s built-in component list.
+
+* `components` — `List<MarkdownComponent>?`, block-level overrides (headers, lists, code blocks, tables, …)
+* `inlineComponents` — `List<MarkdownComponent>?`, inline-level overrides (bold, italic, strikethrough, links, …)
+
+Available on every constructor — default, `.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, `.fromPreset()`. Non-breaking.
+
 ## 1.7.3
 
 ### Bug fixes

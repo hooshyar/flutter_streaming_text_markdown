@@ -4,13 +4,11 @@
 
 [![pub package](https://img.shields.io/pub/v/flutter_streaming_text_markdown.svg)](https://pub.dev/packages/flutter_streaming_text_markdown)
 
-## 🆕 v1.7.0 - Custom Builders & RTL Fixes
-- ✅ **New**: Custom markdown builders — `imageBuilder`, `onLinkTap`, `codeBuilder`, `latexBuilder`, `linkBuilder`, and more (Issue #10)
-- ✅ **New**: `trailingFadeEnabled` — optional trailing gradient fade during streaming
-- ✅ **Fixed**: Emoji/Unicode characters no longer skipped during animation resume (PR #9)
-- ✅ **Fixed**: Arabic/RTL word splitting preserves markdown syntax and punctuation
-- ✅ **Fixed**: Trailing fade no longer blinks during streaming
-- ✅ **Enhanced**: 74 tests passing, 0 analysis issues
+## 🆕 v1.8.0 — Override every markdown component
+- ✅ **New**: `components` / `inlineComponents` — full override of how block- and inline-level markdown elements render (headers, lists, tables, bold, italic, links, …) via `gpt_markdown` (Issue #13)
+- ✅ Available on every constructor (default, `.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, `.fromPreset()`). Non-breaking — pass `null` to keep defaults.
+- ✅ All previous builders still work: `imageBuilder`, `onLinkTap`, `codeBuilder`, `latexBuilder`, `linkBuilder`
+- ✅ **Quality**: 80 tests passing, 0 analysis issues, 160/160 pub.dev score
 
 ## ✨ Features
 
@@ -44,7 +42,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_streaming_text_markdown: ^1.4.0
+  flutter_streaming_text_markdown: ^1.8.0
 ```
 
 ## 🚀 Quick Start
@@ -196,6 +194,13 @@ controller.speedMultiplier = 0.5;  // Half speed
 | `latexStyle` | `TextStyle?` | Style for LaTeX expressions |
 | `latexScale` | `double` | Scale factor for LaTeX rendering |
 | `latexFadeInEnabled` | `bool?` | Enable fade-in for LaTeX (null = auto) |
+| `imageBuilder` | `Widget Function(BuildContext, String)?` | Custom widget for markdown images |
+| `onLinkTap` | `void Function(String url, String title)?` | Callback when a link is tapped |
+| `codeBuilder` | `Widget Function(BuildContext, String name, String code, bool closed)?` | Custom widget for code blocks |
+| `latexBuilder` | `Widget Function(BuildContext, String tex, TextStyle, bool inline)?` | Custom widget for LaTeX expressions |
+| `linkBuilder` | `Widget Function(BuildContext, InlineSpan label, String path, TextStyle)?` | Custom widget for links |
+| `components` | `List<MarkdownComponent>?` | Block-level component overrides — headers, lists, code blocks, tables, blockquotes. `null` keeps `gpt_markdown` defaults. |
+| `inlineComponents` | `List<MarkdownComponent>?` | Inline-level component overrides — bold, italic, strikethrough, links, inline code. `null` keeps `gpt_markdown` defaults. |
 
 #### Choosing a fade for streaming content
 

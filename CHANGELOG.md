@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.9.0
+
+### New Features
+
+**`StreamingTextMarkdown` now accepts a `Stream<String>` directly**
+
+The headline widget finally lives up to its name. You can pass a `stream:` parameter to `StreamingTextMarkdown` (and every preset constructor) instead of dropping down to the lower-level `StreamingText`. Each chunk emitted by the stream is appended to the rendered text and animated using the active typing settings.
+
+```dart
+StreamingTextMarkdown(
+  stream: openAiChat(prompt),     // Stream<String> from your LLM client
+  markdownEnabled: true,
+  trailingFadeEnabled: true,      // recommended for streams
+  onComplete: () => setState(() => _isStreaming = false),
+)
+```
+
+* `stream` — `Stream<String>?`. When non-null, takes over from `text` and content arrives via the stream.
+* `text` is now optional (defaults to `''`). Existing code passing `text:` keeps working unchanged.
+* Per-character `fadeInEnabled` is automatically suppressed when `stream` is set (one `AnimationController` per glyph on an unbounded stream would exhaust memory). Use `trailingFadeEnabled` for a smooth gradient reveal.
+* Available on every constructor: default, `.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, `.fromPreset()`. Non-breaking.
+
+README has new copy-pasteable bridges for OpenAI Chat Completions and Anthropic Messages SSE → `Stream<String>`.
+
 ## 1.8.0
 
 ### New Features

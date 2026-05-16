@@ -331,4 +331,140 @@ void main() {
           reason: 'onComplete must fire exactly once on stream done');
     });
   });
+
+  group('StreamingTextMarkdown stream: parameter (v1.9.0)', () {
+    testWidgets('accepts a Stream<String> and renders emitted chunks',
+        (tester) async {
+      final controller = StreamController<String>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              stream: controller.stream,
+              typingSpeed: const Duration(milliseconds: 1),
+              animationsEnabled: false,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(StreamingText), findsOneWidget);
+
+      controller.add('Hello ');
+      await tester.pump(const Duration(milliseconds: 50));
+      controller.add('streamed world');
+      await tester.pump(const Duration(milliseconds: 200));
+      await controller.close();
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(find.textContaining('Hello'), findsOneWidget);
+      expect(find.textContaining('streamed world'), findsOneWidget);
+    });
+
+    testWidgets('text param is optional when stream is provided',
+        (tester) async {
+      final controller = StreamController<String>();
+
+      // Compiles + builds with no text: argument at all.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              stream: controller.stream,
+              animationsEnabled: false,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+
+      controller.add('stream-only content');
+      await tester.pump(const Duration(milliseconds: 100));
+      await controller.close();
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(find.textContaining('stream-only content'), findsOneWidget);
+    });
+
+    testWidgets('onComplete fires exactly once when stream closes',
+        (tester) async {
+      final controller = StreamController<String>();
+      var completed = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              stream: controller.stream,
+              animationsEnabled: false,
+              onComplete: () => completed++,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      controller.add('done');
+      await tester.pump(const Duration(milliseconds: 50));
+      await controller.close();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(completed, 1);
+    });
+
+    testWidgets('preset constructors (.chatGPT) accept stream parameter',
+        (tester) async {
+      final controller = StreamController<String>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown.chatGPT(
+              stream: controller.stream,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(StreamingTextMarkdown), findsOneWidget);
+      expect(find.byType(StreamingText), findsOneWidget);
+
+      controller.add('chatgpt-preset-stream');
+      await tester.pump(const Duration(milliseconds: 200));
+      await controller.close();
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(find.textContaining('chatgpt-preset-stream'), findsOneWidget);
+    });
+
+    testWidgets('text-only usage still works (backward compat)',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              text: 'static content',
+              animationsEnabled: false,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.textContaining('static content'), findsOneWidget);
+    });
+  });
 }

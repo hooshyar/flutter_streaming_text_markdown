@@ -41,12 +41,35 @@ import 'src/widgets/streaming_shimmer.dart';
 /// * Auto-scrolling
 /// * Theme support through [StreamingTextTheme]
 ///
-/// The [text] parameter is required and should contain the markdown-formatted
-/// text to be displayed. Use [typingSpeed] to control how fast the text appears,
-/// and [wordByWord] to choose between character-by-character or word-by-word animation.
+/// Provide either [text] (static markdown string, the default) or [stream]
+/// (a `Stream<String>` of chunks from an LLM API). When [stream] is non-null,
+/// [text] is treated as the initial buffer and content is appended as the
+/// stream emits.
+///
+/// Use [typingSpeed] to control how fast each character or word appears, and
+/// [wordByWord] to choose between character-by-character or word-by-word
+/// animation. For unbounded streams, prefer [trailingFadeEnabled] over
+/// [fadeInEnabled] — per-character fades are auto-disabled when [stream] is
+/// set to avoid spawning one [AnimationController] per glyph.
 class StreamingTextMarkdown extends StatefulWidget {
-  /// The text to display
+  /// The text to display. When [stream] is also provided, this acts as the
+  /// initial buffer and content from the stream is appended.
   final String text;
+
+  /// Optional stream of text chunks from an LLM API (OpenAI, Anthropic,
+  /// Ollama, etc.). Each emitted string is appended to the rendered text and
+  /// animated using the active typing settings. When this is non-null the
+  /// inner streaming engine takes over and per-character [fadeInEnabled] is
+  /// suppressed automatically; use [trailingFadeEnabled] for a smooth reveal.
+  ///
+  /// ```dart
+  /// StreamingTextMarkdown(
+  ///   stream: chatService.streamReply(prompt),
+  ///   markdownEnabled: true,
+  ///   trailingFadeEnabled: true,
+  /// )
+  /// ```
+  final Stream<String>? stream;
 
   /// Initial text to display before the animation starts
   final String initialText;
@@ -183,7 +206,8 @@ class StreamingTextMarkdown extends StatefulWidget {
 
   const StreamingTextMarkdown({
     super.key,
-    required this.text,
+    this.text = '',
+    this.stream,
     this.initialText = '',
     this.styleSheet,
     this.theme,
@@ -223,7 +247,8 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Perfect for fast, character-by-character streaming like ChatGPT
   const StreamingTextMarkdown.chatGPT({
     super.key,
-    required this.text,
+    this.text = '',
+    this.stream,
     this.initialText = '',
     this.styleSheet,
     this.theme,
@@ -262,7 +287,8 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Perfect for smooth, word-by-word streaming like Claude
   const StreamingTextMarkdown.claude({
     super.key,
-    required this.text,
+    this.text = '',
+    this.stream,
     this.initialText = '',
     this.styleSheet,
     this.theme,
@@ -301,7 +327,8 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Classic typewriter effect without fade-in
   const StreamingTextMarkdown.typewriter({
     super.key,
-    required this.text,
+    this.text = '',
+    this.stream,
     this.initialText = '',
     this.styleSheet,
     this.theme,
@@ -340,7 +367,8 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// For when speed is priority over animation
   const StreamingTextMarkdown.instant({
     super.key,
-    required this.text,
+    this.text = '',
+    this.stream,
     this.initialText = '',
     this.styleSheet,
     this.theme,
@@ -378,7 +406,8 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Creates a StreamingTextMarkdown from a preset configuration
   StreamingTextMarkdown.fromPreset({
     super.key,
-    required this.text,
+    this.text = '',
+    this.stream,
     required StreamingTextConfig preset,
     this.initialText = '',
     this.styleSheet,
@@ -463,6 +492,7 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           key: ValueKey(
               'streaming_text_${widget.wordByWord}_${widget.chunkSize}_${widget.typingSpeed.inMilliseconds}_${widget.latexEnabled}'),
           text: widget.text,
+          stream: widget.stream,
           style: _effectiveTheme.textStyle,
           markdownEnabled: widget.markdownEnabled,
           latexEnabled: widget.latexEnabled,

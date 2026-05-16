@@ -4,11 +4,12 @@
 
 [![pub package](https://img.shields.io/pub/v/flutter_streaming_text_markdown.svg)](https://pub.dev/packages/flutter_streaming_text_markdown)
 
-## 🆕 v1.8.0 — Override every markdown component
-- ✅ **New**: `components` / `inlineComponents` — full override of how block- and inline-level markdown elements render (headers, lists, tables, bold, italic, links, …) via `gpt_markdown` (Issue #13)
-- ✅ Available on every constructor (default, `.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, `.fromPreset()`). Non-breaking — pass `null` to keep defaults.
-- ✅ All previous builders still work: `imageBuilder`, `onLinkTap`, `codeBuilder`, `latexBuilder`, `linkBuilder`
-- ✅ **Quality**: 80 tests passing, 0 analysis issues, 160/160 pub.dev score
+## 🆕 v1.9.0 — `StreamingTextMarkdown` now takes a `Stream<String>`
+- ✅ **New**: `stream:` parameter on `StreamingTextMarkdown` and every preset (`.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, `.fromPreset()`). Pass an LLM token stream directly — no need to drop down to the lower-level `StreamingText`.
+- ✅ `text:` is now optional (defaults to `''`). Existing code is unchanged.
+- ✅ Per-character fade-in auto-suppressed for streams; use `trailingFadeEnabled` for a smooth reveal.
+- ✅ **Still here from v1.8**: `components` / `inlineComponents` for full block- and inline-level markdown overrides, plus `imageBuilder`, `onLinkTap`, `codeBuilder`, `latexBuilder`, `linkBuilder`.
+- ✅ **Quality**: tests + analysis green, 160/160 pub.dev score targeted.
 
 ## ✨ Features
 
@@ -42,7 +43,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_streaming_text_markdown: ^1.8.0
+  flutter_streaming_text_markdown: ^1.9.0
 ```
 
 ## 🚀 Quick Start
@@ -109,12 +110,12 @@ ElevatedButton(
 
 ## 🤖 Streaming from an LLM API (OpenAI, Anthropic, Ollama, …)
 
-For real LLM chat UIs where tokens arrive over HTTP/SSE, feed a `Stream<String>` into `StreamingText` (the lower-level widget). Each yielded chunk is appended to the rendered text and animated. Markdown and LaTeX are re-parsed as the buffer grows.
+For real LLM chat UIs where tokens arrive over HTTP/SSE, pass a `Stream<String>` straight into `StreamingTextMarkdown`. Each yielded chunk is appended to the rendered text and animated. Markdown and LaTeX are re-parsed as the buffer grows.
 
 ```dart
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 
-StreamingText(
+StreamingTextMarkdown(
   stream: chatService.streamReply(prompt),     // your Stream<String>
   markdownEnabled: true,
   latexEnabled: true,
@@ -123,6 +124,8 @@ StreamingText(
   onComplete: () => setState(() => _isStreaming = false),
 )
 ```
+
+> The preset constructors (`StreamingTextMarkdown.chatGPT(stream: ...)`, `.claude(stream: ...)`, etc.) accept `stream:` too. If you need lower-level control (no auto-scroll, no shimmer, no theme resolution), the underlying `StreamingText` widget is also exported.
 
 ### TTFT shimmer (Time-To-First-Token)
 
@@ -195,11 +198,12 @@ Stream<String> anthropicChat(String prompt) async* {
 
 ### When to use which widget
 
-| Source | Use this widget | Notes |
-|--------|-----------------|-------|
-| Static `String` (already complete) | `StreamingTextMarkdown` | Includes auto-scroll, theme, shimmer loading state |
-| `Stream<String>` (real LLM tokens) | `StreamingText` | Append-on-emit, markdown re-parsed as buffer grows |
-| Either, with preset look | `StreamingTextMarkdown.chatGPT/.claude/.typewriter` | High-level convenience constructors |
+| Use case | Widget |
+|----------|--------|
+| Default — static `String` **or** `Stream<String>` with auto-scroll, theme, and TTFT shimmer | `StreamingTextMarkdown` (or its `.chatGPT/.claude/.typewriter/.instant` presets) |
+| Lower-level control — no auto-scroll, no shimmer, no theme inheritance | `StreamingText` |
+
+Both widgets accept the same `text:` / `stream:` pair. Pick `StreamingTextMarkdown` unless you need to opt out of the convenience scaffolding.
 
 ## 🎨 Animation Presets
 
@@ -272,7 +276,8 @@ controller.speedMultiplier = 0.5;  // Half speed
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `text` | `String` | The text content to display |
+| `text` | `String` | The text content to display. Optional — defaults to `''` so you can pass only `stream:` when streaming from an LLM. |
+| `stream` | `Stream<String>?` | Optional stream of text chunks from an LLM API. When non-null, content arrives via the stream and per-character fade-in is auto-suppressed (use `trailingFadeEnabled`). |
 | `controller` | `StreamingTextController?` | Controller for programmatic control |
 | `onComplete` | `VoidCallback?` | Callback when animation completes |
 | `typingSpeed` | `Duration` | Speed of typing animation |

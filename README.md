@@ -107,6 +107,100 @@ ElevatedButton(
 )
 ```
 
+## 🤖 Streaming from an LLM API (OpenAI, Anthropic, Ollama, …)
+
+For real LLM chat UIs where tokens arrive over HTTP/SSE, feed a `Stream<String>` into `StreamingText` (the lower-level widget). Each yielded chunk is appended to the rendered text and animated. Markdown and LaTeX are re-parsed as the buffer grows.
+
+```dart
+import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
+
+StreamingText(
+  stream: chatService.streamReply(prompt),     // your Stream<String>
+  markdownEnabled: true,
+  latexEnabled: true,
+  trailingFadeEnabled: true,                    // recommended for streams
+  typingSpeed: const Duration(milliseconds: 15),
+  onComplete: () => setState(() => _isStreaming = false),
+)
+```
+
+### TTFT shimmer (Time-To-First-Token)
+
+Show a skeleton while you wait for the first token, then swap to the streamed widget:
+
+```dart
+StreamingTextMarkdown(
+  text: _buffer,
+  isLoading: _waitingForFirstToken,   // shimmer while true
+  trailingFadeEnabled: true,
+)
+```
+
+### Bridging OpenAI / Anthropic SSE to `Stream<String>`
+
+Most LLM HTTP APIs return Server-Sent Events. Convert their token stream to a plain `Stream<String>` of text deltas — then hand it to `StreamingText`.
+
+```dart
+// OpenAI chat completions (stream: true) — yield content deltas
+Stream<String> openAiChat(String prompt) async* {
+  final req = http.Request('POST', Uri.parse('https://api.openai.com/v1/chat/completions'))
+    ..headers.addAll({
+      'Authorization': 'Bearer $apiKey',
+      'Content-Type': 'application/json',
+    })
+    ..body = jsonEncode({
+      'model': 'gpt-4o-mini',
+      'stream': true,
+      'messages': [{'role': 'user', 'content': prompt}],
+    });
+  final res = await http.Client().send(req);
+  await for (final line in res.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+    if (!line.startsWith('data: ')) continue;
+    final payload = line.substring(6);
+    if (payload == '[DONE]') break;
+    final delta = (jsonDecode(payload)['choices'][0]['delta']['content']) as String?;
+    if (delta != null && delta.isNotEmpty) yield delta;
+  }
+}
+```
+
+```dart
+// Anthropic Messages API (stream: true) — yield content_block_delta text
+Stream<String> anthropicChat(String prompt) async* {
+  final req = http.Request('POST', Uri.parse('https://api.anthropic.com/v1/messages'))
+    ..headers.addAll({
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    })
+    ..body = jsonEncode({
+      'model': 'claude-sonnet-4-5',
+      'max_tokens': 1024,
+      'stream': true,
+      'messages': [{'role': 'user', 'content': prompt}],
+    });
+  final res = await http.Client().send(req);
+  await for (final line in res.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+    if (!line.startsWith('data: ')) continue;
+    final json = jsonDecode(line.substring(6));
+    if (json['type'] == 'content_block_delta') {
+      final text = json['delta']?['text'] as String?;
+      if (text != null && text.isNotEmpty) yield text;
+    }
+  }
+}
+```
+
+> ⚠️ **Choose `trailingFadeEnabled` over `fadeInEnabled` for streams.** Per-character fades spawn one `AnimationController` per glyph — fine for static text, but unbounded streams will exhaust memory. The widget auto-disables `fadeInEnabled` when a `stream` is set; `trailingFadeEnabled` gives you a smooth gradient reveal with constant memory.
+
+### When to use which widget
+
+| Source | Use this widget | Notes |
+|--------|-----------------|-------|
+| Static `String` (already complete) | `StreamingTextMarkdown` | Includes auto-scroll, theme, shimmer loading state |
+| `Stream<String>` (real LLM tokens) | `StreamingText` | Append-on-emit, markdown re-parsed as buffer grows |
+| Either, with preset look | `StreamingTextMarkdown.chatGPT/.claude/.typewriter` | High-level convenience constructors |
+
 ## 🎨 Animation Presets
 
 ### Built-in Constructors

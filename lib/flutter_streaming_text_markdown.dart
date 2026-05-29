@@ -204,6 +204,12 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// component list is used.
   final List<MarkdownComponent>? inlineComponents;
 
+  /// Whether tapping the widget jumps the animation to completion.
+  ///
+  /// Defaults to `true`. Set to `false` to let the animation play through
+  /// uninterrupted regardless of taps.
+  final bool? completeAnimationOnTap;
+
   const StreamingTextMarkdown({
     super.key,
     this.text = '',
@@ -241,6 +247,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.completeAnimationOnTap,
   });
 
   /// Creates a StreamingTextMarkdown with ChatGPT-style animation
@@ -276,6 +283,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.completeAnimationOnTap,
   })  : fadeInEnabled = true,
         fadeInDuration = const Duration(milliseconds: 150),
         fadeInCurve = Curves.easeOut,
@@ -316,6 +324,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.completeAnimationOnTap,
   })  : fadeInEnabled = true,
         fadeInDuration = const Duration(milliseconds: 200),
         fadeInCurve = Curves.easeInOut,
@@ -356,6 +365,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.completeAnimationOnTap,
   })  : fadeInEnabled = false,
         fadeInDuration = Duration.zero,
         fadeInCurve = Curves.linear,
@@ -396,6 +406,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.completeAnimationOnTap,
   })  : fadeInEnabled = false,
         fadeInDuration = Duration.zero,
         fadeInCurve = Curves.linear,
@@ -436,6 +447,7 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.completeAnimationOnTap,
   })  : fadeInEnabled = preset.fadeInEnabled,
         fadeInDuration = preset.fadeInDuration,
         fadeInCurve = preset.fadeInCurve,
@@ -521,6 +533,7 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           linkBuilder: widget.linkBuilder,
           components: widget.components,
           inlineComponents: widget.inlineComponents,
+          completeAnimationOnTap: widget.completeAnimationOnTap ?? true,
           onComplete: () {
             // Handle auto-scrolling
             if (mounted && widget.autoScroll && _scrollController.hasClients) {

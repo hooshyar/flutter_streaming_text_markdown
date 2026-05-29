@@ -403,4 +403,70 @@ void main() {
       expect(completed, 1);
     });
   });
+
+  group('completeAnimationOnTap', () {
+    testWidgets('tap jumps animation to completion by default',
+        (tester) async {
+      var completed = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: 'hello world this should take a while to type out',
+            typingSpeed: const Duration(milliseconds: 50),
+            fadeInEnabled: false,
+            onComplete: () => completed++,
+          ),
+        ),
+      );
+
+      // Let a couple of characters in, but nowhere near completion.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(completed, 0, reason: 'animation should still be running');
+
+      await tester.tap(find.byType(StreamingText));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(completed, 1,
+          reason: 'tap should short-circuit the animation and fire onComplete');
+    });
+
+    testWidgets(
+        'completeAnimationOnTap: false lets taps pass through without completing',
+        (tester) async {
+      var completed = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StreamingTextMarkdown(
+            text: 'hello world this should take a while to type out',
+            typingSpeed: const Duration(milliseconds: 50),
+            fadeInEnabled: false,
+            completeAnimationOnTap: false,
+            onComplete: () => completed++,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(completed, 0);
+
+      await tester.tap(find.byType(StreamingText));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(completed, 0,
+          reason: 'tap must not short-circuit the animation');
+
+      // Let the animation finish naturally; onComplete should still fire once.
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(completed, 1,
+          reason: 'natural completion should still fire onComplete exactly once');
+    });
+  });
 }

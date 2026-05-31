@@ -74,6 +74,7 @@ class StreamingText extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.completeAnimationOnTap = true,
   });
 
   final String text;
@@ -180,6 +181,12 @@ class StreamingText extends StatefulWidget {
   /// `gpt_markdown`'s `GptMarkdown.inlineComponents`. When `null`,
   /// `gpt_markdown`'s default inline component list is used.
   final List<MarkdownComponent>? inlineComponents;
+
+  /// Whether tapping the widget jumps the animation to completion.
+  ///
+  /// Defaults to `true`. Set to `false` to let the animation play through
+  /// uninterrupted regardless of taps.
+  final bool completeAnimationOnTap;
 
   @override
   State<StreamingText> createState() => _StreamingTextState();
@@ -1290,20 +1297,22 @@ class _StreamingTextState extends State<StreamingText>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        _typeTimer?.cancel();
-        _safeSetState(() {
-          _displayedTextBuffer.clear();
-          _displayedTextBuffer.write(widget.text);
-          _isComplete = true;
-          _isAnimationActive = false;
-        });
-        _handleCompletion();
-        // Force rebuild to process complete markdown
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _safeSetState(() {});
-        });
-      },
+      onTap: widget.completeAnimationOnTap
+          ? () {
+              _typeTimer?.cancel();
+              _safeSetState(() {
+                _displayedTextBuffer.clear();
+                _displayedTextBuffer.write(widget.text);
+                _isComplete = true;
+                _isAnimationActive = false;
+              });
+              _handleCompletion();
+              // Force rebuild to process complete markdown
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _safeSetState(() {});
+              });
+            }
+          : null,
       child: _buildContent(context),
     );
   }

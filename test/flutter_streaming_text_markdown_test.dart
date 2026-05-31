@@ -405,8 +405,7 @@ void main() {
   });
 
   group('completeAnimationOnTap', () {
-    testWidgets('tap jumps animation to completion by default',
-        (tester) async {
+    testWidgets('tap jumps animation to completion by default', (tester) async {
       var completed = 0;
 
       await tester.pumpWidget(
@@ -458,15 +457,15 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(completed, 0,
-          reason: 'tap must not short-circuit the animation');
+      expect(completed, 0, reason: 'tap must not short-circuit the animation');
 
       // Let the animation finish naturally; onComplete should still fire once.
       for (var i = 0; i < 60; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
       expect(completed, 1,
-          reason: 'natural completion should still fire onComplete exactly once');
+          reason:
+              'natural completion should still fire onComplete exactly once');
     });
   });
 }

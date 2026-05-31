@@ -31,6 +31,10 @@ cd example && flutter pub get && flutter run
 
 `StreamingTextMarkdown` handles scrolling, theme resolution, and shimmer loading state. `StreamingText` handles all animation logic, text chunking, Arabic detection, and markdown rendering via `gpt_markdown` (NOT `flutter_markdown`).
 
+### Streaming Input (`Stream<String>`)
+
+Both `StreamingTextMarkdown` and `StreamingText` accept a `stream` parameter (`Stream<String>?`, added v1.9.0 to the public widget). When non-null it takes over from `text` (which is now optional, defaults to `''`); each emitted chunk is appended and animated. Key constraint enforced in `StreamingText`: per-character `fadeInEnabled` is **automatically suppressed when `stream != null`** — one `AnimationController` per glyph on an unbounded stream exhausts memory. Use `trailingFadeEnabled` for a smooth reveal on streams instead. Available on every preset constructor. README has copy-pasteable OpenAI / Anthropic SSE → `Stream<String>` bridges.
+
 ### Named Constructors as Presets
 
 The main widget has named constructors for common LLM patterns: `.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, `.fromPreset()`. These set animation defaults (typing speed, word-by-word, fade-in, chunk size). The `LLMAnimationPresets` class in `lib/src/presets/animation_presets.dart` provides the same configs as `StreamingTextConfig` objects.
@@ -49,6 +53,14 @@ Note: `markdownStyle` is deprecated in favor of `markdownStyleSheet` — removal
 ### LaTeX Support
 
 `LaTeXProcessor` (`lib/src/utils/latex_processor.dart`) parses text into `TextSegment`s (regular, inlineLaTeX, blockLaTeX). Block expressions (`$$...$$`) take priority over inline (`$...$`). LaTeX fade-in is disabled by default for performance.
+
+### Tap-to-Complete
+
+`StreamingText` wraps its output in a `GestureDetector` whose `onTap` clears the buffer to the full `text` and fires `_handleCompletion()` — tapping mid-animation jumps to the finished text. `completeAnimationOnTap` (`bool`, default `true`; `bool?` → `?? true` on the public widget, added v1.9.0 via PR #15) gates this: when `false`, `onTap` is set to `null` so taps pass through and the animation plays uninterrupted.
+
+### Custom Markdown Components
+
+`components` and `inlineComponents` (`List<MarkdownComponent>?`, added v1.8.0, closes #13) are forwarded as-is to `gpt_markdown`'s `GptMarkdown.components` / `.inlineComponents`, letting consumers override how headers, lists, bold, links, etc. render. `null` (default) keeps `gpt_markdown`'s built-in list. `MarkdownComponent` is imported from `gpt_markdown` but **not re-exported** — consumers must add `gpt_markdown` as a direct dependency to supply custom components.
 
 ### RTL / Arabic Text
 

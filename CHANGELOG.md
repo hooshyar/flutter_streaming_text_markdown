@@ -24,6 +24,11 @@ StreamingTextMarkdown(
 
 README has new copy-pasteable bridges for OpenAI Chat Completions and Anthropic Messages SSE → `Stream<String>`.
 
+**Opt out of tap-to-complete** (PR #15, thanks @AdamBurnett-Tonal)
+
+* New `completeAnimationOnTap` flag (`bool`, defaults to `true`). By default, tapping the widget while it animates jumps straight to the finished text — set this to `false` to let the animation play through uninterrupted regardless of taps.
+* Available on `StreamingTextMarkdown`, every preset constructor, and the lower-level `StreamingText`. Non-breaking — existing behavior is the default.
+
 ## 1.8.0
 
 ### New Features

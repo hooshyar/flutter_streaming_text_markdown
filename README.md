@@ -280,6 +280,7 @@ controller.speedMultiplier = 0.5;  // Half speed
 | `stream` | `Stream<String>?` | Optional stream of text chunks from an LLM API. When non-null, content arrives via the stream and per-character fade-in is auto-suppressed (use `trailingFadeEnabled`). |
 | `controller` | `StreamingTextController?` | Controller for programmatic control |
 | `onComplete` | `VoidCallback?` | Callback when animation completes |
+| `completeAnimationOnTap` | `bool` | Whether tapping the widget jumps the animation to completion. Defaults to `true`; set `false` to let it play through regardless of taps. |
 | `typingSpeed` | `Duration` | Speed of typing animation |
 | `wordByWord` | `bool` | Whether to animate word by word |
 | `chunkSize` | `int` | Number of characters to reveal at once |

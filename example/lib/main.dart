@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 import 'sections/hero_section.dart';
 import 'sections/presets_section.dart';
+import 'sections/streaming_section.dart';
 import 'sections/features_section.dart';
 import 'sections/controller_section.dart';
 import 'sections/customization_section.dart';
@@ -81,6 +82,7 @@ class _ExampleAppState extends State<ExampleApp> {
                             });
                           },
                         ),
+                        const StreamingSection(),
                         const FeaturesSection(),
                         const ControllerSection(),
                         const CustomizationSection(),

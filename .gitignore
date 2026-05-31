@@ -47,3 +47,6 @@ build/
 example/pubspec.lock
 example/coverage/lcov.info
 example/linux/.gitignore
+
+# Local automation state (Claude Code)
+.claude/

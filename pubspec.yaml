@@ -1,6 +1,6 @@
 name: flutter_streaming_text_markdown
 description: A Flutter package for beautiful LLM text streaming with markdown support. Perfect for ChatGPT-like interfaces with typing animations, RTL support, and customizable effects.
-version: 1.9.0
+version: 1.10.0
 homepage: https://github.com/hooshyar/flutter_streaming_text_markdown
 repository: https://github.com/hooshyar/flutter_streaming_text_markdown
 documentation: https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/README.md
@@ -22,8 +22,10 @@ platforms:
   windows:
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
-  flutter: ">=3.10.0"
+  # Uses Color.withValues (Flutter 3.27 / Dart 3.6) and the Material 3
+  # surfaceContainerHighest color role (Flutter 3.22), so the real floor is 3.27.
+  sdk: '>=3.6.0 <4.0.0'
+  flutter: ">=3.27.0"
 
 dependencies:
   flutter:

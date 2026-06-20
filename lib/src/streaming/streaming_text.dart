@@ -93,9 +93,17 @@ class StreamingText extends StatefulWidget {
   final String? semanticsLabel;
   final TextWidthBasis? textWidthBasis;
   final TextHeightBehavior? textHeightBehavior;
+  /// Reserved for a future selectable-text mode. Not currently wired up
+  /// (has no effect); slated for either implementation or removal in v2.0.0.
   final bool selectable;
+
+  /// Reserved for a future typing cursor. No cursor is currently rendered, so
+  /// this has no effect; slated for implementation or removal in v2.0.0.
   final bool showCursor;
+
+  /// Color for the (currently unrendered) typing cursor. No effect today.
   final Color? cursorColor;
+
   final VoidCallback? onComplete;
 
   /// Optional stream of text chunks. When provided, [text] is ignored as the
@@ -255,15 +263,20 @@ class _StreamingTextState extends State<StreamingText>
 
   String get _displayedText => _displayedTextBuffer.toString();
 
+  /// All text received so far from [StreamingText.stream]. Acts as the reveal
+  /// target: the typewriter animates [_displayedTextBuffer] up to this buffer.
+  final StringBuffer _streamBuffer = StringBuffer();
+
+  /// Whether the input stream has emitted `onDone`.
+  bool _streamDone = false;
+
   Timer? _typeTimer;
   StreamSubscription<String>? _streamSubscription;
-  late AnimationController _cursorController;
   bool _isComplete = false;
   bool _isError = false;
   String? _errorMessage;
   final Map<int, AnimationController> _characterAnimations = {};
   final Map<String, List<String>> _rtlGroupCache = {};
-  final Map<String, Widget> _markdownCache = {};
   late AnimationController _groupAnimationController;
 
   // NEW: Advanced State Tracking for Animation Management
@@ -325,7 +338,6 @@ class _StreamingTextState extends State<StreamingText>
   @override
   void initState() {
     super.initState();
-    _initCursorAnimation();
     _displayedTextBuffer.clear();
 
     _groupAnimationController = AnimationController(
@@ -341,6 +353,32 @@ class _StreamingTextState extends State<StreamingText>
   @override
   void didUpdateWidget(StreamingText oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // A swapped stream object: tear down the old subscription and start fresh.
+    if (widget.stream != oldWidget.stream) {
+      _streamSubscription?.cancel();
+      _streamSubscription = null;
+      _cancelAllTrackedTimers();
+      _safeSetState(() {
+        _streamBuffer.clear();
+        _displayedTextBuffer.clear();
+        _streamDone = false;
+        _isComplete = false;
+        _isError = false;
+        _errorMessage = null;
+        _isAnimationActive = widget.stream != null;
+        _completeMarkdownCache.clear();
+        _cleanupAnimations();
+      });
+      _initializeText();
+      return;
+    }
+
+    // When a stream drives the content, the text-diff animation paths below
+    // do not apply — the stream subscription owns the buffer.
+    if (widget.stream != null) {
+      return;
+    }
 
     // Check if configuration changed (requires restart) vs just text changed
     final configChanged = _hasConfigurationChanged(oldWidget);
@@ -556,18 +594,17 @@ class _StreamingTextState extends State<StreamingText>
     });
   }
 
-  void _initCursorAnimation() {
-    _cursorController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-
-    if (widget.showCursor) {
-      _cursorController.repeat(reverse: true);
-    }
-  }
-
   void _initializeText() {
+    // Streams own the buffer and handle their own (in)stant reveal, so route
+    // them to the stream handler regardless of [animationsEnabled].
+    if (widget.stream != null) {
+      widget.controller?.updateState(StreamingTextState.animating);
+      _isAnimationActive = true;
+      _completeMarkdownCache.clear();
+      _handleStream();
+      return;
+    }
+
     // If animations are disabled, show text instantly
     if (!widget.animationsEnabled) {
       _displayInstantText();
@@ -580,11 +617,7 @@ class _StreamingTextState extends State<StreamingText>
     _isAnimationActive = true;
     _completeMarkdownCache.clear(); // Clear cache when starting new animation
 
-    if (widget.stream != null) {
-      _handleStream();
-    } else {
-      _startTyping();
-    }
+    _startTyping();
   }
 
   void _resumeWordByWordTyping() {
@@ -669,13 +702,27 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _updateProgress() {
-    if (widget.controller != null && widget.text.isNotEmpty) {
-      final progress = _displayedText.length / widget.text.length;
-      widget.controller!.updateProgress(progress);
+    if (widget.controller != null) {
+      // For streams the total length grows as chunks arrive; use the received
+      // buffer as the denominator so progress reflects reveal vs. received.
+      final int total =
+          widget.stream != null ? _streamBuffer.length : widget.text.length;
+      if (total > 0) {
+        var progress = _displayedText.length / total;
+        // Don't report 100% mid-stream — we may just be waiting for more chunks.
+        if (widget.stream != null && !_streamDone && progress >= 1.0) {
+          progress = 0.999;
+        }
+        widget.controller!.updateProgress(progress);
+      }
     }
     // Trigger trailing-edge fade for markdown content
     _triggerTrailingFade();
   }
+
+  /// Whether stream content should be revealed instantly (no per-unit typing).
+  bool get _streamRevealIsInstant =>
+      !widget.animationsEnabled || widget.typingSpeed <= Duration.zero;
 
   void _handleStream() {
     _streamSubscription?.cancel();
@@ -687,24 +734,24 @@ class _StreamingTextState extends State<StreamingText>
 
     _streamSubscription = effectiveStream.listen(
       (data) {
-        // v1.3.3: Use safe setState
-        _safeSetState(() {
-          final previousLength = _displayedText.length;
-          _displayedTextBuffer.write(data);
-          _isError = false;
-          _errorMessage = null;
+        if (!mounted) return;
+        _streamBuffer.write(data);
+        _isError = false;
+        _errorMessage = null;
 
-          // FIXED: Continue animation from last position instead of restarting
-          if (_isAnimationActive && previousLength > 0) {
-            _continueAnimationFrom(previousLength);
-          } else if (!_isAnimationActive) {
-            // Start new animation if none is active
-            _isAnimationActive = true;
-            _startAnimationFrom(previousLength);
-          }
-
+        if (_streamRevealIsInstant) {
+          // Show everything received so far immediately.
+          _safeSetState(() {
+            _displayedTextBuffer
+              ..clear()
+              ..write(_streamBuffer.toString());
+          });
           _updateProgress();
-        });
+        } else {
+          // Animate the newly buffered text at the active typing speed.
+          _isAnimationActive = true;
+          _ensureStreamRevealTimer();
+        }
       },
       onError: (error) {
         // v1.3.3: Use safe setState
@@ -714,38 +761,101 @@ class _StreamingTextState extends State<StreamingText>
         });
       },
       onDone: () {
-        // v1.3.3: Use safe setState
-        _safeSetState(() {
-          _isComplete = true;
-          _isAnimationActive = false;
-        });
-        widget.controller?.markCompleted();
-        _handleCompletion();
-        // Force rebuild to process complete markdown
-        // v1.3.3: Use safe setState in callback
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _safeSetState(() {});
-        });
+        _streamDone = true;
+        if (!mounted) return;
+        // If the typewriter has already caught up (or reveal is instant),
+        // finish now; otherwise let the reveal timer drain the buffer first.
+        if (_streamRevealIsInstant ||
+            _displayedText.characters.length >=
+                _streamBuffer.toString().characters.length) {
+          _completeStream();
+        } else {
+          _ensureStreamRevealTimer();
+        }
       },
     );
   }
 
-  void _continueAnimationFrom(int startIndex) {
-    // Only animate newly added content from the specified index
-    final newContent = _displayedText.substring(startIndex);
-    if (newContent.isNotEmpty && !_isComplete) {
-      // Update the animation to continue from where it left off
+  /// Starts (or keeps running) the timer that reveals buffered stream text one
+  /// chunk at a time. Reveals the first unit synchronously so content appears
+  /// on the next frame, then schedules the rest at [StreamingText.typingSpeed].
+  void _ensureStreamRevealTimer() {
+    if (!mounted || _isComplete) return;
+    if (_typeTimer?.isActive == true) return;
 
-      // Continue with the existing typing animation logic
-      // The existing timers will handle the new content
-    }
+    final moreToReveal = _streamRevealStep();
+    if (!moreToReveal || _isComplete) return;
+
+    final period = widget.typingSpeed > Duration.zero
+        ? widget.typingSpeed
+        : const Duration(milliseconds: 1);
+    final timer = Timer.periodic(period, (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (!_streamRevealStep()) {
+        t.cancel();
+      }
+    });
+    _createTrackedTimer(timer);
   }
 
-  void _startAnimationFrom(int startIndex) {
-    // Start animation from specified index
-    if (!_isComplete) {
-      _startTyping();
+  /// Reveals up to [StreamingText.chunkSize] more grapheme clusters of the
+  /// stream buffer. Returns `true` if more text remains to reveal.
+  bool _streamRevealStep() {
+    if (!mounted) return false;
+
+    final target = _streamBuffer.toString();
+    final targetGraphemes = target.characters;
+    final targetLen = targetGraphemes.length;
+    final displayedLen = _displayedText.characters.length;
+
+    if (displayedLen >= targetLen) {
+      // Caught up: finish if the stream is done, otherwise idle until more
+      // chunks arrive (the timer is cancelled by the caller).
+      if (_streamDone) _completeStream();
+      return false;
     }
+
+    final step = displayedLen + widget.chunkSize;
+    final next = step <= targetLen ? step : targetLen;
+    // `.join()` concatenates the grapheme-cluster strings back into a substring
+    // (Iterable.toString() would render "(a, b, c)").
+    final revealed = targetGraphemes.take(next).join();
+
+    _safeSetState(() {
+      _displayedTextBuffer
+        ..clear()
+        ..write(revealed);
+      _updateProgress();
+    });
+
+    if (next >= targetLen && _streamDone) {
+      _completeStream();
+      return false;
+    }
+    return next < targetLen;
+  }
+
+  /// Finalizes stream playback: reveals the full buffer, marks completion, and
+  /// fires callbacks exactly once.
+  void _completeStream() {
+    if (_isComplete) return;
+    _typeTimer?.cancel();
+    _safeSetState(() {
+      _displayedTextBuffer
+        ..clear()
+        ..write(_streamBuffer.toString());
+      _isComplete = true;
+      _isAnimationActive = false;
+    });
+    widget.controller?.markCompleted();
+    _handleCompletion();
+    // Force rebuild to process complete markdown.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _safeSetState(() {});
+    });
   }
 
   void _createCharacterAnimation(int baseIndex, int length) {
@@ -1243,6 +1353,9 @@ class _StreamingTextState extends State<StreamingText>
       }
     }
 
+    // Bound the cache so a long-lived widget cycling through many distinct
+    // strings can't grow it without limit.
+    if (_rtlGroupCache.length > 32) _rtlGroupCache.clear();
     _rtlGroupCache[text] = groups;
     return groups;
   }
@@ -1296,25 +1409,58 @@ class _StreamingTextState extends State<StreamingText>
 
   @override
   Widget build(BuildContext context) {
+    Widget content = _buildContent(context);
+
+    // Accessibility: announce incremental updates while typing, and expose an
+    // optional [semanticsLabel] for the whole block.
+    final announceLive = widget.animationsEnabled && !_isComplete;
+    if (widget.semanticsLabel != null || announceLive) {
+      content = Semantics(
+        container: true,
+        liveRegion: announceLive,
+        label: widget.semanticsLabel,
+        child: content,
+      );
+    }
+
     return GestureDetector(
-      onTap: widget.completeAnimationOnTap
-          ? () {
-              _typeTimer?.cancel();
-              _safeSetState(() {
-                _displayedTextBuffer.clear();
-                _displayedTextBuffer.write(widget.text);
-                _isComplete = true;
-                _isAnimationActive = false;
-              });
-              _handleCompletion();
-              // Force rebuild to process complete markdown
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _safeSetState(() {});
-              });
-            }
-          : null,
-      child: _buildContent(context),
+      onTap: widget.completeAnimationOnTap ? _handleTapToComplete : null,
+      child: content,
     );
+  }
+
+  /// Handles a tap when [StreamingText.completeAnimationOnTap] is enabled.
+  ///
+  /// For static [text], this jumps straight to the finished text. For a
+  /// [stream], it reveals everything received so far WITHOUT discarding it
+  /// (the old behavior reset the buffer to the empty initial [text], wiping
+  /// streamed content) and only completes if the stream has already closed.
+  void _handleTapToComplete() {
+    _cancelAllTrackedTimers();
+    _typeTimer?.cancel();
+
+    if (widget.stream != null) {
+      _safeSetState(() {
+        _displayedTextBuffer
+          ..clear()
+          ..write(_streamBuffer.toString());
+      });
+      _updateProgress();
+      if (_streamDone) _completeStream();
+      return;
+    }
+
+    _safeSetState(() {
+      _displayedTextBuffer.clear();
+      _displayedTextBuffer.write(widget.text);
+      _isComplete = true;
+      _isAnimationActive = false;
+    });
+    _handleCompletion();
+    // Force rebuild to process complete markdown
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _safeSetState(() {});
+    });
   }
 
   Widget _buildContent(BuildContext context) {
@@ -1648,6 +1794,21 @@ class _StreamingTextState extends State<StreamingText>
 
     for (final segment in segments) {
       if (segment.isLaTeX) {
+        // If the consumer supplied a real LaTeX renderer, use it so they get
+        // proper math instead of the built-in Unicode-approximation fallback.
+        if (widget.latexBuilder != null) {
+          final latexStyle =
+              widget.latexStyle ?? widget.style ?? const TextStyle();
+          children.add(
+            widget.latexBuilder!(
+              context,
+              segment.fullExpression,
+              latexStyle,
+              segment.type == SegmentType.inlineLaTeX,
+            ),
+          );
+          continue;
+        }
         // Render LaTeX content with special styling
         children.add(
           Container(
@@ -1740,8 +1901,10 @@ class _StreamingTextState extends State<StreamingText>
       inlineComponents: widget.inlineComponents,
     );
 
-    // Cache only complete, final states
+    // Cache only complete, final states (bounded to avoid unbounded growth
+    // across many distinct final strings over the widget's lifetime).
     if (!_isAnimationActive && _isComplete) {
+      if (_completeMarkdownCache.length > 32) _completeMarkdownCache.clear();
       _completeMarkdownCache[currentText] = markdownWidget;
     }
 
@@ -1881,14 +2044,13 @@ class _StreamingTextState extends State<StreamingText>
     _typeTimer?.cancel(); // Fallback for any untracked timers
 
     _streamSubscription?.cancel();
-    _cursorController.dispose();
     _groupAnimationController.dispose();
     _cleanupAnimations();
 
     // Clear caches to prevent memory leaks
-    _markdownCache.clear();
     _completeMarkdownCache.clear();
     _rtlGroupCache.clear();
+    _streamBuffer.clear();
 
     // Remove controller listener
     if (widget.controller != null) {

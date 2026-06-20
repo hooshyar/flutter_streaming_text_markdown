@@ -110,7 +110,9 @@ ElevatedButton(
 
 ## 🤖 Streaming from an LLM API (OpenAI, Anthropic, Ollama, …)
 
-For real LLM chat UIs where tokens arrive over HTTP/SSE, pass a `Stream<String>` straight into `StreamingTextMarkdown`. Each yielded chunk is appended to the rendered text and animated. Markdown and LaTeX are re-parsed as the buffer grows.
+For real LLM chat UIs where tokens arrive over HTTP/SSE, pass a `Stream<String>` straight into `StreamingTextMarkdown`. Each yielded chunk is appended and then revealed with a typewriter at your `typingSpeed` (in `chunkSize` grapheme steps), so a single large delta still animates in smoothly rather than popping in all at once. Markdown and LaTeX are re-parsed as the buffer grows.
+
+> **Stream notes:** `wordByWord` does not apply to stream input — reveal is always grapheme-based (set `typingSpeed: Duration.zero` or `animationsEnabled: false` to show each chunk instantly). Per-character `fadeInEnabled` is auto-suppressed for streams; use `trailingFadeEnabled` for a smooth edge. With the default `completeAnimationOnTap: true`, tapping reveals everything received so far without interrupting the stream.
 
 ```dart
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';

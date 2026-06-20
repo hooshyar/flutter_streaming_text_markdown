@@ -79,4 +79,8 @@ Arabic detection uses Unicode ranges (U+0600-U+06FF etc.) in `StreamingText`. Ke
 
 ### Exports
 
-`lib/flutter_streaming_text_markdown.dart` is the barrel file. It exports: `streaming.dart` (StreamProvider, DefaultStreamProvider, StreamingText), `streaming_text_theme.dart`, `streaming_text_controller.dart`, `animation_presets.dart`. The `StreamingText` widget is imported but not re-exported (internal).
+`lib/flutter_streaming_text_markdown.dart` is the barrel file. It exports: `streaming.dart`, `streaming_text_theme.dart`, `streaming_text_controller.dart`, `animation_presets.dart`. Because `streaming.dart` does `export 'streaming_text.dart';`, the public surface includes `StreamProvider`, `DefaultStreamProvider`, **and `StreamingText`** — `StreamingText` is part of the public API (the higher-level `StreamingTextMarkdown` just imports it internally).
+
+### Stream typewriter (v1.10.0)
+
+When `stream != null`, `StreamingText` buffers everything received into `_streamBuffer` and a reveal timer animates `_displayedTextBuffer` up to it at `typingSpeed` (in `chunkSize` grapheme steps). Key points: `wordByWord` does **not** apply to streams (reveal is always grapheme-based, like the per-char fade suppression); `Duration.zero` typing speed or `animationsEnabled: false` reveals each chunk instantly; controller progress for streams is `revealed / received` and is capped below 1.0 until the stream closes. Tapping (`completeAnimationOnTap`) reveals everything received so far **without** discarding it — it never resets to the empty initial `text`.

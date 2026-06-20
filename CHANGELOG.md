@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.10.0
+
+### Fixes & improvements (from package audit)
+
+**Stream input now actually animates** — `stream:` chunks were previously
+appended whole, instantly; `typingSpeed`/`chunkSize` had no effect. They are now
+revealed with a real typewriter at the active `typingSpeed`, in `chunkSize`
+grapheme steps, matching what the docs always claimed. `wordByWord` does not
+apply to stream input (reveal is grapheme-based, like the existing per-character
+fade suppression for streams); set `typingSpeed: Duration.zero` or
+`animationsEnabled: false` to reveal each chunk instantly.
+
+**Tap-to-complete no longer wipes streamed text** — with the default
+`completeAnimationOnTap: true`, tapping while a `stream` was in flight reset the
+buffer to the (empty) initial `text`, erasing everything received. Tapping now
+reveals all received text *without* discarding it, and only finishes if the
+stream has already closed. Static `text` behavior is unchanged.
+
+**Swapping the `stream` object now works** — passing a new `Stream<String>`
+cancels the old subscription and starts the new one (previously the widget kept
+listening to the old stream and ignored the new one).
+
+**Controller progress works for streams** — `StreamingTextController.progress`
+now advances as `revealed / received` during streaming and reaches `1.0` on
+completion (it was stuck at `0.0` for stream input before).
+
+**Accessibility** — streaming output is wrapped in a `Semantics` live region
+while typing so assistive tech announces updates, and `semanticsLabel` is now
+honored.
+
+**`latexBuilder` honored in the built-in LaTeX path** — when `latexEnabled` is
+true you can now supply `latexBuilder` to render real math instead of the
+Unicode-approximation fallback. The fallback's limitations (math drawn as
+monospace text; only `**bold**`/`*italic*` in surrounding prose) are now
+documented on `latexEnabled`.
+
+**Packaging** — corrected the declared SDK floor to `flutter: ">=3.27.0"` /
+`sdk: ">=3.6.0"` to match the APIs actually used (`Color.withValues`,
+`surfaceContainerHighest`); the old `>=3.10.0` would not compile.
+
+**Internals** — removed a cursor `AnimationController` that ran `repeat()` for
+every widget's lifetime while never drawing anything (battery/CPU), dropped a
+dead cache field, and bounded the RTL/markdown caches. Added a `CI` workflow
+that runs `dart format`, `flutter analyze`, and `flutter test` on every push/PR.
+`showCursor`, `cursorColor`, and `selectable` are deprecated (never implemented;
+slated for removal in v2.0.0).
+
 ## 1.9.0
 
 ### New Features

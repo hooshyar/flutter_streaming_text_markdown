@@ -115,7 +115,15 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Whether to enable markdown rendering
   final bool markdownEnabled;
 
-  /// Whether to enable LaTeX rendering
+  /// Whether to enable the built-in LaTeX rendering path.
+  ///
+  /// Note: when enabled and LaTeX is present, rendering switches to a
+  /// simplified renderer that draws math as Unicode-approximated monospace
+  /// text and only supports `**bold**`/`*italic*` for the surrounding prose
+  /// (headers, lists, links, tables, and custom `components` are not applied
+  /// in this mode). For full-fidelity output, either leave this `false` and
+  /// let `gpt_markdown` render `$...$` natively, or supply [latexBuilder] to
+  /// plug in a real math renderer (it is honored even when this is `true`).
   final bool latexEnabled;
 
   /// Custom style for LaTeX expressions

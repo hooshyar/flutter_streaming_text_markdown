@@ -8,6 +8,14 @@ This is a static audit (the environment has no Flutter toolchain, so `flutter
 analyze` / `flutter test` were not executed). Findings are ordered by severity.
 Line references are against the audited tree.
 
+> **Resolution (v1.10.0):** Findings #1–#5, #7–#9, #11, #12 are addressed in
+> v1.10.0, and #6 is partially addressed (the built-in LaTeX path now honors a
+> supplied `latexBuilder` and the degradation is documented; the fallback
+> renderer itself is unchanged). See `CHANGELOG.md` for details. Because no
+> Flutter toolchain is available in this environment, the changes were reviewed
+> statically and covered with new tests, but `flutter analyze`/`flutter test`
+> must be run in CI (a new `.github/workflows/ci.yml` does this on every PR).
+
 ---
 
 ## Summary

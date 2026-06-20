@@ -9,8 +9,17 @@ appended whole, instantly; `typingSpeed`/`chunkSize` had no effect. They are now
 revealed with a real typewriter at the active `typingSpeed`, in `chunkSize`
 grapheme steps, matching what the docs always claimed. `wordByWord` does not
 apply to stream input (reveal is grapheme-based, like the existing per-character
-fade suppression for streams); set `typingSpeed: Duration.zero` or
-`animationsEnabled: false` to reveal each chunk instantly.
+fade suppression for streams).
+
+> **Behavior change:** since v1.9.0 stream chunks appeared instantly; they now
+> reveal over time. For a very fast stream the display can trail the received
+> text — set `typingSpeed: Duration.zero` (or `animationsEnabled: false`) to
+> reveal each chunk instantly, and use `trailingFadeEnabled` for a smooth edge.
+
+**Fixed stream + controller premature completion** — when a `StreamingTextController`
+was attached to a `stream`, the first reveal re-entrantly ran the text-typing
+machinery against the (empty) `text` and immediately marked the stream complete.
+Controller commands are now ignored for streams (the reveal timer owns playback).
 
 **Tap-to-complete no longer wipes streamed text** — with the default
 `completeAnimationOnTap: true`, tapping while a `stream` was in flight reset the

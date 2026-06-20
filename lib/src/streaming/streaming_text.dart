@@ -529,6 +529,13 @@ class _StreamingTextState extends State<StreamingText>
   void _handleControllerChange() {
     if (widget.controller == null || !mounted) return;
 
+    // Stream content is driven by the reveal timer, not the text-based typing
+    // machinery (which keys off the empty `widget.text`). Running the
+    // pause/resume/restart/skip logic for streams would, via the re-entrant
+    // progress notification, immediately "complete" the empty text and mark
+    // the stream done prematurely. Streams ignore controller commands for now.
+    if (widget.stream != null) return;
+
     final controller = widget.controller!;
 
     // Handle pause/resume

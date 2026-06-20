@@ -62,16 +62,20 @@ void main() {
       await tester.pump();
       expect(find.text(''), findsOneWidget);
 
-      // Stream some text with LaTeX
+      // Stream some text with LaTeX. As of v1.10.0 stream chunks are revealed
+      // with a typewriter at typingSpeed, so allow time for each to appear.
       controller.add('Formula: ');
       await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
       expect(find.textContaining('Formula:'), findsOneWidget);
 
       controller.add('\$x = 5\$');
       await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       controller.add(' and that is it');
       await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
       expect(find.textContaining('and that is it'), findsOneWidget);
 
       // Close the stream

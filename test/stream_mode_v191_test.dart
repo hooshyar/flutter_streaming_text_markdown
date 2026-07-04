@@ -551,4 +551,172 @@ void main() {
       expect(onCompleteCount, 1);
     });
   });
+
+  group('v1.9.1 slice 4 — swapping widget.stream re-subscribes', () {
+    testWidgets('swapping stream shows new stream content', (tester) async {
+      final controllerA = StreamController<String>();
+      addTearDown(() {
+        if (!controllerA.isClosed) controllerA.close();
+      });
+      final controllerB = StreamController<String>();
+      addTearDown(() {
+        if (!controllerB.isClosed) controllerB.close();
+      });
+
+      Widget build(Stream<String> stream) {
+        return MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              text: '',
+              stream: stream,
+              markdownEnabled: false,
+              fadeInEnabled: false,
+              wordByWord: false,
+              chunkSize: 1000, // reveal instantly so assertions are simple
+              typingSpeed: Duration.zero,
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(build(controllerA.stream));
+      controllerA.add('from A');
+      await tester.pump();
+      await tester.pump();
+      expect(_displayed(tester), equals('from A'));
+
+      // Swap to a DIFFERENT stream instance (same widget tree / no remount —
+      // the wrapper's ValueKey does not include `stream`).
+      await tester.pumpWidget(build(controllerB.stream));
+      await tester.pump();
+
+      // Old subscription must no longer affect the widget.
+      controllerA.add(' MORE FROM A (should be ignored)');
+      await tester.pump();
+      await tester.pump();
+
+      controllerB.add('from B');
+      await tester.pump();
+      await tester.pump();
+
+      expect(_displayed(tester), equals('from B'),
+          reason: 'new stream content should show; old stream must be ignored '
+              'after the swap');
+    });
+
+    testWidgets('stream to null falls back to text mode', (tester) async {
+      final controller = StreamController<String>();
+      addTearDown(() {
+        if (!controller.isClosed) controller.close();
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              text: '',
+              stream: controller.stream,
+              markdownEnabled: false,
+              fadeInEnabled: false,
+              wordByWord: false,
+              chunkSize: 1,
+              typingSpeed: const Duration(milliseconds: 20),
+            ),
+          ),
+        ),
+      );
+
+      controller.add('streamed');
+      await tester.pump();
+      await tester.pump();
+
+      // Rebuild with stream: null and static text.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              text: 'some static text',
+              stream: null,
+              markdownEnabled: false,
+              fadeInEnabled: false,
+              wordByWord: false,
+              chunkSize: 1,
+              typingSpeed: const Duration(milliseconds: 20),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Animates the static text per typing settings — pump generously.
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(_displayed(tester), equals('some static text'));
+
+      // The old stream must no longer affect the (now static-mode) widget.
+      controller.add('more data');
+      await tester.pump();
+      await tester.pump();
+      expect(_displayed(tester), equals('some static text'));
+    });
+
+    testWidgets('null to stream starts streaming', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              text: '',
+              stream: null,
+              markdownEnabled: false,
+              fadeInEnabled: false,
+              wordByWord: false,
+              chunkSize: 1,
+              typingSpeed: Duration(milliseconds: 20),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(_displayed(tester), isEmpty);
+
+      final controller = StreamController<String>();
+      addTearDown(() {
+        if (!controller.isClosed) controller.close();
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              text: '',
+              stream: controller.stream,
+              markdownEnabled: false,
+              fadeInEnabled: false,
+              wordByWord: false,
+              chunkSize: 1,
+              typingSpeed: const Duration(milliseconds: 20),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.add('ABCDE'); // 5 chars
+      await tester.pump();
+      await tester.pump();
+
+      // Must animate per typing settings — NOT appear all at once.
+      await tester.pump(const Duration(milliseconds: 20));
+      final partial = _displayed(tester);
+      expect(partial.length, greaterThan(0));
+      expect(partial.length, lessThan(5),
+          reason: 'streamed content should animate, not render instantly');
+
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(_displayed(tester), equals('ABCDE'));
+    });
+  });
 }

@@ -361,6 +361,19 @@ class _StreamingTextState extends State<StreamingText>
   void didUpdateWidget(StreamingText oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    // v1.9.1 slice 4: a stream identity swap (including stream<->null in
+    // either direction) is its own trigger, evaluated BEFORE
+    // `_hasConfigurationChanged`/the generic text-diff branches below. Those
+    // branches assume `widget.text` holds the content to animate, which is
+    // wrong for a stream swap (there is no text to jump to) and would either
+    // no-op (old subscription silently kept forever, the bug this fixes) or
+    // corrupt state via `_restartAnimation`'s text-based reset. Handle the
+    // swap fully here and return, so nothing below re-runs for this case.
+    if (!identical(widget.stream, oldWidget.stream)) {
+      _handleStreamSwap();
+      return;
+    }
+
     // Check if configuration changed (requires restart) vs just text changed
     final configChanged = _hasConfigurationChanged(oldWidget);
 
@@ -378,6 +391,38 @@ class _StreamingTextState extends State<StreamingText>
       // Text changed but not appended - restart animation
       _restartAnimation();
     }
+  }
+
+  /// v1.9.1 slice 4: handles `widget.stream` changing identity across a
+  /// rebuild — covers stream-A -> stream-B, stream -> null, and null ->
+  /// stream. Cancels whatever the OLD configuration was driving (subscription
+  /// and/or drain timer), resets all stream/animation state, then re-runs
+  /// [_initializeText] so the new configuration (stream or static text)
+  /// starts fresh. Without this, a swapped stream instance was silently
+  /// ignored — the old subscription kept running (or nothing was subscribed
+  /// at all) and the new stream's data was never shown.
+  void _handleStreamSwap() {
+    _streamSubscription?.cancel();
+    _streamSubscription = null;
+    _cancelAllTrackedTimers();
+    _typeTimer?.cancel();
+    _typeTimer = null;
+    _streamDone = false;
+    _handlingStreamSkipToEnd = false;
+
+    _safeSetState(() {
+      _displayedTextBuffer.clear();
+      _receivedTextBuffer.clear();
+      _isComplete = false;
+      _isError = false;
+      _errorMessage = null;
+      _isAnimationActive = false;
+      _completeMarkdownCache.clear();
+      _cleanupAnimations();
+    });
+
+    widget.controller?.updateState(StreamingTextState.idle);
+    _initializeText();
   }
 
   bool _hasConfigurationChanged(StreamingText oldWidget) {

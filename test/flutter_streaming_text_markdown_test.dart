@@ -402,6 +402,57 @@ void main() {
 
       expect(completed, 1);
     });
+
+    testWidgets(
+        'swapping stream instance re-subscribes through the public widget '
+        '(v1.9.1 slice 4) — wrapper ValueKey does not include stream, so '
+        'this exercises didUpdateWidget rather than a remount', (tester) async {
+      final controllerA = StreamController<String>();
+      addTearDown(() {
+        if (!controllerA.isClosed) controllerA.close();
+      });
+      final controllerB = StreamController<String>();
+      addTearDown(() {
+        if (!controllerB.isClosed) controllerB.close();
+      });
+
+      Widget build(Stream<String> stream) {
+        return MaterialApp(
+          home: StreamingTextMarkdown(
+            text: '',
+            stream: stream,
+            markdownEnabled: false,
+            fadeInEnabled: false,
+            wordByWord: false,
+            chunkSize: 1000,
+            typingSpeed: Duration.zero,
+          ),
+        );
+      }
+
+      await tester.pumpWidget(build(controllerA.stream));
+      controllerA.add('from A');
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('from A'), findsOneWidget);
+
+      // No StreamingTextMarkdown remount — same key/position in tree.
+      await tester.pumpWidget(build(controllerB.stream));
+      await tester.pump();
+
+      controllerA.add(' MORE (must be ignored)');
+      await tester.pump();
+      await tester.pump();
+
+      controllerB.add('from B');
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.textContaining('from B'), findsOneWidget);
+      expect(find.textContaining('MORE'), findsNothing,
+          reason: 'the old stream subscription must not still be active '
+              'after the swap');
+    });
   });
 
   group('completeAnimationOnTap', () {

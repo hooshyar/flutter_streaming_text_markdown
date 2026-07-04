@@ -62,23 +62,37 @@ void main() {
       await tester.pump();
       expect(find.text(''), findsOneWidget);
 
-      // Stream some text with LaTeX
-      // Note: the stream is wrapped via `asBroadcastStream()` internally,
-      // which adds one extra microtask hop before the listener observes
-      // each event — so allow two pumps per emitted chunk to let state
-      // propagate and the widget rebuild.
+      // Stream some text with LaTeX.
+      // Two things to account for per emitted chunk:
+      //  1. The stream is wrapped via `asBroadcastStream()` internally, adding
+      //     one extra microtask hop before the listener observes the event — so
+      //     two bare pumps let the received buffer update and the drain start.
+      //  2. As of v1.9.1 slice 2, streamed chunks no longer appear instantly:
+      //     the drain timer reveals them incrementally at `typingSpeed` (50ms
+      //     default, chunkSize 1). So we must also pump enough *elapsed time*
+      //     for the whole chunk to drain into the visible text before asserting.
+      Future<void> drain() async {
+        // Generously exceed the longest chunk's draining time (chars * 50ms).
+        for (var i = 0; i < 30; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+      }
+
       controller.add('Formula: ');
       await tester.pump();
       await tester.pump();
+      await drain();
       expect(find.textContaining('Formula:'), findsOneWidget);
 
       controller.add('\$x = 5\$');
       await tester.pump();
       await tester.pump();
+      await drain();
 
       controller.add(' and that is it');
       await tester.pump();
       await tester.pump();
+      await drain();
       expect(find.textContaining('and that is it'), findsOneWidget);
 
       // Close the stream

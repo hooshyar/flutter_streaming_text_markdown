@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Code-fence render stability while typing.** While a ``` code fence was
+  still being typed, its raw backtick markers rendered as literal text; the
+  instant the closing fence completed, gpt_markdown reformatted the block as
+  a styled code widget, stripping those markers — the visible text shrank by
+  a few characters at that exact moment, reading as a stutter/flicker on top
+  of the typing animation. The markdown *render* now withholds a trailing
+  unclosed fence until it balances, so code blocks only ever appear in their
+  final styled form. Typing position, progress, and completion timing are
+  unchanged — this affects display only.
+
 ## 1.9.0
 
 ### New Features

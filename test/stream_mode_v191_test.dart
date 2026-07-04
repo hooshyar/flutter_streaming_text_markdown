@@ -719,4 +719,96 @@ void main() {
       expect(_displayed(tester), equals('ABCDE'));
     });
   });
+
+  group('v1.9.1 slice 5 — autoScroll pins to bottom while animating', () {
+    // Long enough (with a fast typing speed) to overflow a 100px viewport and
+    // produce real scroll extent as it types in.
+    const longText =
+        'Line one of the message.\nLine two of the message.\nLine three of the message.\n'
+        'Line four of the message.\nLine five of the message.\nLine six of the message.\n'
+        'Line seven of the message.\nLine eight of the message.\nLine nine of the message.\n'
+        'Line ten of the message.';
+
+    testWidgets(
+        'autoScroll: true pins scroll offset toward maxScrollExtent '
+        'mid-animation, not only at completion', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 100,
+              child: StreamingTextMarkdown(
+                text: longText,
+                typingSpeed: const Duration(milliseconds: 1),
+                chunkSize: 20,
+                autoScroll: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final scrollController = tester
+          .widget<SingleChildScrollView>(find.byType(SingleChildScrollView))
+          .controller!;
+
+      // Pump partway through the animation (not to completion) and confirm
+      // the scroll view has already advanced toward the bottom — this is the
+      // behavior that was broken: previously offset stayed 0 until onComplete.
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(milliseconds: 1));
+      }
+
+      expect(scrollController.hasClients, isTrue);
+      final maxExtent = scrollController.position.maxScrollExtent;
+      expect(maxExtent, greaterThan(0),
+          reason: 'test content must overflow the 100px viewport');
+      expect(scrollController.offset, greaterThan(0),
+          reason:
+              'autoScroll should pin toward the bottom while still animating, '
+              'not only once the animation completes');
+
+      // Let the animation finish and settle; final offset should sit at (or
+      // very near) the bottom.
+      await tester.pumpAndSettle();
+      expect(scrollController.offset,
+          closeTo(scrollController.position.maxScrollExtent, 1.0));
+    });
+
+    testWidgets('autoScroll: false does not scroll during animation',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 100,
+              child: StreamingTextMarkdown(
+                text: longText,
+                typingSpeed: const Duration(milliseconds: 1),
+                chunkSize: 20,
+                autoScroll: false,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final scrollController = tester
+          .widget<SingleChildScrollView>(find.byType(SingleChildScrollView))
+          .controller!;
+
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(milliseconds: 1));
+      }
+
+      expect(scrollController.offset, equals(0.0),
+          reason: 'autoScroll: false must not move the scroll position');
+
+      // Even after full completion, offset should remain untouched.
+      await tester.pumpAndSettle();
+      expect(scrollController.offset, equals(0.0));
+    });
+  });
 }

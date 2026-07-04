@@ -75,6 +75,7 @@ class StreamingText extends StatefulWidget {
     this.components,
     this.inlineComponents,
     this.completeAnimationOnTap = true,
+    this.onTextChanged,
   });
 
   final String text;
@@ -187,6 +188,15 @@ class StreamingText extends StatefulWidget {
   /// Defaults to `true`. Set to `false` to let the animation play through
   /// uninterrupted regardless of taps.
   final bool completeAnimationOnTap;
+
+  /// v1.9.1 slice 5: internal hook fired whenever the displayed text buffer
+  /// grows during animation/streaming (i.e. from inside [_updateProgress]).
+  /// Not part of the public [StreamingTextMarkdown] API surface directly —
+  /// used internally to drive auto-scroll pinning while content grows, rather
+  /// than only once at completion. Optional and defaults to `null` so this
+  /// stays fully backward-compatible for any external consumer of
+  /// [StreamingText] (exported via `streaming.dart`).
+  final VoidCallback? onTextChanged;
 
   @override
   State<StreamingText> createState() => _StreamingTextState();
@@ -818,6 +828,12 @@ class _StreamingTextState extends State<StreamingText>
     }
     // Trigger trailing-edge fade for markdown content
     _triggerTrailingFade();
+    // v1.9.1 slice 5: notify listeners (e.g. StreamingTextMarkdown's
+    // auto-scroll) that the displayed buffer grew. `_updateProgress` is
+    // already called from every buffer-write call site across typing,
+    // draining, and catch-up, so this is the single natural hook — no new
+    // write sites needed.
+    widget.onTextChanged?.call();
   }
 
   void _handleStream() {

@@ -268,6 +268,10 @@ class _StreamingTextState extends State<StreamingText>
   /// received).
   bool _streamDone = false;
 
+  /// v1.9.1 slice 3: re-entrancy guard for [_handleControllerChange]'s
+  /// stream-mode skip-to-end branch — see the comment at its call site.
+  bool _handlingStreamSkipToEnd = false;
+
   Timer? _typeTimer;
   StreamSubscription<String>? _streamSubscription;
   late AnimationController _cursorController;
@@ -508,14 +512,35 @@ class _StreamingTextState extends State<StreamingText>
 
     final controller = widget.controller!;
 
-    // v1.9.1 slice 2: in stream mode the drain timer owns the display and
-    // `widget.text` is '' — the text-based resume/restart/skip paths below all
-    // assume `widget.text` holds the content, so running them here would wipe
-    // or corrupt the streamed display (e.g. `_restartAnimation`/`_skipToEnd`
-    // clear the buffer and write ''). The controller reflects stream progress
-    // for observation; it does not drive text-animation control while
-    // streaming. (Tap/skip behavior for streams is slice 3.)
-    if (widget.stream != null) return;
+    // v1.9.1 slice 2/3: in stream mode the drain timer owns the display and
+    // `widget.text` is '' — the text-based pause/resume/restart paths below
+    // all assume `widget.text` holds the content, so running them here would
+    // wipe or corrupt the streamed display (e.g. `_restartAnimation` clears
+    // the buffer and writes ''). The controller still reflects stream
+    // progress for observation. `_skipToEnd()` is the one path that IS
+    // stream-safe (slice 3 made it catch up from `_receivedTextBuffer`
+    // instead of writing `widget.text`), so skip-to-end is allowed through
+    // below; everything else bails out early for stream mode.
+    if (widget.stream != null) {
+      // Guarded by `_handlingStreamSkipToEnd`: `_skipToEnd()` catches the
+      // display up via `_updateProgress()`, which calls
+      // `controller.updateProgress()` and synchronously re-enters this
+      // listener through `notifyListeners()` — without the guard,
+      // `controller.state` is still `completed` and `_isComplete` is still
+      // false at that point (it's only set afterwards), causing infinite
+      // recursion.
+      if (controller.state == StreamingTextState.completed &&
+          !_isComplete &&
+          !_handlingStreamSkipToEnd) {
+        _handlingStreamSkipToEnd = true;
+        try {
+          _skipToEnd();
+        } finally {
+          _handlingStreamSkipToEnd = false;
+        }
+      }
+      return;
+    }
 
     // Handle pause/resume
     if (controller.isPaused && _typeTimer?.isActive == true) {
@@ -566,6 +591,21 @@ class _StreamingTextState extends State<StreamingText>
   void _skipToEnd() {
     _cancelAllTrackedTimers(); // v1.3.3: Use tracked timer cleanup
     _typeTimer?.cancel();
+
+    if (widget.stream != null) {
+      // v1.9.1 slice 3: in stream mode there is no `widget.text` to jump to —
+      // only catch the displayed buffer up to what's been received so far.
+      // Only actually complete if the stream has already emitted `onDone`;
+      // otherwise more chunks may still arrive and completion is premature.
+      _safeSetState(() {
+        _catchUpDisplayedToReceived();
+      });
+      if (_streamDone) {
+        _completeStream();
+      }
+      return;
+    }
+
     // v1.3.3: Use safe setState
     _safeSetState(() {
       _displayedTextBuffer.clear();
@@ -580,6 +620,19 @@ class _StreamingTextState extends State<StreamingText>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _safeSetState(() {});
     });
+  }
+
+  /// v1.9.1 slice 3: writes everything received so far into the displayed
+  /// buffer and cancels any pending drain timer. Used by tap-to-complete and
+  /// [_skipToEnd] in stream mode so mid-stream taps/skips catch the display up
+  /// to what's arrived instead of erasing it (there is no `widget.text` to
+  /// fall back to while streaming). Must be called inside a `_safeSetState`.
+  /// Does NOT mark completion — callers decide that based on [_streamDone].
+  void _catchUpDisplayedToReceived() {
+    _cancelAllTrackedTimers();
+    _displayedTextBuffer.clear();
+    _displayedTextBuffer.write(_receivedText);
+    _updateProgress();
   }
 
   void _initCursorAnimation() {
@@ -1465,6 +1518,22 @@ class _StreamingTextState extends State<StreamingText>
     return GestureDetector(
       onTap: widget.completeAnimationOnTap
           ? () {
+              if (widget.stream != null) {
+                // v1.9.1 slice 3: mid-stream, there is no `widget.text` to
+                // jump to — catch the display up to what's been received and
+                // only complete if the stream has already finished. Erasing
+                // to '' (the old behavior, driven by `widget.text`) would
+                // wipe out everything the user has streamed in so far.
+                _cancelAllTrackedTimers();
+                _safeSetState(() {
+                  _catchUpDisplayedToReceived();
+                });
+                if (_streamDone) {
+                  _completeStream();
+                }
+                return;
+              }
+
               _typeTimer?.cancel();
               _safeSetState(() {
                 _displayedTextBuffer.clear();

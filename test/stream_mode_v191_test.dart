@@ -344,4 +344,211 @@ void main() {
       expect(streamCtrl.progress, 1.0);
     });
   });
+
+  group('v1.9.1 slice 3 — tap/skipToEnd catch up instead of erasing', () {
+    testWidgets(
+        'tap mid-stream catches up to received text without erasing, '
+        'does not complete while stream open', (tester) async {
+      final controller = StreamController<String>();
+      addTearDown(() {
+        if (!controller.isClosed) controller.close();
+      });
+
+      var onCompleteCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              text: '',
+              stream: controller.stream,
+              markdownEnabled: false,
+              fadeInEnabled: false,
+              wordByWord: false,
+              chunkSize: 1,
+              typingSpeed: const Duration(milliseconds: 50),
+              onComplete: () => onCompleteCount++,
+            ),
+          ),
+        ),
+      );
+
+      const chunk = 'ABCDEFGHIJKLMNOP'; // 16 chars
+      controller.add(chunk);
+      // Two pumps for the asBroadcastStream microtask hop + first frame.
+      await tester.pump();
+      await tester.pump();
+
+      // Let a little time pass so only part of the chunk has drained.
+      await tester.pump(const Duration(milliseconds: 60));
+      final midway = _displayed(tester);
+      expect(midway.length, greaterThan(0));
+      expect(midway.length, lessThan(chunk.length),
+          reason: 'drain should still be mid-chunk before the tap');
+
+      // Tap the widget: should catch displayed up to received, NOT erase it,
+      // and NOT complete since the stream is still open.
+      await tester.tap(find.byType(StreamingText));
+      await tester.pump();
+
+      expect(_displayed(tester), equals(chunk),
+          reason: 'tap should reveal everything received so far');
+      expect(onCompleteCount, 0,
+          reason: 'must not complete while the stream is still open');
+
+      // Now close the stream — completion should fire exactly once, since
+      // displayed already equals received.
+      await controller.close();
+      await tester.pump();
+      await tester.pump();
+
+      expect(onCompleteCount, 1,
+          reason: 'onComplete fires exactly once after stream closes');
+    });
+
+    testWidgets('tap mid-stream completes immediately if stream already done',
+        (tester) async {
+      final controller = StreamController<String>();
+      addTearDown(() {
+        if (!controller.isClosed) controller.close();
+      });
+
+      var onCompleteCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              text: '',
+              stream: controller.stream,
+              markdownEnabled: false,
+              fadeInEnabled: false,
+              wordByWord: false,
+              chunkSize: 1,
+              typingSpeed: const Duration(milliseconds: 50),
+              onComplete: () => onCompleteCount++,
+            ),
+          ),
+        ),
+      );
+
+      const chunk = 'ABCDEFGHIJ'; // 10 chars
+      controller.add(chunk);
+      await tester.pump();
+      await tester.pump();
+
+      // Let a couple of characters render before closing, so the widget has
+      // non-empty layout (and is hit-testable) at tap time.
+      await tester.pump(const Duration(milliseconds: 60));
+
+      // Close the stream while the drain is still mid-chunk.
+      await controller.close();
+      await tester.pump();
+      await tester.pump();
+
+      final midway = _displayed(tester);
+      expect(midway.length, greaterThan(0));
+      expect(midway.length, lessThan(chunk.length),
+          reason: 'drain should still be mid-chunk when we tap');
+      expect(onCompleteCount, 0);
+
+      // Tap: stream is already done, so this should catch up AND complete.
+      await tester.tap(find.byType(StreamingText));
+      await tester.pump();
+
+      expect(_displayed(tester), equals(chunk));
+      expect(onCompleteCount, 1,
+          reason: 'tap completes immediately since the stream was done');
+
+      // Tapping again must not double-fire onComplete.
+      await tester.tap(find.byType(StreamingText));
+      await tester.pump();
+      expect(onCompleteCount, 1);
+    });
+
+    testWidgets(
+        'skipToEnd via controller behaves the same as tap in stream mode',
+        (tester) async {
+      final controller = StreamController<String>();
+      addTearDown(() {
+        if (!controller.isClosed) controller.close();
+      });
+      final streamCtrl = StreamingTextController();
+      addTearDown(streamCtrl.dispose);
+
+      var onCompleteCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              text: '',
+              stream: controller.stream,
+              controller: streamCtrl,
+              markdownEnabled: false,
+              fadeInEnabled: false,
+              wordByWord: false,
+              chunkSize: 1,
+              typingSpeed: const Duration(milliseconds: 50),
+              onComplete: () => onCompleteCount++,
+            ),
+          ),
+        ),
+      );
+
+      const chunk = 'ABCDEFGHIJKLMNOP'; // 16 chars
+      controller.add(chunk);
+      await tester.pump();
+      await tester.pump();
+
+      await tester.pump(const Duration(milliseconds: 60));
+      final midway = _displayed(tester);
+      expect(midway.length, greaterThan(0));
+      expect(midway.length, lessThan(chunk.length));
+
+      // Stream still open — skipToEnd should catch up but not complete.
+      streamCtrl.skipToEnd();
+      await tester.pump();
+
+      expect(_displayed(tester), equals(chunk));
+      expect(onCompleteCount, 0,
+          reason: 'must not complete while the stream is still open');
+
+      await controller.close();
+      await tester.pump();
+      await tester.pump();
+
+      expect(onCompleteCount, 1);
+    });
+
+    testWidgets('tap in non-stream mode is unchanged (regression guard)',
+        (tester) async {
+      var onCompleteCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              text: 'Hello World',
+              markdownEnabled: false,
+              typingSpeed: const Duration(milliseconds: 50),
+              onComplete: () => onCompleteCount++,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      // Let a couple characters render (non-empty layout) before tapping,
+      // well before the animation would finish.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(onCompleteCount, 0, reason: 'animation should still be running');
+      await tester.tap(find.byType(StreamingText));
+      await tester.pump();
+
+      expect(_displayed(tester), equals('Hello World'),
+          reason: 'tap should jump straight to the full static text');
+      expect(onCompleteCount, 1);
+    });
+  });
 }

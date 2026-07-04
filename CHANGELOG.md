@@ -1,18 +1,53 @@
 # Changelog
 
-## Unreleased
+## 1.9.1
 
 ### Fixed
 
-- **Code-fence render stability while typing.** While a ``` code fence was
-  still being typed, its raw backtick markers rendered as literal text; the
-  instant the closing fence completed, gpt_markdown reformatted the block as
-  a styled code widget, stripping those markers — the visible text shrank by
-  a few characters at that exact moment, reading as a stutter/flicker on top
-  of the typing animation. The markdown *render* now withholds a trailing
-  unclosed fence until it balances, so code blocks only ever appear in their
-  final styled form. Typing position, progress, and completion timing are
-  unchanged — this affects display only.
+**Stream-mode engine rewrite — chunks now animate instead of rendering instantly**
+
+The `stream:` parameter (added in 1.9.0) had several rough edges once real
+LLM traffic hit it. This release rewrites the streaming engine and tightens
+the surrounding lifecycle:
+
+* **Chunks now animate per `typingSpeed`/`chunkSize`/`wordByWord`** instead of
+  being dumped onto the screen the instant they arrive. `wordByWord` now
+  correctly holds back a trailing partial word at a chunk boundary until the
+  next whitespace or stream close, so words no longer visibly split mid-token.
+* **`onComplete`/`controller.markCompleted()` now fire exactly once** — only
+  once the stream itself has closed *and* the displayed text has caught up
+  to everything received. Previously these could double-fire or fire before
+  the last chunk had finished animating in.
+* **`controller.progress` now updates correctly during streaming.** It was
+  previously stuck at `0` for the entire stream and only jumped to `1.0` on
+  completion.
+* **Tap-to-complete and `controller.skipToEnd()` are now stream-safe.** In
+  stream mode, both now instantly catch the displayed text up to whatever has
+  been received so far — they never erase already-streamed content. They only
+  trigger full completion if the underlying stream has already closed;
+  previously tapping mid-stream wiped all streamed text and could double-fire
+  `onComplete`.
+* **`didUpdateWidget` now detects a `stream` instance swap** (e.g. a chat UI
+  moving on to the next message). Previously swapping in a new `Stream<String>`
+  was silently ignored and its content never appeared. The old subscription is
+  now properly torn down and the new one subscribed — including the
+  `stream → null` and `null → stream` transitions.
+* **`autoScroll` (on `StreamingTextMarkdown`) now pins to the bottom as content
+  grows during animation/streaming**, not only once at the very end. Backed by
+  a new optional `onTextChanged` callback on `StreamingText`.
+* Removed a phantom repeating cursor-blink `AnimationController` ticker that
+  ran continuously with nothing ever rendering it — a source of needless
+  battery drain and a cause of `pumpAndSettle` hangs in tests.
+
+**Code-fence render stability while typing.** While a ``` code fence was
+still being typed, its raw backtick markers rendered as literal text; the
+instant the closing fence completed, gpt_markdown reformatted the block as
+a styled code widget, stripping those markers — the visible text shrank by
+a few characters at that exact moment, reading as a stutter/flicker on top
+of the typing animation. The markdown *render* now withholds a trailing
+unclosed fence until it balances, so code blocks only ever appear in their
+final styled form. Typing position, progress, and completion timing are
+unchanged — this affects display only.
 
 ## 1.9.0
 

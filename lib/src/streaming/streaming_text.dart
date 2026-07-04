@@ -557,14 +557,17 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _initCursorAnimation() {
+    // v1.9.1: `_cursorController` is created for API/back-compat (disposed
+    // below) but is intentionally never started and never consumed by
+    // build() — no cursor is rendered here. Starting `repeat()` created a
+    // ticker that ran for the widget's entire lifetime even though nothing
+    // ever read the animation, draining battery and blocking
+    // `tester.pumpAndSettle()` in tests. Do not re-add `.repeat()` here
+    // without also wiring an actual cursor glyph into build().
     _cursorController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-
-    if (widget.showCursor) {
-      _cursorController.repeat(reverse: true);
-    }
   }
 
   void _initializeText() {

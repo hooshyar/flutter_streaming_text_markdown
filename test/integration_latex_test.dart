@@ -63,14 +63,21 @@ void main() {
       expect(find.text(''), findsOneWidget);
 
       // Stream some text with LaTeX
+      // Note: the stream is wrapped via `asBroadcastStream()` internally,
+      // which adds one extra microtask hop before the listener observes
+      // each event — so allow two pumps per emitted chunk to let state
+      // propagate and the widget rebuild.
       controller.add('Formula: ');
+      await tester.pump();
       await tester.pump();
       expect(find.textContaining('Formula:'), findsOneWidget);
 
       controller.add('\$x = 5\$');
       await tester.pump();
+      await tester.pump();
 
       controller.add(' and that is it');
+      await tester.pump();
       await tester.pump();
       expect(find.textContaining('and that is it'), findsOneWidget);
 

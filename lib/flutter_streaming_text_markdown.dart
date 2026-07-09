@@ -476,6 +476,22 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
     super.dispose();
   }
 
+  /// v1.9.1 slice 5: keeps the scroll view pinned near the bottom WHILE
+  /// content is actively growing (typing or streaming), not only once at
+  /// completion. Uses `jumpTo` (not `animateTo`) — an animated scroll fired
+  /// on every grown chunk at typing speed would pile up competing
+  /// animations. Guarded so it only jumps when there's actually more to
+  /// reveal, avoiding redundant jumps when already pinned to the bottom.
+  void _pinToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      if (_scrollController.offset < position.maxScrollExtent) {
+        _scrollController.jumpTo(position.maxScrollExtent);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // Resolve TextStyle with proper fallback chain
@@ -534,6 +550,7 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           components: widget.components,
           inlineComponents: widget.inlineComponents,
           completeAnimationOnTap: widget.completeAnimationOnTap ?? true,
+          onTextChanged: widget.autoScroll ? _pinToBottom : null,
           onComplete: () {
             // Handle auto-scrolling
             if (mounted && widget.autoScroll && _scrollController.hasClients) {

@@ -75,6 +75,7 @@ class StreamingText extends StatefulWidget {
     this.components,
     this.inlineComponents,
     this.completeAnimationOnTap = true,
+    this.onTextChanged,
   });
 
   final String text;
@@ -188,6 +189,15 @@ class StreamingText extends StatefulWidget {
   /// uninterrupted regardless of taps.
   final bool completeAnimationOnTap;
 
+  /// v1.9.1 slice 5: internal hook fired whenever the displayed text buffer
+  /// grows during animation/streaming (i.e. from inside [_updateProgress]).
+  /// Not part of the public [StreamingTextMarkdown] API surface directly —
+  /// used internally to drive auto-scroll pinning while content grows, rather
+  /// than only once at completion. Optional and defaults to `null` so this
+  /// stays fully backward-compatible for any external consumer of
+  /// [StreamingText] (exported via `streaming.dart`).
+  final VoidCallback? onTextChanged;
+
   @override
   State<StreamingText> createState() => _StreamingTextState();
 }
@@ -254,6 +264,23 @@ class _StreamingTextState extends State<StreamingText>
   final StringBuffer _displayedTextBuffer = StringBuffer();
 
   String get _displayedText => _displayedTextBuffer.toString();
+
+  /// v1.9.1 slice 2: everything received from [stream] so far. In stream mode
+  /// the listener only appends here; a single drain timer moves units from
+  /// this buffer into [_displayedTextBuffer] per [typingSpeed], so streamed
+  /// chunks animate instead of rendering instantly.
+  final StringBuffer _receivedTextBuffer = StringBuffer();
+
+  String get _receivedText => _receivedTextBuffer.toString();
+
+  /// v1.9.1 slice 2: set true once the stream emits `onDone`. Completion only
+  /// fires when this is true AND the drain has caught up (displayed ==
+  /// received).
+  bool _streamDone = false;
+
+  /// v1.9.1 slice 3: re-entrancy guard for [_handleControllerChange]'s
+  /// stream-mode skip-to-end branch — see the comment at its call site.
+  bool _handlingStreamSkipToEnd = false;
 
   Timer? _typeTimer;
   StreamSubscription<String>? _streamSubscription;
@@ -327,6 +354,8 @@ class _StreamingTextState extends State<StreamingText>
     super.initState();
     _initCursorAnimation();
     _displayedTextBuffer.clear();
+    _receivedTextBuffer.clear();
+    _streamDone = false;
 
     _groupAnimationController = AnimationController(
       vsync: this,
@@ -341,6 +370,19 @@ class _StreamingTextState extends State<StreamingText>
   @override
   void didUpdateWidget(StreamingText oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // v1.9.1 slice 4: a stream identity swap (including stream<->null in
+    // either direction) is its own trigger, evaluated BEFORE
+    // `_hasConfigurationChanged`/the generic text-diff branches below. Those
+    // branches assume `widget.text` holds the content to animate, which is
+    // wrong for a stream swap (there is no text to jump to) and would either
+    // no-op (old subscription silently kept forever, the bug this fixes) or
+    // corrupt state via `_restartAnimation`'s text-based reset. Handle the
+    // swap fully here and return, so nothing below re-runs for this case.
+    if (!identical(widget.stream, oldWidget.stream)) {
+      _handleStreamSwap();
+      return;
+    }
 
     // Check if configuration changed (requires restart) vs just text changed
     final configChanged = _hasConfigurationChanged(oldWidget);
@@ -359,6 +401,38 @@ class _StreamingTextState extends State<StreamingText>
       // Text changed but not appended - restart animation
       _restartAnimation();
     }
+  }
+
+  /// v1.9.1 slice 4: handles `widget.stream` changing identity across a
+  /// rebuild — covers stream-A -> stream-B, stream -> null, and null ->
+  /// stream. Cancels whatever the OLD configuration was driving (subscription
+  /// and/or drain timer), resets all stream/animation state, then re-runs
+  /// [_initializeText] so the new configuration (stream or static text)
+  /// starts fresh. Without this, a swapped stream instance was silently
+  /// ignored — the old subscription kept running (or nothing was subscribed
+  /// at all) and the new stream's data was never shown.
+  void _handleStreamSwap() {
+    _streamSubscription?.cancel();
+    _streamSubscription = null;
+    _cancelAllTrackedTimers();
+    _typeTimer?.cancel();
+    _typeTimer = null;
+    _streamDone = false;
+    _handlingStreamSkipToEnd = false;
+
+    _safeSetState(() {
+      _displayedTextBuffer.clear();
+      _receivedTextBuffer.clear();
+      _isComplete = false;
+      _isError = false;
+      _errorMessage = null;
+      _isAnimationActive = false;
+      _completeMarkdownCache.clear();
+      _cleanupAnimations();
+    });
+
+    widget.controller?.updateState(StreamingTextState.idle);
+    _initializeText();
   }
 
   bool _hasConfigurationChanged(StreamingText oldWidget) {
@@ -493,6 +567,36 @@ class _StreamingTextState extends State<StreamingText>
 
     final controller = widget.controller!;
 
+    // v1.9.1 slice 2/3: in stream mode the drain timer owns the display and
+    // `widget.text` is '' — the text-based pause/resume/restart paths below
+    // all assume `widget.text` holds the content, so running them here would
+    // wipe or corrupt the streamed display (e.g. `_restartAnimation` clears
+    // the buffer and writes ''). The controller still reflects stream
+    // progress for observation. `_skipToEnd()` is the one path that IS
+    // stream-safe (slice 3 made it catch up from `_receivedTextBuffer`
+    // instead of writing `widget.text`), so skip-to-end is allowed through
+    // below; everything else bails out early for stream mode.
+    if (widget.stream != null) {
+      // Guarded by `_handlingStreamSkipToEnd`: `_skipToEnd()` catches the
+      // display up via `_updateProgress()`, which calls
+      // `controller.updateProgress()` and synchronously re-enters this
+      // listener through `notifyListeners()` — without the guard,
+      // `controller.state` is still `completed` and `_isComplete` is still
+      // false at that point (it's only set afterwards), causing infinite
+      // recursion.
+      if (controller.state == StreamingTextState.completed &&
+          !_isComplete &&
+          !_handlingStreamSkipToEnd) {
+        _handlingStreamSkipToEnd = true;
+        try {
+          _skipToEnd();
+        } finally {
+          _handlingStreamSkipToEnd = false;
+        }
+      }
+      return;
+    }
+
     // Handle pause/resume
     if (controller.isPaused && _typeTimer?.isActive == true) {
       _typeTimer?.cancel();
@@ -527,8 +631,10 @@ class _StreamingTextState extends State<StreamingText>
     _cancelAllTrackedTimers(); // v1.3.3: Use tracked timer cleanup
     _typeTimer?.cancel();
     // v1.3.3: Use safe setState
+    _streamDone = false;
     _safeSetState(() {
       _displayedTextBuffer.clear();
+      _receivedTextBuffer.clear();
       _isComplete = false;
       _isAnimationActive = true;
       _completeMarkdownCache.clear(); // Clear cache on restart
@@ -540,6 +646,21 @@ class _StreamingTextState extends State<StreamingText>
   void _skipToEnd() {
     _cancelAllTrackedTimers(); // v1.3.3: Use tracked timer cleanup
     _typeTimer?.cancel();
+
+    if (widget.stream != null) {
+      // v1.9.1 slice 3: in stream mode there is no `widget.text` to jump to —
+      // only catch the displayed buffer up to what's been received so far.
+      // Only actually complete if the stream has already emitted `onDone`;
+      // otherwise more chunks may still arrive and completion is premature.
+      _safeSetState(() {
+        _catchUpDisplayedToReceived();
+      });
+      if (_streamDone) {
+        _completeStream();
+      }
+      return;
+    }
+
     // v1.3.3: Use safe setState
     _safeSetState(() {
       _displayedTextBuffer.clear();
@@ -554,6 +675,19 @@ class _StreamingTextState extends State<StreamingText>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _safeSetState(() {});
     });
+  }
+
+  /// v1.9.1 slice 3: writes everything received so far into the displayed
+  /// buffer and cancels any pending drain timer. Used by tap-to-complete and
+  /// [_skipToEnd] in stream mode so mid-stream taps/skips catch the display up
+  /// to what's arrived instead of erasing it (there is no `widget.text` to
+  /// fall back to while streaming). Must be called inside a `_safeSetState`.
+  /// Does NOT mark completion — callers decide that based on [_streamDone].
+  void _catchUpDisplayedToReceived() {
+    _cancelAllTrackedTimers();
+    _displayedTextBuffer.clear();
+    _displayedTextBuffer.write(_receivedText);
+    _updateProgress();
   }
 
   void _initCursorAnimation() {
@@ -672,12 +806,34 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _updateProgress() {
-    if (widget.controller != null && widget.text.isNotEmpty) {
-      final progress = _displayedText.length / widget.text.length;
-      widget.controller!.updateProgress(progress);
+    if (widget.controller != null) {
+      if (widget.stream != null) {
+        // v1.9.1 slice 2: in stream mode `widget.text` is '' — progress is
+        // measured against what the stream has delivered so far. It may
+        // regress when a new chunk arrives (received grows), which is
+        // acceptable. Always cap strictly below 1.0 here: reaching exactly 1.0
+        // via `updateProgress` would auto-fire the controller's completion
+        // callback, and `_completeStream` also fires it via `markCompleted`,
+        // which would double-fire. Completion (and the exact 1.0 progress) is
+        // single-sourced through `markCompleted()` at real stream completion.
+        final received = _receivedText.length;
+        if (received > 0) {
+          final progress = (_displayedText.length / received).clamp(0.0, 0.999);
+          widget.controller!.updateProgress(progress);
+        }
+      } else if (widget.text.isNotEmpty) {
+        final progress = _displayedText.length / widget.text.length;
+        widget.controller!.updateProgress(progress);
+      }
     }
     // Trigger trailing-edge fade for markdown content
     _triggerTrailingFade();
+    // v1.9.1 slice 5: notify listeners (e.g. StreamingTextMarkdown's
+    // auto-scroll) that the displayed buffer grew. `_updateProgress` is
+    // already called from every buffer-write call site across typing,
+    // draining, and catch-up, so this is the single natural hook — no new
+    // write sites needed.
+    widget.onTextChanged?.call();
   }
 
   void _handleStream() {
@@ -688,28 +844,27 @@ class _StreamingTextState extends State<StreamingText>
     final effectiveStream =
         stream.isBroadcast ? stream : stream.asBroadcastStream();
 
+    // v1.9.1 slice 2: the listener does the MINIMUM — append the chunk to
+    // `_receivedTextBuffer` and make sure a drain timer is running. It never
+    // touches `_displayedTextBuffer`; the drain timer reveals received text
+    // incrementally per `typingSpeed`/`chunkSize`/`wordByWord` so streamed
+    // chunks animate like typed text instead of appearing instantly.
     _streamSubscription = effectiveStream.listen(
       (data) {
-        // v1.3.3: Use safe setState
+        // Guard against callbacks arriving after the element is unmounted — a
+        // broadcast stream can still deliver a buffered event during teardown,
+        // and touching state / the binding then trips `!inTest`.
+        if (!mounted) return;
         _safeSetState(() {
-          final previousLength = _displayedText.length;
-          _displayedTextBuffer.write(data);
+          _receivedTextBuffer.write(data);
           _isError = false;
           _errorMessage = null;
-
-          // FIXED: Continue animation from last position instead of restarting
-          if (_isAnimationActive && previousLength > 0) {
-            _continueAnimationFrom(previousLength);
-          } else if (!_isAnimationActive) {
-            // Start new animation if none is active
-            _isAnimationActive = true;
-            _startAnimationFrom(previousLength);
-          }
-
-          _updateProgress();
+          _isAnimationActive = true;
         });
+        _ensureStreamDrain();
       },
       onError: (error) {
+        if (!mounted) return;
         // v1.3.3: Use safe setState
         _safeSetState(() {
           _isError = true;
@@ -717,38 +872,160 @@ class _StreamingTextState extends State<StreamingText>
         });
       },
       onDone: () {
-        // v1.3.3: Use safe setState
-        _safeSetState(() {
-          _isComplete = true;
-          _isAnimationActive = false;
-        });
-        widget.controller?.markCompleted();
-        _handleCompletion();
-        // Force rebuild to process complete markdown
-        // v1.3.3: Use safe setState in callback
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _safeSetState(() {});
-        });
+        if (!mounted) return;
+        _streamDone = true;
+        // If the drain has already caught up (displayed == received) there is
+        // no pending timer to finish it, so complete here. Otherwise the
+        // running drain timer will detect `_streamDone` when it catches up and
+        // complete then — completion waits for the drain to finish.
+        if (_displayedText.length >= _receivedText.length) {
+          _completeStream();
+        } else {
+          _ensureStreamDrain();
+        }
       },
     );
   }
 
-  void _continueAnimationFrom(int startIndex) {
-    // Only animate newly added content from the specified index
-    final newContent = _displayedText.substring(startIndex);
-    if (newContent.isNotEmpty && !_isComplete) {
-      // Update the animation to continue from where it left off
-
-      // Continue with the existing typing animation logic
-      // The existing timers will handle the new content
+  /// v1.9.1 slice 2: ensure exactly one drain timer is running. The
+  /// single-timer invariant is held via [_createTrackedTimer] /
+  /// [_cancelAllTrackedTimers]. When the drain catches up before the stream is
+  /// done it cancels itself; the next arriving chunk (or `onDone`) restarts it
+  /// through this method.
+  void _ensureStreamDrain() {
+    if (!mounted || _isComplete) return;
+    // Already draining — nothing to do (avoid stacking timers).
+    if (_typeTimer?.isActive == true) return;
+    // Nothing left to reveal right now.
+    if (_displayedText.length >= _receivedText.length) {
+      if (_streamDone) _completeStream();
+      return;
     }
+
+    // typingSpeed == Duration.zero (e.g. the .instant preset): drain the whole
+    // buffer immediately rather than scheduling a zero-delay timer per unit.
+    if (widget.typingSpeed == Duration.zero) {
+      _safeSetState(() {
+        _drainStep(revealAll: true);
+      });
+      if (_streamDone && _displayedText.length >= _receivedText.length) {
+        _completeStream();
+      }
+      return;
+    }
+
+    final timer = Timer.periodic(widget.typingSpeed, (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      // Caught up to what's been received so far.
+      if (_displayedText.length >= _receivedText.length) {
+        timer.cancel();
+        if (_streamDone) {
+          _completeStream();
+        }
+        // else: idle until the next chunk restarts the drain via
+        // `_ensureStreamDrain` — preserves the single-timer invariant.
+        return;
+      }
+
+      var madeProgress = false;
+      _safeSetState(() {
+        madeProgress = _drainStep(revealAll: false);
+      });
+
+      // After revealing, if we've caught up and the stream is done, finish.
+      if (_streamDone && _displayedText.length >= _receivedText.length) {
+        timer.cancel();
+        _completeStream();
+        return;
+      }
+
+      // No progress this tick means we're holding back a trailing partial word
+      // (word mode, whitespace not yet arrived, stream not done). Stop spinning
+      // — the next chunk or `onDone` restarts the drain via `_ensureStreamDrain`.
+      if (!madeProgress) {
+        timer.cancel();
+      }
+    });
+    _createTrackedTimer(timer);
   }
 
-  void _startAnimationFrom(int startIndex) {
-    // Start animation from specified index
-    if (!_isComplete) {
-      _startTyping();
+  /// v1.9.1 slice 2: move one unit (or all, when [revealAll]) from received to
+  /// displayed. Must be called inside a `_safeSetState`. Char mode takes
+  /// `chunkSize` graphemes via [Characters] (never splits an emoji); word mode
+  /// takes the next whole word and holds back a trailing partial word until
+  /// whitespace arrives or the stream is done (so a half word never renders
+  /// mid-stream). Whitespace is preserved exactly so displayed byte-matches
+  /// received at completion.
+  /// Returns `true` if it revealed at least one unit, `false` if it made no
+  /// progress (word mode holding back a trailing partial word). Callers use the
+  /// `false` result to stop the drain timer until more data arrives.
+  bool _drainStep({required bool revealAll}) {
+    final received = _receivedText;
+    final displayedLen = _displayedText.length;
+    if (displayedLen >= received.length) return false;
+
+    final remainder = received.substring(displayedLen);
+
+    if (revealAll) {
+      _displayedTextBuffer.write(remainder);
+      _updateProgress();
+      return true;
     }
+
+    if (widget.wordByWord) {
+      // Find the next whitespace boundary in the remaining received text.
+      final wsIndex = remainder.indexOf(RegExp(r'\s'));
+      if (wsIndex == -1) {
+        // No whitespace yet — this is a (possibly partial) trailing word.
+        // Only reveal it once the stream is done; otherwise hold it back so a
+        // half word never shows.
+        if (_streamDone) {
+          _displayedTextBuffer.write(remainder);
+          _updateProgress();
+          return true;
+        }
+        return false;
+      }
+      // Reveal the word plus its single following whitespace char so spacing
+      // is reconstructed exactly (byte-for-byte with received).
+      final chunk = remainder.substring(0, wsIndex + 1);
+      _displayedTextBuffer.write(chunk);
+      _updateProgress();
+      return true;
+    }
+
+    // Character mode: reveal up to `chunkSize` graphemes, grapheme-safe.
+    final take = widget.chunkSize < 1 ? 1 : widget.chunkSize;
+    final chunk = remainder.characters.take(take).toString();
+    _displayedTextBuffer.write(chunk);
+    _updateProgress();
+    return true;
+  }
+
+  /// v1.9.1 slice 2: single, idempotent stream-completion path. Fires only on
+  /// the `!_isComplete → _isComplete` transition, so `onComplete` /
+  /// `controller.markCompleted()` fire EXACTLY ONCE. The trailing-fade
+  /// dismissal rides on the same `_handleCompletion()` call.
+  void _completeStream() {
+    if (_isComplete) return;
+    _cancelAllTrackedTimers();
+    // The stream has emitted `onDone` and the drain has caught up — nothing
+    // more will ever arrive. Cancel the (broadcast) subscription so no timer or
+    // stream callback survives past completion. Without this the subscription
+    // stays live until `dispose()`, which under a widget-test `FakeAsync` (where
+    // the source controller is closed via `addTearDown`) leaves a dangling
+    // listener that hangs test finalization.
+    _streamSubscription?.cancel();
+    _streamSubscription = null;
+    _safeSetState(() {
+      _isComplete = true;
+      _isAnimationActive = false;
+    });
+    widget.controller?.markCompleted();
+    _handleCompletion();
   }
 
   void _createCharacterAnimation(int baseIndex, int length) {
@@ -1302,6 +1579,22 @@ class _StreamingTextState extends State<StreamingText>
     return GestureDetector(
       onTap: widget.completeAnimationOnTap
           ? () {
+              if (widget.stream != null) {
+                // v1.9.1 slice 3: mid-stream, there is no `widget.text` to
+                // jump to — catch the display up to what's been received and
+                // only complete if the stream has already finished. Erasing
+                // to '' (the old behavior, driven by `widget.text`) would
+                // wipe out everything the user has streamed in so far.
+                _cancelAllTrackedTimers();
+                _safeSetState(() {
+                  _catchUpDisplayedToReceived();
+                });
+                if (_streamDone) {
+                  _completeStream();
+                }
+                return;
+              }
+
               _typeTimer?.cancel();
               _safeSetState(() {
                 _displayedTextBuffer.clear();

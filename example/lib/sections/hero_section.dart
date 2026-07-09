@@ -78,7 +78,7 @@ class _HeroSectionState extends State<HeroSection> {
           children: [
             _chip('pub.dev', accent, url: 'https://pub.dev/packages/flutter_streaming_text_markdown'),
             _chip('GitHub', accent, url: 'https://github.com/hooshyar/flutter_streaming_text_markdown'),
-            _chip('v1.7.0', isDark ? Colors.white24 : Colors.black26),
+            _chip('v1.9.1', isDark ? Colors.white24 : Colors.black26),
           ],
         ),
         const SizedBox(height: 32),

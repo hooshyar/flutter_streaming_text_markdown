@@ -43,6 +43,11 @@ class _StreamingSectionState extends State<StreamingSection> {
   bool _completeOnTap = true;
   bool _isStreaming = false;
 
+  // Created once per run in [_regenerate], never in build(): building a new
+  // stream on every rebuild would make the widget re-subscribe and restart
+  // (same rule as FutureBuilder/StreamBuilder).
+  Stream<String>? _stream;
+
   /// A fresh single-subscription stream for each run. Mimics an LLM response:
   /// a short time-to-first-token, then steady token deltas.
   Stream<String> _fakeLlmStream() async* {
@@ -56,6 +61,7 @@ class _StreamingSectionState extends State<StreamingSection> {
   void _regenerate() {
     setState(() {
       _runKey++;
+      _stream = _fakeLlmStream();
       _isStreaming = true;
     });
   }
@@ -88,7 +94,7 @@ class _StreamingSectionState extends State<StreamingSection> {
                       )
                     : StreamingTextMarkdown.chatGPT(
                         key: ValueKey('stream_$_runKey'),
-                        stream: _fakeLlmStream(),
+                        stream: _stream,
                         markdownEnabled: true,
                         trailingFadeEnabled: true, // recommended for streams
                         completeAnimationOnTap: _completeOnTap,

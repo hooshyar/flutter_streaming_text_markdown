@@ -1,54 +1,32 @@
-# Development files
-logger.txt
-.vscode/
-.idea/
-*.iml
-build/
+# NOTE: when .pubignore exists, pub ignores .gitignore in this directory —
+# so this file must repeat the root .gitignore rules, then add pub-only ones.
+
+# --- mirrored from .gitignore ---
+*.class
+*.log
+*.pyc
+*.swp
 .DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+*.iml
+*.ipr
+*.iws
+.idea/
+logger.txt
+/pubspec.lock
+**/doc/api/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+.memory/
+example/coverage/lcov.info
+.claude/
 
-# Documentation development files
-docs/
-doc/tasks.md
-doc/remember.txt
-doc/changes.log
-
-# Test coverage
-coverage/
-
-# Example build files
-example/build/
-
-# Exclude gitignore files from publication
-.gitignore
-example/.gitignore
-example/android/.gitignore
-example/ios/.gitignore
-example/linux/.gitignore
-example/macos/.gitignore
-example/windows/.gitignore
-
-# Exclude lock files
-example/pubspec.lock
-
-# Exclude Firebase debug files
-firebase-debug.log
-
-# Exclude backup files
-*.bak
-*.backup
-*~
-
-# Exclude development documentation
-CLAUDE.md
-BACKWARD_COMPATIBILITY_PLAN.md
-ISSUE_FIXES_SUMMARY.md
-LATEX_INTEGRATION_PLAN.md
-V1.3.3_RELEASE_SUMMARY.md
+# --- pub-only: keep the published archive lean ---
+# The demo GIF is referenced in the README via an absolute GitHub URL.
 doc/
-devtools_options.yaml
-
-# Exclude DerivedData
-example/macos/DerivedData/
-
-# Exclude modified Xcode project file
-example/ios/Runner.xcodeproj/project.pbxproj

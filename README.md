@@ -3,13 +3,24 @@
 **Perfect for LLM Applications!** A Flutter package optimized for beautiful AI text streaming with ChatGPT and Claude-style animations.
 
 [![pub package](https://img.shields.io/pub/v/flutter_streaming_text_markdown.svg)](https://pub.dev/packages/flutter_streaming_text_markdown)
+[![CI](https://github.com/hooshyar/flutter_streaming_text_markdown/actions/workflows/ci.yml/badge.svg)](https://github.com/hooshyar/flutter_streaming_text_markdown/actions/workflows/ci.yml)
+[![pub points](https://img.shields.io/pub/points/flutter_streaming_text_markdown)](https://pub.dev/packages/flutter_streaming_text_markdown/score)
+[![likes](https://img.shields.io/pub/likes/flutter_streaming_text_markdown)](https://pub.dev/packages/flutter_streaming_text_markdown/score)
+[![downloads](https://img.shields.io/pub/dm/flutter_streaming_text_markdown)](https://pub.dev/packages/flutter_streaming_text_markdown/score)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/LICENSE)
 
-## 🆕 v1.9.0 — `StreamingTextMarkdown` now takes a `Stream<String>`
-- ✅ **New**: `stream:` parameter on `StreamingTextMarkdown` and every preset (`.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, `.fromPreset()`). Pass an LLM token stream directly — no need to drop down to the lower-level `StreamingText`.
+## 🆕 v1.9.1 — stream-mode reliability fixes
+- ✅ Streamed chunks now **animate per your typing settings** instead of appearing instantly; `wordByWord` no longer splits words at chunk boundaries.
+- ✅ `onComplete` / `controller.progress` are now **stream-accurate** — completion fires exactly once, after the stream closes *and* the displayed text catches up.
+- ✅ Tap-to-complete and `skipToEnd()` are **stream-safe**: they catch up to received text, never erase it.
+- ✅ Swapping the `stream:` instance re-subscribes (same semantics as `StreamBuilder` — create your stream once, not in `build()`).
+- ✅ `autoScroll` keeps the view pinned to the bottom *while* content grows.
+
+### From v1.9.0 — `StreamingTextMarkdown` takes a `Stream<String>`
+- ✅ `stream:` parameter on `StreamingTextMarkdown` and every preset (`.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, `.fromPreset()`). Pass an LLM token stream directly — no need to drop down to the lower-level `StreamingText`.
 - ✅ `text:` is now optional (defaults to `''`). Existing code is unchanged.
 - ✅ Per-character fade-in auto-suppressed for streams; use `trailingFadeEnabled` for a smooth reveal.
 - ✅ **Still here from v1.8**: `components` / `inlineComponents` for full block- and inline-level markdown overrides, plus `imageBuilder`, `onLinkTap`, `codeBuilder`, `latexBuilder`, `linkBuilder`.
-- ✅ **Quality**: tests + analysis green, 160/160 pub.dev score targeted.
 
 ## ✨ Features
 
@@ -25,17 +36,11 @@
 
 ## 🎬 Demo
 
-The example app showcases all features across multiple tabs:
+<img src="https://raw.githubusercontent.com/hooshyar/flutter_streaming_text_markdown/main/doc/streaming_demo.gif" alt="A Stream<String> animating into markdown, LLM-style" width="300"/>
 
-| Tab | Description |
-|-----|-------------|
-| **ChatGPT Style** | Fast character-by-character streaming with fade |
-| **Claude Style** | Smooth word-by-word animation |
-| **LaTeX Demo** | Mathematical equations with inline & block LaTeX |
-| **RTL Support** | Arabic text with right-to-left streaming |
-| **Controller** | Pause, resume, skip, and speed controls |
+▶️ **[Try the live web demo](https://hooshyar.github.io/flutter_streaming_text_markdown/)** — or run it locally: `cd example && flutter run`
 
-> 📹 **Demo video coming soon!** Run the example app yourself: `cd example && flutter run`
+The example app walks through every feature: presets (ChatGPT / Claude / typewriter), live `Stream<String>` input, markdown & LaTeX rendering, RTL/Arabic, theming, and the animation controller.
 
 ## Installation
 
@@ -43,7 +48,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_streaming_text_markdown: ^1.9.0
+  flutter_streaming_text_markdown: ^1.9.1
 ```
 
 ## 🚀 Quick Start

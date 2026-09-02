@@ -2051,7 +2051,11 @@ class _StreamingTextState extends State<StreamingText>
       codeBuilder: widget.codeBuilder,
       latexBuilder: widget.latexBuilder,
       sourceTagBuilder: widget.sourceTagBuilder,
-      highlightBuilder: widget.highlightBuilder,
+      inlineCodeBuilder: widget.highlightBuilder == null
+          ? null
+          : (context, code, style, codeStyle) => baselineWidgetSpan(
+                widget.highlightBuilder!(context, code, style),
+              ),
       linkBuilder: widget.linkBuilder,
       components: widget.components,
       inlineComponents: widget.inlineComponents,

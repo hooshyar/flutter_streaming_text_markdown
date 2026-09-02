@@ -252,6 +252,12 @@ class StreamingTextMarkdown extends StatefulWidget {
 
   /// Creates a StreamingTextMarkdown with ChatGPT-style animation
   /// Perfect for fast, character-by-character streaming like ChatGPT
+  ///
+  /// [fadeInDuration], [fadeInCurve], and [typingSpeed] override the preset's
+  /// defaults (150ms/easeOut fade, 15ms typing speed) when provided — leave
+  /// them `null` to keep the ChatGPT preset's tuned values ([#17]).
+  ///
+  /// [#17]: https://github.com/hooshyar/flutter_streaming_text_markdown/issues/17
   const StreamingTextMarkdown.chatGPT({
     super.key,
     this.text = '',
@@ -284,15 +290,22 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.components,
     this.inlineComponents,
     this.completeAnimationOnTap,
+    Duration? fadeInDuration,
+    Curve? fadeInCurve,
+    Duration? typingSpeed,
   })  : fadeInEnabled = true,
-        fadeInDuration = const Duration(milliseconds: 150),
-        fadeInCurve = Curves.easeOut,
+        fadeInDuration = fadeInDuration ?? const Duration(milliseconds: 150),
+        fadeInCurve = fadeInCurve ?? Curves.easeOut,
         wordByWord = false,
         chunkSize = 1,
-        typingSpeed = const Duration(milliseconds: 15);
+        typingSpeed = typingSpeed ?? const Duration(milliseconds: 15);
 
   /// Creates a StreamingTextMarkdown with Claude-style animation
   /// Perfect for smooth, word-by-word streaming like Claude
+  ///
+  /// [fadeInDuration], [fadeInCurve], and [typingSpeed] override the preset's
+  /// defaults (200ms/easeInOut fade, 80ms typing speed) when provided — leave
+  /// them `null` to keep the Claude preset's tuned values.
   const StreamingTextMarkdown.claude({
     super.key,
     this.text = '',
@@ -325,15 +338,22 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.components,
     this.inlineComponents,
     this.completeAnimationOnTap,
+    Duration? fadeInDuration,
+    Curve? fadeInCurve,
+    Duration? typingSpeed,
   })  : fadeInEnabled = true,
-        fadeInDuration = const Duration(milliseconds: 200),
-        fadeInCurve = Curves.easeInOut,
+        fadeInDuration = fadeInDuration ?? const Duration(milliseconds: 200),
+        fadeInCurve = fadeInCurve ?? Curves.easeInOut,
         wordByWord = true,
         chunkSize = 1,
-        typingSpeed = const Duration(milliseconds: 80);
+        typingSpeed = typingSpeed ?? const Duration(milliseconds: 80);
 
   /// Creates a StreamingTextMarkdown with typewriter animation
   /// Classic typewriter effect without fade-in
+  ///
+  /// [fadeInDuration], [fadeInCurve], and [typingSpeed] override the preset's
+  /// defaults (no fade, 50ms typing speed) when provided — leave them `null`
+  /// to keep the typewriter preset's tuned values.
   const StreamingTextMarkdown.typewriter({
     super.key,
     this.text = '',
@@ -366,15 +386,24 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.components,
     this.inlineComponents,
     this.completeAnimationOnTap,
+    Duration? fadeInDuration,
+    Curve? fadeInCurve,
+    Duration? typingSpeed,
   })  : fadeInEnabled = false,
-        fadeInDuration = Duration.zero,
-        fadeInCurve = Curves.linear,
+        fadeInDuration = fadeInDuration ?? Duration.zero,
+        fadeInCurve = fadeInCurve ?? Curves.linear,
         wordByWord = false,
         chunkSize = 1,
-        typingSpeed = const Duration(milliseconds: 50);
+        typingSpeed = typingSpeed ?? const Duration(milliseconds: 50);
 
   /// Creates a StreamingTextMarkdown with instant display
   /// For when speed is priority over animation
+  ///
+  /// [fadeInDuration] and [fadeInCurve] override the preset's defaults (no
+  /// fade) when provided — mainly useful together with [trailingFadeEnabled],
+  /// which reuses them for its dismiss animation. [typingSpeed] overrides the
+  /// preset's `Duration.zero`, though `chunkSize` stays large so display
+  /// remains effectively instant unless you also pass a smaller `chunkSize`.
   const StreamingTextMarkdown.instant({
     super.key,
     this.text = '',
@@ -407,12 +436,15 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.components,
     this.inlineComponents,
     this.completeAnimationOnTap,
+    Duration? fadeInDuration,
+    Curve? fadeInCurve,
+    Duration? typingSpeed,
   })  : fadeInEnabled = false,
-        fadeInDuration = Duration.zero,
-        fadeInCurve = Curves.linear,
+        fadeInDuration = fadeInDuration ?? Duration.zero,
+        fadeInCurve = fadeInCurve ?? Curves.linear,
         wordByWord = false,
         chunkSize = 1000,
-        typingSpeed = Duration.zero;
+        typingSpeed = typingSpeed ?? Duration.zero;
 
   /// Creates a StreamingTextMarkdown from a preset configuration
   StreamingTextMarkdown.fromPreset({

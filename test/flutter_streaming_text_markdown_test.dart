@@ -403,6 +403,68 @@ void main() {
       expect(completed, 1);
     });
 
+    group('preset constructors accept fadeInDuration/fadeInCurve/typingSpeed '
+        'overrides (regression: #17)', () {
+      test('.chatGPT() keeps its own tuning when overrides are omitted', () {
+        const widget = StreamingTextMarkdown.chatGPT();
+        expect(widget.fadeInDuration, const Duration(milliseconds: 150));
+        expect(widget.fadeInCurve, Curves.easeOut);
+        expect(widget.typingSpeed, const Duration(milliseconds: 15));
+        expect(widget.fadeInEnabled, true);
+      });
+
+      test('.chatGPT() applies caller overrides when provided', () {
+        const widget = StreamingTextMarkdown.chatGPT(
+          fadeInDuration: Duration(milliseconds: 500),
+          fadeInCurve: Curves.bounceIn,
+          typingSpeed: Duration(milliseconds: 5),
+        );
+        expect(widget.fadeInDuration, const Duration(milliseconds: 500));
+        expect(widget.fadeInCurve, Curves.bounceIn);
+        expect(widget.typingSpeed, const Duration(milliseconds: 5));
+        // Overrides don't leak into unrelated preset fields.
+        expect(widget.fadeInEnabled, true);
+        expect(widget.wordByWord, false);
+        expect(widget.chunkSize, 1);
+      });
+
+      test('.claude() applies caller overrides when provided', () {
+        const widget = StreamingTextMarkdown.claude(
+          fadeInDuration: Duration(milliseconds: 999),
+          fadeInCurve: Curves.linear,
+          typingSpeed: Duration(milliseconds: 1),
+        );
+        expect(widget.fadeInDuration, const Duration(milliseconds: 999));
+        expect(widget.fadeInCurve, Curves.linear);
+        expect(widget.typingSpeed, const Duration(milliseconds: 1));
+        expect(widget.wordByWord, true);
+      });
+
+      test('.typewriter() applies caller overrides when provided', () {
+        const widget = StreamingTextMarkdown.typewriter(
+          fadeInDuration: Duration(milliseconds: 42),
+          fadeInCurve: Curves.easeInOutBack,
+          typingSpeed: Duration(milliseconds: 7),
+        );
+        expect(widget.fadeInDuration, const Duration(milliseconds: 42));
+        expect(widget.fadeInCurve, Curves.easeInOutBack);
+        expect(widget.typingSpeed, const Duration(milliseconds: 7));
+        expect(widget.fadeInEnabled, false);
+      });
+
+      test('.instant() applies caller overrides when provided', () {
+        const widget = StreamingTextMarkdown.instant(
+          fadeInDuration: Duration(milliseconds: 30),
+          fadeInCurve: Curves.decelerate,
+          typingSpeed: Duration(milliseconds: 2),
+        );
+        expect(widget.fadeInDuration, const Duration(milliseconds: 30));
+        expect(widget.fadeInCurve, Curves.decelerate);
+        expect(widget.typingSpeed, const Duration(milliseconds: 2));
+        expect(widget.chunkSize, 1000);
+      });
+    });
+
     testWidgets(
         'swapping stream instance re-subscribes through the public widget '
         '(v1.9.1 slice 4) — wrapper ValueKey does not include stream, so '

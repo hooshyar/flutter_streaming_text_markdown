@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+* **`.chatGPT()`, `.claude()`, `.typewriter()`, and `.instant()` now accept
+  optional `fadeInDuration`, `fadeInCurve`, and `typingSpeed` overrides**
+  (closes [#17]) — pass any of the three to tweak just that part of the
+  preset's animation while keeping everything else the preset tunes.
+  Omitting them keeps the exact preset defaults as before, so this is fully
+  backward compatible.
+
+[#17]: https://github.com/hooshyar/flutter_streaming_text_markdown/issues/17
+
+### Fixed
+
+* Internally migrated off `gpt_markdown`'s deprecated `highlightBuilder` to
+  `inlineCodeBuilder` (the package's own `highlightBuilder` parameter on
+  `StreamingTextMarkdown`/`StreamingText` is unchanged and still works).
+
+### Changed
+
+* Raised the `gpt_markdown` dependency lower bound from `^1.1.7` to `^1.2.0`
+  — the version that introduced `inlineCodeBuilder`, which the fix above
+  requires even at the constraint's lower bound.
+
 ## 1.9.1
 
 ### Fixed

@@ -1,7 +1,7 @@
 ---
 id: TASK-011
 title: 'Customization Preview toggle labels are clipped by their own switch thumbs'
-status: To Do
+status: Done
 priority: high
 labels:
   - web-demo

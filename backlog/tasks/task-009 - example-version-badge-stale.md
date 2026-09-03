@@ -1,7 +1,7 @@
 ---
 id: TASK-009
 title: 'Web demo header shows a hardcoded stale version badge (v1.9.1 while 1.10.0 is live)'
-status: To Do
+status: Done
 priority: medium
 labels:
   - example

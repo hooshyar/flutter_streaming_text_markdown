@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../shared/demo_card.dart';
+import '../version.dart';
 
 class HeroSection extends StatefulWidget {
   final StreamingTextConfig? activePreset;
@@ -16,8 +17,7 @@ class HeroSection extends StatefulWidget {
 class _HeroSectionState extends State<HeroSection> {
   int _heroKey = 0;
 
-  static const _heroText =
-      '## Hello, World! 👋\n\n'
+  static const _heroText = '## Hello, World! 👋\n\n'
       'This is **flutter_streaming_text_markdown** — a package for rendering '
       'streaming text with full **Markdown** support.\n\n'
       'Perfect for building:\n'
@@ -26,8 +26,7 @@ class _HeroSectionState extends State<HeroSection> {
       '- ✍️ Typing animations\n\n'
       '> Built with love for the Flutter community.';
 
-  static const _heroTextRtl =
-      '## مرحباً بالعالم! 👋\n\n'
+  static const _heroTextRtl = '## مرحباً بالعالم! 👋\n\n'
       'هذه حزمة **flutter_streaming_text_markdown** لعرض '
       'النص المتدفق مع دعم كامل لـ **Markdown**.\n\n'
       'مثالية لبناء:\n'
@@ -76,9 +75,14 @@ class _HeroSectionState extends State<HeroSection> {
         Wrap(
           spacing: 8,
           children: [
-            _chip('pub.dev', accent, url: 'https://pub.dev/packages/flutter_streaming_text_markdown'),
-            _chip('GitHub', accent, url: 'https://github.com/hooshyar/flutter_streaming_text_markdown'),
-            _chip('v1.9.1', isDark ? Colors.white24 : Colors.black26),
+            _chip('pub.dev', accent,
+                url:
+                    'https://pub.dev/packages/flutter_streaming_text_markdown'),
+            _chip('GitHub', accent,
+                url:
+                    'https://github.com/hooshyar/flutter_streaming_text_markdown'),
+            _chip(
+                'v$kPackageVersion', isDark ? Colors.white24 : Colors.black26),
           ],
         ),
         const SizedBox(height: 32),
@@ -154,7 +158,8 @@ class _HeroSectionState extends State<HeroSection> {
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: color),
+        style:
+            TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: color),
       ),
     );
     if (url != null) {

@@ -1,7 +1,7 @@
 ---
 id: TASK-014
 title: 'bouncy preset intermittently drops the em-dash glyph (renders as a blank gap)'
-status: To Do
+status: Done
 priority: low
 labels:
   - web-demo

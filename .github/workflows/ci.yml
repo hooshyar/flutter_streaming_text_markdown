@@ -19,6 +19,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Regenerate version badge from pubspec.yaml
+        run: dart run tool/generate_version.dart
+
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed lib test
 
@@ -38,6 +41,32 @@ jobs:
       - name: Publish dry-run
         run: dart pub publish --dry-run
 
+  example-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Regenerate version badge from pubspec.yaml
+        run: |
+          flutter pub get
+          dart run tool/generate_version.dart
+
+      - name: Install example dependencies
+        working-directory: example
+        run: flutter pub get
+
+      - name: Analyze example
+        working-directory: example
+        run: flutter analyze
+
+      - name: Run example tests
+        working-directory: example
+        run: flutter test
+
   wasm-build:
     runs-on: ubuntu-latest
     steps:
@@ -46,6 +75,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+
+      - name: Regenerate version badge from pubspec.yaml
+        run: |
+          flutter pub get
+          dart run tool/generate_version.dart
 
       - name: Install example dependencies
         working-directory: example

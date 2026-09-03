@@ -1,7 +1,7 @@
 ---
 id: TASK-012
 title: 'LaTeX feature card does not typeset math — quadratic formula renders as fused plain text'
-status: To Do
+status: Done
 priority: high
 labels:
   - web-demo

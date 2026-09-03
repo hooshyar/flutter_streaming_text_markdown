@@ -1,7 +1,7 @@
 ---
 id: TASK-010
 title: 'Copy-to-clipboard button throws an uncaught Dart exception on every click (Install section)'
-status: To Do
+status: Done
 priority: high
 labels:
   - web-demo

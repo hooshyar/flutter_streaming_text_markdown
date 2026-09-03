@@ -24,6 +24,11 @@ jobs:
         with:
           channel: stable
 
+      - name: Regenerate version badge from pubspec.yaml
+        run: |
+          flutter pub get
+          dart run tool/generate_version.dart
+
       - name: Build web example
         working-directory: example
         run: |

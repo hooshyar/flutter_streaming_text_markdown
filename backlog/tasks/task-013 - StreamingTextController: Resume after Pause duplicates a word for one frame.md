@@ -1,7 +1,7 @@
 ---
 id: TASK-013
 title: 'StreamingTextController: Resume after Pause duplicates a word for one frame'
-status: To Do
+status: Done
 priority: medium
 labels:
   - web-demo

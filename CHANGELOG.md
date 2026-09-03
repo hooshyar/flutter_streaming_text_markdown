@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.10.1
+
+### Fixed
+
+* **LaTeX (`latexEnabled: true`) now renders real typeset math** instead of
+  a Unicode-substitution approximation — fractions, superscripts, and
+  radicals are laid out properly via `flutter_math_fork` (already pulled in
+  transitively through `gpt_markdown`, now a direct dependency), with a
+  plain-text fallback on any parse error.
+* Copy-to-clipboard on web no longer throws an uncaught exception on every
+  click — the underlying `Clipboard.setData` call is now awaited and its
+  failures caught instead of left as an unhandled `Future` rejection.
+* `StreamingTextController`: resuming a word-by-word animation after
+  `pause()` no longer re-types the last word for one frame. Resume now
+  reads the typing timer's own tracked position instead of reconstructing
+  it from the displayed text's length, which could drift from the actual
+  buffer-writing rules (header newlines, conditional spacing).
+* A character's fade-in animation is now guaranteed to end at full opacity
+  once typing completes, closing a real-device timing race that could
+  intermittently leave a glyph (reported for the em-dash under the
+  `bouncy` preset) invisible.
+* Example app: the Customization Preview toggle switches no longer clip
+  their own labels (`wordByWord`, `fadeIn`, etc. were losing their first
+  1-3 characters behind the switch thumb).
+* Example app: the web demo's version badge is now generated from
+  `pubspec.yaml` at build time instead of a hand-typed literal, so it can't
+  go stale on a future release again.
+
 ## 1.10.0
 
 ### Added

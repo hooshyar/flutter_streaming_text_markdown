@@ -30,3 +30,20 @@ jobs:
 
       - name: Publish dry-run
         run: dart pub publish --dry-run
+
+  wasm-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install example dependencies
+        working-directory: example
+        run: flutter pub get
+
+      - name: Build example for web (WASM)
+        working-directory: example
+        run: flutter build web --wasm

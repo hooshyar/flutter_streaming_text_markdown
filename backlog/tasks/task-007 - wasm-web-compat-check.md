@@ -6,6 +6,11 @@
 criteria weight platform support and WASM compatibility.
 
 **Acceptance criteria:**
-- [ ] `flutter build web --wasm` (or `dart compile wasm` equivalent check on the package/example) attempted; any incompatible API usage identified and fixed or documented
-- [ ] pubspec.yaml platform declarations reviewed (`platforms:` in pana) — confirm web is correctly declared as supported
-- [ ] Findings (pass or specific blockers) written into docs/AWARD-PLAN.md
+- [x] `flutter build web --wasm` (or `dart compile wasm` equivalent check on the package/example) attempted; any incompatible API usage identified and fixed or documented
+- [x] pubspec.yaml platform declarations reviewed (`platforms:` in pana) — confirm web is correctly declared as supported
+- [x] Findings (pass or specific blockers) written into docs/AWARD-PLAN.md
+
+**DONE 2026-09-03.** `flutter build web --wasm` on `example/` succeeds cleanly
+— no incompatible dart:html/dart:js usage anywhere in the dependency chain.
+pana independently confirms "WASM-ready" and Platform support 20/20 (all 6
+platforms, Web included). No blockers found; noted in docs/AWARD-PLAN.md.

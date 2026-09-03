@@ -28,6 +28,13 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Reset any SDK auto-migrated analysis_options.yaml
+        # `flutter pub get` on newer SDKs can silently rewrite
+        # analysis_options.yaml (e.g. to add build/platform-dir excludes),
+        # which then makes `dart pub publish --dry-run`'s git-cleanliness
+        # check fail even though nothing we actually authored changed.
+        run: git checkout -- analysis_options.yaml example/analysis_options.yaml
+
       - name: Publish dry-run
         run: dart pub publish --dry-run
 

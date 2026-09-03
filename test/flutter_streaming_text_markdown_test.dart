@@ -55,6 +55,53 @@ void main() {
       expect(widget.textDirection, TextDirection.rtl);
     });
 
+    testWidgets(
+        'auto-detects Kurdish Sorani text as RTL without an explicit '
+        'textDirection (regression: Kurdish-specific letters outside the '
+        'base Arabic subset)', (tester) async {
+      // Sorani-specific letters (ک گ ڕ ژ ڵ) that aren't part of the plain
+      // Arabic alphabet — proves the Arabic Unicode-range detection also
+      // covers Kurdish, not just Arabic proper.
+      const kurdish = 'سڵاو، ژنان و کوردستان و گەورەیی';
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StreamingTextMarkdown(
+            text: kurdish,
+            markdownEnabled: false,
+            animationsEnabled: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final text = tester.widget<Text>(find.byType(Text));
+      expect(
+        text.textDirection,
+        TextDirection.rtl,
+        reason: 'Kurdish Sorani text should auto-detect as RTL the same way '
+            'Arabic does.',
+      );
+    });
+
+    testWidgets(
+        'does not auto-detect plain English text as RTL (control for the '
+        'Kurdish auto-detection test above)', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StreamingTextMarkdown(
+            text: 'Hello world',
+            markdownEnabled: false,
+            animationsEnabled: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final text = tester.widget<Text>(find.byType(Text));
+      expect(text.textDirection, isNot(TextDirection.rtl));
+    });
+
     testWidgets('supports word-by-word animation', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(

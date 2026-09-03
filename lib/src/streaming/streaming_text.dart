@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:gpt_markdown/gpt_markdown.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import '../controller/streaming_text_controller.dart';
 import '../utils/latex_processor.dart';
 
@@ -359,6 +360,15 @@ class _StreamingTextState extends State<StreamingText>
 
   // NEW: Advanced State Tracking for Animation Management
   bool _isAnimationActive = false; // Control caching behavior during animation
+
+  // Tracks the exact word-by-word unit index typed so far. Pause cancels the
+  // typing Timer, which loses its local `unitIndex` closure variable; resume
+  // used to reconstruct that index by replaying the buffer-writing rules
+  // (spacing, header newlines) against `_displayedText.length`, and any
+  // mismatch between that guess and the real writer logic in
+  // `_startWordByWordTypingFromIndex` caused resume to re-type the last
+  // word for one frame. Persisting the real index here removes the guess.
+  int _wordByWordUnitIndex = 0;
   final Map<String, Widget> _completeMarkdownCache =
       {}; // Only complete markdown states
 
@@ -801,20 +811,13 @@ class _StreamingTextState extends State<StreamingText>
           : _splitMarkdownAwareWords(widget.text);
     }
 
-    // Calculate current position based on displayed text length
-    int currentUnitIndex = 0;
-    int displayedLength = 0;
-
-    for (int i = 0; i < units.length; i++) {
-      final unit = units[i];
-      final unitLength =
-          unit == '\n' ? 1 : unit.length + (i > 0 ? 1 : 0); // +1 for space
-      if (displayedLength + unitLength > _displayedText.length) {
-        break;
-      }
-      displayedLength += unitLength;
-      currentUnitIndex = i + 1;
-    }
+    // Resume from the unit index the typing timer actually reached, not a
+    // reconstruction from `_displayedText.length` — recomputing "how many
+    // words fit in N characters" has to independently replay the exact
+    // spacing/header-newline rules `_startWordByWordTypingFromIndex` uses to
+    // write the buffer, and any drift between the two duplicates or skips a
+    // word on resume (see `_wordByWordUnitIndex` doc comment).
+    final currentUnitIndex = _wordByWordUnitIndex.clamp(0, units.length);
 
     _startWordByWordTypingFromIndex(units, currentUnitIndex);
   }
@@ -1132,6 +1135,7 @@ class _StreamingTextState extends State<StreamingText>
         _containsArabic(widget.text);
 
     int unitIndex = 0;
+    _wordByWordUnitIndex = 0;
     _displayedTextBuffer.clear();
 
     // v1.3.3: Create tracked timer to prevent leaks
@@ -1205,6 +1209,7 @@ class _StreamingTextState extends State<StreamingText>
         }
 
         unitIndex = endIndex;
+        _wordByWordUnitIndex = endIndex;
         _updateProgress();
       });
     });
@@ -1213,6 +1218,7 @@ class _StreamingTextState extends State<StreamingText>
 
   void _startWordByWordTypingFromIndex(List<String> units, int startIndex) {
     int unitIndex = startIndex;
+    _wordByWordUnitIndex = startIndex;
 
     // v1.3.3: Create tracked timer
     _cancelAllTrackedTimers();
@@ -1264,6 +1270,7 @@ class _StreamingTextState extends State<StreamingText>
         }
 
         unitIndex = endIndex;
+        _wordByWordUnitIndex = endIndex;
         _updateProgress();
       });
     });
@@ -1900,8 +1907,17 @@ class _StreamingTextState extends State<StreamingText>
     final effectiveTextDirection = widget.textDirection ??
         (isArabicText ? TextDirection.rtl : TextDirection.ltr);
 
-    // If no controller or fade-in is disallowed, just render static text
-    if (controller == null || !_fadeInAllowed) {
+    // If no controller, fade-in is disallowed, or typing has finished,
+    // render static fully-opaque text. Once `_isComplete`, no character may
+    // still be stuck below full opacity waiting on its own AnimationController:
+    // under real frame-timing jitter (a slow/throttled tab, an animation
+    // controller re-keyed to a different index mid-run) a chunk's controller
+    // can settle a fraction below 1.0, which otherwise reads as a randomly
+    // missing glyph (reported for the em-dash under the bouncy preset,
+    // reproducing intermittently — never on a deterministic test clock).
+    // Forcing a static render at completion guarantees every character ends
+    // up fully visible regardless of what its controller did along the way.
+    if (controller == null || !_fadeInAllowed || _isComplete) {
       return Directionality(
         textDirection: effectiveTextDirection,
         child: Text(text, style: baseStyle),
@@ -1914,7 +1930,8 @@ class _StreamingTextState extends State<StreamingText>
         animation: controller,
         builder: (context, child) {
           // Apply the custom fadeInCurve to the controller's value
-          final curveValue = widget.fadeInCurve.transform(controller.value);
+          final curveValue =
+              widget.fadeInCurve.transform(controller.value).clamp(0.0, 1.0);
 
           return Transform.translate(
             // Move upward as we approach curveValue = 1
@@ -2002,13 +2019,25 @@ class _StreamingTextState extends State<StreamingText>
       return const SizedBox.shrink();
     }
 
-    // For now, we'll render LaTeX as styled text with a math-like appearance
-    // This is a simplified approach that works without external LaTeX renderers
+    // Real math typesetting via flutter_math_fork (fractions, superscripts,
+    // radicals, etc. rendered as actual glyph layout, not fused plain text).
+    // Safe against partial/incomplete expressions: the streaming/character
+    // parsers only ever classify a segment as LaTeX once its closing
+    // delimiter has been fully typed (see _parseTextUnitsWithLatex /
+    // _parseCharacterUnitsWithLatex), so Math.tex here never sees a
+    // half-typed expression. A malformed expression still can't crash the
+    // widget tree: Math.tex catches parse/build errors internally and
+    // falls back to onErrorFallback below.
     final children = <Widget>[];
+    final defaultColor =
+        widget.latexStyle?.color ?? widget.style?.color ?? Colors.blue;
+    final latexFontSize =
+        (widget.latexStyle?.fontSize ?? widget.style?.fontSize ?? 16) *
+            widget.latexScale;
 
     for (final segment in segments) {
       if (segment.isLaTeX) {
-        // Render LaTeX content with special styling
+        // Render LaTeX content as real typeset math
         children.add(
           Container(
             padding: segment.type == SegmentType.blockLaTeX
@@ -2032,17 +2061,23 @@ class _StreamingTextState extends State<StreamingText>
                     ),
                   )
                 : null,
-            child: SelectableText(
-              _formatLatexForDisplay(segment.content),
-              style: (widget.latexStyle ?? widget.style ?? const TextStyle())
-                  .copyWith(
-                fontFamily: 'monospace',
-                fontSize: (widget.latexStyle?.fontSize ??
-                        widget.style?.fontSize ??
-                        14) *
-                    widget.latexScale,
-                color: widget.latexStyle?.color ?? Colors.blue,
+            child: Math.tex(
+              segment.content,
+              mathStyle: segment.type == SegmentType.blockLaTeX
+                  ? MathStyle.display
+                  : MathStyle.text,
+              textStyle: TextStyle(
+                fontSize: latexFontSize,
+                color: defaultColor,
                 fontWeight: FontWeight.w500,
+              ),
+              onErrorFallback: (error) => SelectableText(
+                segment.fullExpression,
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: latexFontSize,
+                  color: defaultColor,
+                ),
               ),
             ),
           ),
@@ -2201,62 +2236,6 @@ class _StreamingTextState extends State<StreamingText>
     return spans.isEmpty
         ? Text(text, style: baseStyle)
         : Text.rich(TextSpan(children: spans));
-  }
-
-  String _formatLatexForDisplay(String latex) {
-    // Simple LaTeX to Unicode conversion for better display
-    return latex
-        .replaceAll(r'\alpha', 'α')
-        .replaceAll(r'\beta', 'β')
-        .replaceAll(r'\gamma', 'γ')
-        .replaceAll(r'\delta', 'δ')
-        .replaceAll(r'\pi', 'π')
-        .replaceAll(r'\sigma', 'σ')
-        .replaceAll(r'\lambda', 'λ')
-        .replaceAll(r'\mu', 'μ')
-        .replaceAll(r'\theta', 'θ')
-        .replaceAll(r'\phi', 'φ')
-        .replaceAll(r'\psi', 'ψ')
-        .replaceAll(r'\omega', 'ω')
-        .replaceAll(r'\pm', '±')
-        .replaceAll(r'\mp', '∓')
-        .replaceAll(r'\times', '×')
-        .replaceAll(r'\div', '÷')
-        .replaceAll(r'\cdot', '·')
-        .replaceAll(r'\neq', '≠')
-        .replaceAll(r'\leq', '≤')
-        .replaceAll(r'\geq', '≥')
-        .replaceAll(r'\approx', '≈')
-        .replaceAll(r'\equiv', '≡')
-        .replaceAll(r'\infty', '∞')
-        .replaceAll(r'\sum', '∑')
-        .replaceAll(r'\int', '∫')
-        .replaceAll(r'\partial', '∂')
-        .replaceAll(r'\nabla', '∇')
-        .replaceAll(r'\sqrt', '√')
-        .replaceAll(r'\ldots', '…')
-        .replaceAll(r'\rightarrow', '→')
-        .replaceAll(r'\leftarrow', '←')
-        .replaceAll(r'\Rightarrow', '⇒')
-        .replaceAll(r'\Leftarrow', '⇐')
-        .replaceAll(r'\hbar', 'ℏ')
-        // Handle fractions
-        .replaceAllMapped(RegExp(r'\\frac\{([^}]*)\}\{([^}]*)\}'), (match) {
-          return '${match.group(1)}/${match.group(2)}';
-        })
-        // Handle superscripts (simplified)
-        .replaceAllMapped(RegExp(r'\^(\w|\{[^}]*\})'), (match) {
-          final exp = match.group(1)!.replaceAll(RegExp(r'[{}]'), '');
-          return '^$exp';
-        })
-        // Handle subscripts (simplified)
-        .replaceAllMapped(RegExp(r'_(\w|\{[^}]*\})'), (match) {
-          final sub = match.group(1)!.replaceAll(RegExp(r'[{}]'), '');
-          return '₍$sub₎';
-        })
-        // Clean up remaining LaTeX commands
-        .replaceAll(RegExp(r'\\[a-zA-Z]+'), '')
-        .replaceAll(RegExp(r'[{}]'), '');
   }
 
   @override

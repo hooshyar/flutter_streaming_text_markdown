@@ -34,14 +34,24 @@ class FooterSection extends StatelessWidget {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(const ClipboardData(
-                        text: 'flutter pub add flutter_streaming_text_markdown',
-                      ));
+                    onTap: () async {
+                      String message = 'Copied to clipboard';
+                      Color messageColor = accent;
+                      try {
+                        await Clipboard.setData(const ClipboardData(
+                          text:
+                              'flutter pub add flutter_streaming_text_markdown',
+                        ));
+                      } catch (_) {
+                        message =
+                            'Could not copy — please select the text manually';
+                        messageColor = Colors.redAccent;
+                      }
+                      if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: const Text('Copied to clipboard'),
-                          backgroundColor: accent,
+                          content: Text(message),
+                          backgroundColor: messageColor,
                           duration: const Duration(seconds: 1),
                         ),
                       );
@@ -60,11 +70,14 @@ class FooterSection extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _link('pub.dev', accent, 'https://pub.dev/packages/flutter_streaming_text_markdown'),
+            _link('pub.dev', accent,
+                'https://pub.dev/packages/flutter_streaming_text_markdown'),
             const SizedBox(width: 24),
-            _link('GitHub', accent, 'https://github.com/hooshyar/flutter_streaming_text_markdown'),
+            _link('GitHub', accent,
+                'https://github.com/hooshyar/flutter_streaming_text_markdown'),
             const SizedBox(width: 24),
-            _link('MIT License', mutedColor, 'https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/LICENSE'),
+            _link('MIT License', mutedColor,
+                'https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/LICENSE'),
           ],
         ),
         const SizedBox(height: 48),

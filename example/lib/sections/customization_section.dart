@@ -22,8 +22,7 @@ class _CustomizationSectionState extends State<CustomizationSection> {
   String _curveName = 'easeOut';
   int _key = 0;
 
-  static const _sampleText =
-      '## Customization Preview\n\n'
+  static const _sampleText = '## Customization Preview\n\n'
       'Adjust the controls below to see how each parameter affects the streaming animation.\n\n'
       '**Bold**, *italic*, `code` — all rendered with markdown.\n\n'
       '- Item one\n- Item two\n\n'
@@ -59,12 +58,14 @@ class _CustomizationSectionState extends State<CustomizationSection> {
                 onTap: () => setState(() => _key++),
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
-                  child: Icon(Icons.replay_rounded, size: 16,
-                    color: isDark ? Colors.white38 : Colors.black38),
+                  child: Icon(Icons.replay_rounded,
+                      size: 16,
+                      color: isDark ? Colors.white38 : Colors.black38),
                 ),
               ),
               StreamingTextMarkdown(
-                key: ValueKey('custom_${_key}_${_speed}_${_fadeInMs}_${_wordByWord}_${_chunkSize}_${_curveName}_${_fadeInEnabled}_${_markdownEnabled}_${_latexEnabled}_$_animationsEnabled'),
+                key: ValueKey(
+                    'custom_${_key}_${_speed}_${_fadeInMs}_${_wordByWord}_${_chunkSize}_${_curveName}_${_fadeInEnabled}_${_markdownEnabled}_${_latexEnabled}_$_animationsEnabled'),
                 text: _sampleText,
                 typingSpeed: Duration(milliseconds: _speed.round()),
                 fadeInEnabled: _fadeInEnabled,
@@ -92,14 +93,19 @@ class _CustomizationSectionState extends State<CustomizationSection> {
               // Speed slider
               Row(
                 children: [
-                  SizedBox(width: 120, child: Text('Typing speed', style: labelStyle)),
+                  SizedBox(
+                      width: 120,
+                      child: Text('Typing speed', style: labelStyle)),
                   Expanded(
                     child: Slider(
                       value: _speed,
                       min: 5,
                       max: 200,
                       activeColor: accent,
-                      onChanged: (v) => setState(() { _speed = v; _key++; }),
+                      onChanged: (v) => setState(() {
+                        _speed = v;
+                        _key++;
+                      }),
                     ),
                   ),
                   SizedBox(
@@ -111,14 +117,19 @@ class _CustomizationSectionState extends State<CustomizationSection> {
               // Fade-in duration
               Row(
                 children: [
-                  SizedBox(width: 120, child: Text('Fade-in duration', style: labelStyle)),
+                  SizedBox(
+                      width: 120,
+                      child: Text('Fade-in duration', style: labelStyle)),
                   Expanded(
                     child: Slider(
                       value: _fadeInMs,
                       min: 0,
                       max: 600,
                       activeColor: accent,
-                      onChanged: (v) => setState(() { _fadeInMs = v; _key++; }),
+                      onChanged: (v) => setState(() {
+                        _fadeInMs = v;
+                        _key++;
+                      }),
                     ),
                   ),
                   SizedBox(
@@ -130,7 +141,8 @@ class _CustomizationSectionState extends State<CustomizationSection> {
               // Chunk size
               Row(
                 children: [
-                  SizedBox(width: 120, child: Text('Chunk size', style: labelStyle)),
+                  SizedBox(
+                      width: 120, child: Text('Chunk size', style: labelStyle)),
                   Expanded(
                     child: Slider(
                       value: _chunkSize.toDouble(),
@@ -138,7 +150,10 @@ class _CustomizationSectionState extends State<CustomizationSection> {
                       max: 10,
                       divisions: 9,
                       activeColor: accent,
-                      onChanged: (v) => setState(() { _chunkSize = v.round(); _key++; }),
+                      onChanged: (v) => setState(() {
+                        _chunkSize = v.round();
+                        _key++;
+                      }),
                     ),
                   ),
                   SizedBox(
@@ -151,17 +166,27 @@ class _CustomizationSectionState extends State<CustomizationSection> {
               // Fade-in curve dropdown
               Row(
                 children: [
-                  SizedBox(width: 120, child: Text('Fade-in curve', style: labelStyle)),
+                  SizedBox(
+                      width: 120,
+                      child: Text('Fade-in curve', style: labelStyle)),
                   DropdownButton<String>(
                     value: _curveName,
-                    dropdownColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-                    style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87),
+                    dropdownColor:
+                        isDark ? const Color(0xFF1A1A1A) : Colors.white,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white70 : Colors.black87),
                     underline: const SizedBox(),
                     items: _curveMap.keys.map((name) {
                       return DropdownMenuItem(value: name, child: Text(name));
                     }).toList(),
                     onChanged: (v) {
-                      if (v != null) setState(() { _curveName = v; _key++; });
+                      if (v != null) {
+                        setState(() {
+                          _curveName = v;
+                          _key++;
+                        });
+                      }
                     },
                   ),
                 ],
@@ -172,11 +197,51 @@ class _CustomizationSectionState extends State<CustomizationSection> {
                 spacing: 16,
                 runSpacing: 8,
                 children: [
-                  _toggle('wordByWord', _wordByWord, (v) => setState(() { _wordByWord = v; _key++; }), isDark, accent),
-                  _toggle('fadeIn', _fadeInEnabled, (v) => setState(() { _fadeInEnabled = v; _key++; }), isDark, accent),
-                  _toggle('markdown', _markdownEnabled, (v) => setState(() { _markdownEnabled = v; _key++; }), isDark, accent),
-                  _toggle('latex', _latexEnabled, (v) => setState(() { _latexEnabled = v; _key++; }), isDark, accent),
-                  _toggle('animations', _animationsEnabled, (v) => setState(() { _animationsEnabled = v; _key++; }), isDark, accent),
+                  _toggle(
+                      'wordByWord',
+                      _wordByWord,
+                      (v) => setState(() {
+                            _wordByWord = v;
+                            _key++;
+                          }),
+                      isDark,
+                      accent),
+                  _toggle(
+                      'fadeIn',
+                      _fadeInEnabled,
+                      (v) => setState(() {
+                            _fadeInEnabled = v;
+                            _key++;
+                          }),
+                      isDark,
+                      accent),
+                  _toggle(
+                      'markdown',
+                      _markdownEnabled,
+                      (v) => setState(() {
+                            _markdownEnabled = v;
+                            _key++;
+                          }),
+                      isDark,
+                      accent),
+                  _toggle(
+                      'latex',
+                      _latexEnabled,
+                      (v) => setState(() {
+                            _latexEnabled = v;
+                            _key++;
+                          }),
+                      isDark,
+                      accent),
+                  _toggle(
+                      'animations',
+                      _animationsEnabled,
+                      (v) => setState(() {
+                            _animationsEnabled = v;
+                            _key++;
+                          }),
+                      isDark,
+                      accent),
                 ],
               ),
             ],
@@ -187,21 +252,29 @@ class _CustomizationSectionState extends State<CustomizationSection> {
     );
   }
 
-  Widget _toggle(String label, bool value, ValueChanged<bool> onChanged, bool isDark, Color accent) {
+  Widget _toggle(String label, bool value, ValueChanged<bool> onChanged,
+      bool isDark, Color accent) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
           height: 24,
-          width: 36,
-          child: Switch(
-            value: value,
-            activeTrackColor: accent,
-            onChanged: onChanged,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          width: 40,
+          // A bare Switch ignores tight SizedBox constraints and paints at
+          // its own intrinsic size (larger under Material 3), which used to
+          // bleed past this box and clip the label that follows it.
+          // FittedBox scales the Switch down to actually fit the box.
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: Switch(
+              value: value,
+              activeTrackColor: accent,
+              onChanged: onChanged,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
           ),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 6),
         Text(
           label,
           style: TextStyle(

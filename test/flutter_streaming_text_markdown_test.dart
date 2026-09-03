@@ -403,7 +403,8 @@ void main() {
       expect(completed, 1);
     });
 
-    group('preset constructors accept fadeInDuration/fadeInCurve/typingSpeed '
+    group(
+        'preset constructors accept fadeInDuration/fadeInCurve/typingSpeed '
         'overrides (regression: #17)', () {
       test('.chatGPT() keeps its own tuning when overrides are omitted', () {
         const widget = StreamingTextMarkdown.chatGPT();

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.10.0
 
 ### Added
 
@@ -10,6 +10,12 @@
   preset's animation while keeping everything else the preset tunes.
   Omitting them keeps the exact preset defaults as before, so this is fully
   backward compatible.
+* Long-stream performance/memory-safety regression tests: a 50k+ character
+  static text and a 60k+ character `stream:` payload each complete within a
+  bounded pump budget, proving the per-character fade-in suppression under
+  `stream != null` holds at real LLM-transcript scale.
+* CI now builds the example app for web with `--wasm` on every push/PR, so
+  WASM compatibility can't silently regress.
 
 [#17]: https://github.com/hooshyar/flutter_streaming_text_markdown/issues/17
 
@@ -17,13 +23,17 @@
 
 * Internally migrated off `gpt_markdown`'s deprecated `highlightBuilder` to
   `inlineCodeBuilder` (the package's own `highlightBuilder` parameter on
-  `StreamingTextMarkdown`/`StreamingText` is unchanged and still works).
+  `StreamingTextMarkdown`/`StreamingText` is unchanged and still works). This
+  was the sole cause of a lost pana static-analysis point — score is back to
+  160/160.
 
 ### Changed
 
 * Raised the `gpt_markdown` dependency lower bound from `^1.1.7` to `^1.2.0`
   — the version that introduced `inlineCodeBuilder`, which the fix above
   requires even at the constraint's lower bound.
+* Public API dartdoc coverage raised from 80% to 100% (199/199 elements).
+  `public_member_api_docs` is now enabled permanently to prevent regressions.
 
 ## 1.9.1
 

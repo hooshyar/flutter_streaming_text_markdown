@@ -210,6 +210,11 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// uninterrupted regardless of taps.
   final bool? completeAnimationOnTap;
 
+  /// Creates a streaming markdown text widget.
+  ///
+  /// Provide [text] for static content, or [stream] to append chunks as they
+  /// arrive from an LLM API. See the individual field docs above for
+  /// animation, theming, and markdown/LaTeX options.
   const StreamingTextMarkdown({
     super.key,
     this.text = '',

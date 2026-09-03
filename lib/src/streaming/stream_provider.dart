@@ -5,6 +5,9 @@ import 'dart:async';
 /// This provider manages the streaming of text, tool calls, and other data
 /// from AI models in a clean, efficient manner.
 abstract class StreamProvider {
+  /// Const constructor for subclasses.
+  const StreamProvider();
+
   /// Initializes the stream with optional configuration.
   Future<void> initialize();
 

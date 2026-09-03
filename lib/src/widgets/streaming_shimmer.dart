@@ -36,6 +36,7 @@ class StreamingShimmer extends StatefulWidget {
   /// Defaults to 1.0 (full width).
   final double maxLineWidth;
 
+  /// Creates a shimmer skeleton placeholder widget.
   const StreamingShimmer({
     super.key,
     this.baseColor,

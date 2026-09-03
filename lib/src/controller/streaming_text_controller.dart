@@ -25,6 +25,9 @@ import 'package:flutter/foundation.dart';
 /// controller.skipToEnd();
 /// ```
 class StreamingTextController extends ChangeNotifier {
+  /// Creates a controller in the [StreamingTextState.idle] state.
+  StreamingTextController();
+
   /// Internal state of the animation
   StreamingTextState _state = StreamingTextState.idle;
 

@@ -78,25 +78,70 @@ class StreamingText extends StatefulWidget {
     this.onTextChanged,
   });
 
+  /// The text to display. Ignored as the initial source when [stream] is set
+  /// (the stream drives content instead).
   final String text;
+
+  /// How long to wait between revealing each character (or word/chunk,
+  /// depending on [wordByWord] and [chunkSize]).
   final Duration typingSpeed;
+
+  /// Whether to reveal text one word at a time instead of one character (or
+  /// [chunkSize] characters) at a time.
   final bool wordByWord;
+
+  /// The number of characters revealed per animation tick when [wordByWord]
+  /// is `false`. Ignored in word-by-word mode.
   final int chunkSize;
+
+  /// Text style applied to the rendered content.
   final TextStyle? style;
+
+  /// Strut style forwarded to the underlying text rendering.
   final StrutStyle? strutStyle;
+
+  /// Horizontal alignment of the rendered text.
   final TextAlign? textAlign;
+
+  /// Text direction override. When `null`, direction is inferred (including
+  /// automatic RTL detection for Arabic content).
   final TextDirection? textDirection;
+
+  /// Locale used for text rendering and layout.
   final Locale? locale;
+
+  /// Whether the text should break at soft line breaks.
   final bool? softWrap;
+
+  /// How visual overflow should be handled.
   final TextOverflow? overflow;
+
+  /// Scales the rendered text size.
   final TextScaler? textScaler;
+
+  /// Maximum number of lines to display before truncating/overflowing.
   final int? maxLines;
+
+  /// Semantic label used for accessibility.
   final String? semanticsLabel;
+
+  /// How to measure the width of the rendered text.
   final TextWidthBasis? textWidthBasis;
+
+  /// Height behavior applied to the rendered text.
   final TextHeightBehavior? textHeightBehavior;
+
+  /// Whether the rendered text can be selected by the user.
   final bool selectable;
+
+  /// Whether to show a blinking cursor at the end of the text while
+  /// animating.
   final bool showCursor;
+
+  /// Color of the blinking cursor shown while [showCursor] is `true`.
   final Color? cursorColor;
+
+  /// Called once the animation (or stream) finishes.
   final VoidCallback? onComplete;
 
   /// Optional stream of text chunks. When provided, [text] is ignored as the
@@ -108,10 +153,21 @@ class StreamingText extends StatefulWidget {
   /// on streaming content, use [trailingFadeEnabled] instead.
   final Stream<String>? stream;
 
+  /// Whether to render [text] as markdown (headers, bold, lists, etc.) via
+  /// `gpt_markdown` instead of as plain text.
   final bool markdownEnabled;
+
+  /// Whether to parse and render LaTeX expressions (`$...$` and `$$...$$`).
   final bool latexEnabled;
+
+  /// Text style applied to rendered LaTeX expressions.
   final TextStyle? latexStyle;
+
+  /// Scale factor applied to rendered LaTeX expressions.
   final double latexScale;
+
+  /// Whether LaTeX content fades in as it's revealed. Defaults to matching
+  /// [fadeInEnabled] when `null`; disabled by default for performance.
   final bool? latexFadeInEnabled;
 
   /// Whether each character (or word, in word-by-word mode) fades in as it is
@@ -125,9 +181,17 @@ class StreamingText extends StatefulWidget {
   /// Defaults to `false`.
   final bool fadeInEnabled;
 
+  /// How long each character's/word's fade-in animation takes.
   final Duration fadeInDuration;
+
+  /// The animation curve used for the fade-in effect.
   final Curve fadeInCurve;
+
+  /// Text style passed through to the markdown renderer.
   final TextStyle? markdownStyleSheet;
+
+  /// Optional controller for programmatic pause/resume/restart/skip control
+  /// and progress tracking.
   final StreamingTextController? controller;
 
   /// Whether animations are enabled. When false, text appears instantly.
@@ -190,7 +254,7 @@ class StreamingText extends StatefulWidget {
   final bool completeAnimationOnTap;
 
   /// v1.9.1 slice 5: internal hook fired whenever the displayed text buffer
-  /// grows during animation/streaming (i.e. from inside [_updateProgress]).
+  /// grows during animation/streaming (i.e. from inside `_updateProgress`).
   /// Not part of the public [StreamingTextMarkdown] API surface directly —
   /// used internally to drive auto-scroll pinning while content grows, rather
   /// than only once at completion. Optional and defaults to `null` so this

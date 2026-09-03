@@ -6,6 +6,10 @@ import 'package:flutter/material.dart';
 /// LLM use cases like ChatGPT-style streaming, Claude-style responses,
 /// and various chat interface patterns.
 class LLMAnimationPresets {
+  /// This class only exposes static presets and is not meant to be
+  /// instantiated.
+  LLMAnimationPresets._();
+
   /// ChatGPT-style streaming with fast character-by-character animation
   static const StreamingTextConfig chatGPT = StreamingTextConfig(
     typingSpeed: Duration(milliseconds: 15),
@@ -141,21 +145,41 @@ class LLMAnimationPresets {
 
 /// Speed presets for quick configuration
 enum AnimationSpeed {
+  /// Slow, deliberate word-by-word animation.
   slow,
+
+  /// Moderate word-by-word animation speed.
   medium,
+
+  /// Fast character-based animation.
   fast,
+
+  /// Very fast, chunked animation for long content.
   ultraFast,
 }
 
 /// Configuration class for streaming text animations
 class StreamingTextConfig {
+  /// The speed at which each character or word appears.
   final Duration typingSpeed;
+
+  /// Whether to reveal text word by word instead of character by character.
   final bool wordByWord;
+
+  /// The number of characters to reveal at once when not in word-by-word
+  /// mode.
   final int chunkSize;
+
+  /// Whether each character (or word) fades in as it is revealed.
   final bool fadeInEnabled;
+
+  /// Duration of the fade-in animation.
   final Duration fadeInDuration;
+
+  /// The curve used for the fade-in animation.
   final Curve fadeInCurve;
 
+  /// Creates a streaming text animation configuration.
   const StreamingTextConfig({
     required this.typingSpeed,
     required this.wordByWord,

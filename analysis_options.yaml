@@ -11,7 +11,8 @@ linter:
     prefer_const_constructors_in_immutables: true
     prefer_const_declarations: true
     prefer_const_literals_to_create_immutables: true
-    
+    public_member_api_docs: true
+
 analyzer:
   exclude:
     # Exclude test files from certain const rules due to dynamic test values

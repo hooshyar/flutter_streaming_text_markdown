@@ -1,17 +1,30 @@
 /// Types of text segments
 enum SegmentType {
+  /// Plain, non-LaTeX text.
   regular,
+
+  /// An inline LaTeX expression (`$...$`).
   inlineLaTeX,
+
+  /// A block LaTeX expression (`$$...$$`).
   blockLaTeX,
 }
 
 /// Represents a segment of text that may be regular text or LaTeX
 class TextSegment {
+  /// The raw text content of this segment.
   final String content;
+
+  /// The kind of segment this is (regular text or LaTeX).
   final SegmentType type;
+
+  /// Index of the first character of this segment in the source text.
   final int startIndex;
+
+  /// Index one past the last character of this segment in the source text.
   final int endIndex;
 
+  /// Creates a text segment.
   const TextSegment({
     required this.content,
     required this.type,

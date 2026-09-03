@@ -1,0 +1,35 @@
+{
+  "title": "flutter_streaming_text_markdown — 2026-09-03 QA fixes, verified live",
+  "project": "flutter_streaming_text_markdown",
+  "tasks": [
+    {
+      "title": "task-009 — version badge was hardcoded and stale",
+      "after": "task-009-badge-after.jpg",
+      "explanation": "The demo header badge was a literal 'v1.9.1' typed into the source, so every release since then left the live demo lying about its own version (no 'before' screenshot exists from this session — the QA pass that found it was a text report, not a screenshot; the bug is well-documented: the badge read v1.9.1 while pub.dev already had v1.10.0 live). Fixed by generating example/lib/version.dart from the root pubspec.yaml at build time (tool/generate_version.dart, wired into pages.yml and CI) instead of hand-typing the version. Live screenshot after the fix and redeploy: the badge reads v1.10.0, matching the released package."
+    },
+    {
+      "title": "task-010 — copy-to-clipboard threw an uncaught exception on every click",
+      "after": "task-010-clipboard-after.jpg",
+      "explanation": "Clicking the copy icon next to the pub add command fired Clipboard.setData(...) without awaiting or catching its Future; when the browser's clipboard permission call rejected, that became an unhandled Future rejection, logged to the console as an uncaught dartException on every single click. Fixed by awaiting the call and catching failures, showing a fallback message instead of throwing. Verified live: clicked the copy button twice on the deployed demo with console tracking armed — zero console errors either time, and the toast reads 'Copied to clipboard' cleanly."
+    },
+    {
+      "title": "task-011 — Customization Preview toggle labels were clipped by their switch thumbs",
+      "after": "task-011-toggles-after-crop.png",
+      "explanation": "Each toggle's Switch was force-fit into a SizedBox(width: 36) that was narrower than the Switch's own intrinsic size, so the Switch painted past its box and bled into the label text next to it — wordByWord read as 'ordByWord', fadeIn as 'adeIn', and so on. Fixed by wrapping the Switch in a FittedBox so it actually scales to fit its allotted box instead of overflowing it. Verified live on the deployed demo: cropped screenshot of the toggle row shows all five full labels — wordByWord, fadeIn, markdown, latex, animations — with no characters lost behind a thumb."
+    },
+    {
+      "title": "task-012 — LaTeX feature card rendered fused plain text, not real math",
+      "after": "task-012-latex-after.jpg",
+      "explanation": "With latexEnabled: true, the package ran LaTeX through a hand-rolled Unicode-substitution function instead of real math typesetting — fractions were flattened to 'num/denom', superscripts stayed as literal '^' characters, and the quadratic formula read as an unreadable run-on string. The package already pulls in flutter_math_fork transitively via gpt_markdown (which has its own native LatexMath component), so the fix wires that same renderer (Math.tex) directly into the LaTeX segment path instead of the old substitution hack, with a safe text fallback on any parse error. Verified live: the LaTeX feature card now shows the quadratic formula with a real fraction bar and radical, Euler's identity with a proper superscript, and the block integral with a true fraction and radical — actual typeset math, not fused text."
+    },
+    {
+      "title": "task-013 — Resume after Pause duplicated a word for one frame",
+      "explanation": "Word-by-word resume reconstructed 'how many words have already been typed' by replaying spacing/header-newline rules against the displayed text's character length — a second, independent implementation of the same logic the typing timer already used to write the buffer. Any drift between the two (headers add an extra newline the length-based guess didn't account for) meant resume could pick the wrong starting word and re-type the last one for a frame. Fixed by persisting the typing timer's actual word index (_wordByWordUnitIndex) and having resume read that directly instead of re-deriving it. This was confirmed both ways in-session: reverting the fix and re-running the added regression test reproduced the exact reported symptom ('...being animated animated with...'); restoring the fix made the same test pass. A single frame of duplication is inherently too fast to reliably catch by clicking through the live demo by hand — this is genuinely one for the automated test, not a manual screenshot, and the full test suite (114 tests) is green with it in place."
+    },
+    {
+      "title": "task-014 — bouncy preset intermittently dropped the em-dash glyph",
+      "after": "task-014-bouncy-emdash-after.jpg",
+      "explanation": "Each character in the fade-in path had its own AnimationController, and nothing guaranteed a character actually settled at full opacity once typing finished — under real browser frame-timing jitter (not reproducible on a test's exact virtual clock), a character's controller could end up a fraction short of 1.0 and render as an invisible glyph forever, which is what the QA pass caught for the em-dash under the bouncy preset. Fixed by forcing full opacity once the widget reports itself complete, regardless of what any individual controller's value happened to settle at. Verified live: selected the bouncy preset and replayed it three times on the deployed demo (matching the original '2 of 3 attempts' report) — the em-dash rendered correctly in all three runs. A regression test also asserts no character may render below full opacity once typing completes."
+    }
+  ]
+}

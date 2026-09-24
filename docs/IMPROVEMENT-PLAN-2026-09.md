@@ -54,7 +54,7 @@ check) and `pana`, and release 1.11.0.
 
 - `flutter analyze` locally: clean, but only because the local lock still resolves gpt_markdown **1.2.1**.
   Against 1.3.0 it gives the 4 INFOs above.
-- Tests: 114 `test`/`testWidgets` cases across 14 files. Coverage: see §1.1.
+- Tests: 114 cases across 14 files, **all passing**. Line coverage **70.2%** (see §1.1).
 - CI (`.github/workflows/ci.yml`): format, analyze, test, publish dry-run, example analyze and test, and a
   WASM build. It runs on push/PR only, with **no `schedule:` trigger**, which is why the upstream drift
   went unnoticed.
@@ -84,7 +84,22 @@ technical: gpt_markdown now ships a built-in streaming reveal, so our value has 
 
 Line coverage from `flutter test --coverage` (lib/ only):
 
-Not measured yet. The `flutter test --coverage` run on 2026-09-24 took more than 35 minutes on a heavily loaded machine (other sessions were compiling in parallel) and had not finished when this was committed. The earlier untracked `coverage/lcov.info` is from 2026-08-25 and predates v1.10.x. TASK-022 establishes the baseline in CI.
+Measured 2026-09-24: `flutter test --coverage` passed all 114 tests (69 min wall-clock on a loaded machine).
+
+| File | Lines hit | Coverage |
+|---|---|---|
+| lib/flutter_streaming_text_markdown.dart | 74/78 | 94.9% |
+| lib/src/controller/streaming_text_controller.dart | 49/82 | 59.8% |
+| lib/src/presets/animation_presets.dart | 1/39 | 2.6% |
+| lib/src/streaming/default_stream_provider.dart | 0/95 | 0.0% |
+| lib/src/streaming/stream_provider.dart | 2/14 | 14.3% |
+| lib/src/streaming/streaming_text.dart | 747/902 | 82.8% |
+| lib/src/theme/streaming_text_theme.dart | 12/34 | 35.3% |
+| lib/src/utils/latex_processor.dart | 65/68 | 95.6% |
+| lib/src/widgets/streaming_shimmer.dart | 0/41 | 0.0% |
+| **Total** | 950/1353 | **70.2%** |
+
+The public API that nothing tests is `DefaultStreamProvider`/`StreamProvider` (0-14%), `StreamingShimmer` (0%, the TTFT shimmer shown in the README), `LLMAnimationPresets` (3%) and `StreamingTextTheme` (35%). The controller is at 60%. Covering these gets to about 85% cheaply. Note that the tracked `coverage/lcov.info` in the repo is stale (2026-08-25). TASK-022 should either untrack it or regenerate it in CI.
 
 ---
 

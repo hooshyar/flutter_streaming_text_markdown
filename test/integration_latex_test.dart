@@ -58,9 +58,12 @@ void main() {
         ),
       );
 
-      // Start with empty
+      // Start with empty. gpt_markdown 1.3 renders an empty string as an
+      // empty Column (no Text('') leaf) rather than a literal empty Text —
+      // assert there's nothing rendered yet rather than pin that internal
+      // shape.
       await tester.pump();
-      expect(find.text(''), findsOneWidget);
+      expect(find.textContaining('Formula'), findsNothing);
 
       // Stream some text with LaTeX.
       // Two things to account for per emitted chunk:
@@ -153,6 +156,16 @@ This is **important** mathematics.''';
       expect(find.textContaining('Quadratic Formula'), findsOneWidget);
       expect(find.textContaining('Matrix Multiplication'), findsOneWidget);
       expect(find.textContaining('important'), findsOneWidget);
+
+      // W10 regression: latexEnabled must not drop out of markdown rendering.
+      // Before the gpt_markdown 1.3 delegation, the first closed `$...$`
+      // switched the whole widget onto a hand-rolled LaTeX-only renderer
+      // that emitted raw '#'/'**' markers instead of styled markdown, so a
+      // presence-only `textContaining` check for the heading/bold text
+      // passed either way. Assert the raw markers are gone instead.
+      expect(find.textContaining('# Mathematical Concepts'), findsNothing);
+      expect(find.textContaining('## Quadratic Formula'), findsNothing);
+      expect(find.textContaining('**important**'), findsNothing);
     });
 
     testWidgets('LaTeX animation with controller pause/resume', (tester) async {
@@ -218,8 +231,11 @@ This is **important** mathematics.''';
       await tester.pump(const Duration(milliseconds: 300));
 
       // Should complete successfully
-      expect(completed, isTrue,
-          reason: 'LaTeX character-by-character animation should complete');
+      expect(
+        completed,
+        isTrue,
+        reason: 'LaTeX character-by-character animation should complete',
+      );
 
       // Check content is displayed
       expect(find.byType(Text), findsWidgets);
@@ -329,8 +345,6 @@ ${List.generate(10, (i) => 'Section $i: Formula \$x_$i = ${i + 1}\$').join('\n\n
 
 End of document.''';
 
-      final stopwatch = Stopwatch()..start();
-
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -340,23 +354,21 @@ End of document.''';
                 latexEnabled: true,
                 markdownEnabled: true,
                 wordByWord: true,
-                typingSpeed:
-                    const Duration(milliseconds: 1), // Fast for testing
+                typingSpeed: const Duration(
+                  milliseconds: 1,
+                ), // Fast for testing
               ),
             ),
           ),
         ),
       );
 
-      // Let some animation happen
+      // Let some animation happen. No wall-clock assertion here: a
+      // runaway/infinite loop is caught by the test's own timeout
+      // (dart_test.yaml), not by a Stopwatch bound, which is flaky across
+      // machines and forbidden by the acceptance criteria except for the
+      // dedicated ratio benchmark.
       await tester.pump(const Duration(milliseconds: 100));
-      stopwatch.stop();
-
-      // Hang-detection guard, not a perf benchmark. Widget-test wall-clock
-      // is dominated by harness/font setup and varies by machine; the real
-      // streaming work is constant-time per chunk. A generous bound catches
-      // a runaway/infinite-loop regression without flaking on slow CI.
-      expect(stopwatch.elapsedMilliseconds, lessThan(30000));
 
       expect(find.textContaining('Large Document'), findsOneWidget);
       expect(find.textContaining('Final Formula'), findsOneWidget);

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
 
 void main() {
   group('LaTeX Widget Tests', () {
-    testWidgets('StreamingTextMarkdown renders with LaTeX disabled',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown renders with LaTeX disabled', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -27,8 +29,9 @@ void main() {
       expect(find.text('Hello \$x = 5\$ world'), findsOneWidget);
     });
 
-    testWidgets('StreamingTextMarkdown renders with LaTeX enabled',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown renders with LaTeX enabled', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -49,14 +52,20 @@ void main() {
 
       // The LaTeX should be processed, so the raw text won't be found
       expect(find.text('The equation \$x = 5\$ is simple'), findsNothing);
+      // Nor should the raw delimiters leak into any rendered run.
+      expect(find.textContaining('\$x = 5\$'), findsNothing);
 
       // But we should find the regular text parts
       expect(find.textContaining('The equation'), findsOneWidget);
       expect(find.textContaining('is simple'), findsOneWidget);
+
+      // GptMarkdown delegation actually ran (not the plain-text fallback).
+      expect(find.byType(GptMarkdown), findsOneWidget);
     });
 
-    testWidgets('StreamingTextMarkdown handles block LaTeX expressions',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown handles block LaTeX expressions', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -76,13 +85,15 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
       }
 
-      // Should process the block LaTeX
+      // Should process the block LaTeX, with no raw `$$` delimiters leaking.
       expect(find.textContaining('Matrix:'), findsOneWidget);
       expect(find.textContaining('Done'), findsOneWidget);
+      expect(find.textContaining('\$\$'), findsNothing);
     });
 
-    testWidgets('StreamingTextMarkdown.chatGPT with LaTeX enabled',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown.chatGPT with LaTeX enabled', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -103,8 +114,9 @@ void main() {
       expect(find.textContaining('Formula:'), findsOneWidget);
     });
 
-    testWidgets('StreamingTextMarkdown.claude with LaTeX enabled',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown.claude with LaTeX enabled', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -124,8 +136,9 @@ void main() {
       expect(find.textContaining('The integral'), findsOneWidget);
     });
 
-    testWidgets('StreamingTextMarkdown with custom LaTeX styling',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown with custom LaTeX styling', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -133,10 +146,7 @@ void main() {
               text: 'Styled \$x = y\$ equation',
               latexEnabled: true,
               markdownEnabled: true,
-              latexStyle: const TextStyle(
-                color: Colors.blue,
-                fontSize: 20,
-              ),
+              latexStyle: const TextStyle(color: Colors.blue, fontSize: 20),
               latexScale: 1.5,
               typingSpeed: Duration.zero,
             ),
@@ -181,14 +191,19 @@ Block math:
         await tester.pump(const Duration(milliseconds: 100));
       }
 
-      // Should find markdown headers and formatting
+      // Should find markdown headers and formatting, with the markdown
+      // syntax actually consumed rather than shown raw (W10: LaTeX used to
+      // force a fallback renderer that dropped markdown formatting).
       expect(find.textContaining('Math Examples'), findsOneWidget);
       expect(find.textContaining('Inline math:'), findsOneWidget);
       expect(find.textContaining('Block math:'), findsOneWidget);
+      expect(find.textContaining('# Math Examples'), findsNothing);
+      expect(find.textContaining('**Bold text**'), findsNothing);
     });
 
-    testWidgets('StreamingTextMarkdown handles LaTeX errors gracefully',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown handles LaTeX errors gracefully', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -210,8 +225,9 @@ Block math:
       expect(find.textContaining('Invalid'), findsOneWidget);
     });
 
-    testWidgets('StreamingTextMarkdown respects LaTeX fade-in settings',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown respects LaTeX fade-in settings', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -262,8 +278,9 @@ Block math:
       expect(find.textContaining('Themed'), findsOneWidget);
     });
 
-    testWidgets('StreamingTextMarkdown atomic LaTeX during streaming',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown atomic LaTeX during streaming', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -295,8 +312,9 @@ Block math:
       expect(find.textContaining('end'), findsOneWidget);
     });
 
-    testWidgets('StreamingTextMarkdown character-by-character with LaTeX',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown character-by-character with LaTeX', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -352,8 +370,9 @@ Block math:
       expect(find.textContaining('example'), findsOneWidget);
     });
 
-    testWidgets('StreamingTextMarkdown handles RTL text with LaTeX',
-        (tester) async {
+    testWidgets('StreamingTextMarkdown handles RTL text with LaTeX', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

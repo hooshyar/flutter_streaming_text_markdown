@@ -52,8 +52,15 @@ class StreamingTextController extends ChangeNotifier {
   /// Callback for when animation completes
   VoidCallback? _onCompleted;
 
+  /// The error that caused the controller to enter [StreamingTextState.error],
+  /// if any. Cleared by [restart] and [stop].
+  Object? _error;
+
   /// Current state of the streaming animation
   StreamingTextState get state => _state;
+
+  /// The error that caused an error state, or `null` if there isn't one.
+  Object? get error => _error;
 
   /// Current progress of the animation (0.0 to 1.0)
   double get progress => _progress;
@@ -70,8 +77,11 @@ class StreamingTextController extends ChangeNotifier {
   /// Speed multiplier for the animation
   double get speedMultiplier => _speedMultiplier;
 
-  /// Sets the speed multiplier for the animation
-  /// [multiplier] should be positive. 1.0 = normal speed, 2.0 = 2x speed, 0.5 = half speed
+  /// Sets the speed multiplier for the animation.
+  ///
+  /// [multiplier] should be positive. 1.0 = normal speed, 2.0 = 2x speed,
+  /// 0.5 = half speed. The multiplier *divides* the configured typing
+  /// speed (a larger multiplier reveals text faster).
   set speedMultiplier(double multiplier) {
     if (multiplier <= 0) {
       throw ArgumentError('Speed multiplier must be positive');
@@ -96,74 +106,123 @@ class StreamingTextController extends ChangeNotifier {
     }
   }
 
-  /// Restarts the animation from the beginning
+  /// Restarts the animation from the beginning.
+  ///
+  /// Re-arms the completion latch so the next completion of this new
+  /// revealing→complete cycle fires [onCompleted] again.
   void restart() {
     _progress = 0.0;
     _isCompleted = false;
     _isPaused = false;
+    _error = null;
     _updateState(StreamingTextState.animating);
     _notifyProgress();
   }
 
-  /// Skips to the end of the animation immediately
+  /// Skips to the end of the animation immediately.
   void skipToEnd() {
-    _progress = 1.0;
-    _isCompleted = true;
-    _isPaused = false;
-    _updateState(StreamingTextState.completed);
-    _notifyProgress();
-    _onCompleted?.call();
+    _completeOnce();
   }
 
-  /// Stops the animation and resets to idle state
+  /// Stops the animation and resets to idle state.
+  ///
+  /// Re-arms the completion latch, same as [restart].
   void stop() {
     _progress = 0.0;
     _isCompleted = false;
     _isPaused = false;
+    _error = null;
     _updateState(StreamingTextState.idle);
     _notifyProgress();
   }
 
-  /// Sets a callback for when the animation state changes
+  /// Sets a callback for when the animation state changes.
+  ///
+  /// Replaces any previously set callback; there is only ever one active
+  /// listener registered this way.
   void onStateChanged(void Function(StreamingTextState) callback) {
     _onStateChanged = callback;
   }
 
-  /// Sets a callback for when the animation progress changes
+  /// Sets a callback for when the animation progress changes.
+  ///
+  /// Replaces any previously set callback; there is only ever one active
+  /// listener registered this way.
   void onProgressChanged(void Function(double) callback) {
     _onProgressChanged = callback;
   }
 
-  /// Sets a callback for when the animation completes
+  /// Sets a callback for when the animation completes.
+  ///
+  /// Replaces any previously set callback; there is only ever one active
+  /// listener registered this way. Fires at most once per
+  /// revealing→complete cycle — see [_completeOnce].
   void onCompleted(VoidCallback callback) {
     _onCompleted = callback;
   }
 
-  /// Internal method to update the state (used by StreamingText widget)
+  /// Internal method to update the state.
+  ///
+  /// For use by the `StreamingText` widget only; not part of the public
+  /// programmatic control surface ([pause]/[resume]/[restart]/[stop]/
+  /// [skipToEnd]).
   void updateState(StreamingTextState newState) {
     _updateState(newState);
   }
 
-  /// Internal method to update progress (used by StreamingText widget)
+  /// Internal method to update progress.
+  ///
+  /// For use by the `StreamingText` widget only. Reaching 1.0 routes
+  /// through [_completeOnce] so [onCompleted] fires at most once per cycle
+  /// (W25).
   void updateProgress(double newProgress) {
-    _progress = newProgress.clamp(0.0, 1.0);
-
-    if (_progress >= 1.0 && !_isCompleted) {
-      _isCompleted = true;
-      _updateState(StreamingTextState.completed);
-      _onCompleted?.call();
+    final clamped = newProgress.clamp(0.0, 1.0);
+    if (clamped >= 1.0) {
+      _completeOnce();
+      return;
     }
-
+    _progress = clamped;
     _notifyProgress();
   }
 
-  /// Internal method to mark as completed
+  /// Internal method to mark as completed.
+  ///
+  /// For use by the `StreamingText` widget only. Routes through
+  /// [_completeOnce] so [onCompleted] fires at most once per cycle (W25).
   void markCompleted() {
+    _completeOnce();
+  }
+
+  /// Marks an error state.
+  ///
+  /// Stops treating the controller as animating/paused and exposes [error].
+  /// Does not clear [progress] or otherwise touch the completion latch —
+  /// [restart] or [stop] are what re-arm the controller.
+  void markError(Object error, [StackTrace? stackTrace]) {
+    _error = error;
+    _isPaused = false;
+    _updateState(StreamingTextState.error);
+    notifyListeners();
+  }
+
+  /// Completes the animation, firing [onCompleted] at most once per
+  /// revealing→complete cycle.
+  ///
+  /// [markCompleted], [updateProgress] (once it reaches 1.0) and
+  /// [skipToEnd] all route through here, so calling any combination of
+  /// them for the same cycle notifies listeners of the completed state
+  /// every time but only invokes [onCompleted] once. [restart] and [stop]
+  /// are the only ways to re-arm the latch for a new cycle (W25).
+  void _completeOnce() {
     _progress = 1.0;
+    _isPaused = false;
+    final alreadyCompleted = _isCompleted;
     _isCompleted = true;
     _updateState(StreamingTextState.completed);
     _notifyProgress();
-    _onCompleted?.call();
+    if (!alreadyCompleted) {
+      _onCompleted?.call();
+    }
   }
 
   void _updateState(StreamingTextState newState) {

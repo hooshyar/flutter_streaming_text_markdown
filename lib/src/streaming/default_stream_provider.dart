@@ -2,7 +2,13 @@ import 'dart:async';
 import 'package:characters/characters.dart';
 import 'stream_provider.dart';
 
+// ignore_for_file: deprecated_member_use_from_same_package
+
 /// A professional default implementation of [StreamProvider].
+@Deprecated(
+  'Not wired to any widget; pass a Stream<String> to '
+  'StreamingTextMarkdown.stream. Removed in 2.0.',
+)
 class DefaultStreamProvider implements StreamProvider {
   /// The current stream controller.
   StreamController<StreamData>? _controller;
@@ -63,6 +69,15 @@ class DefaultStreamProvider implements StreamProvider {
     );
   }
 
+  /// Handles a stream processing error, retrying up to
+  /// [StreamConfig.retryAttempts] times before giving up.
+  ///
+  /// KNOWN BROKEN (not fixed here — this whole provider is deprecated):
+  /// the retry re-invokes [_processStream] on [_lastInput], the *entire*
+  /// original input, from the top — it does not resume from the chunk that
+  /// failed, so a retry re-emits everything already streamed. It also
+  /// races the `finally` block in [_processStream], which nulls out
+  /// [_controller] on every exit, including the one that's about to retry.
   void _handleError(dynamic error) {
     if (_controller == null || _controller!.isClosed) return;
 

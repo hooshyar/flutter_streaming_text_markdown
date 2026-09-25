@@ -4,6 +4,10 @@ import 'dart:async';
 ///
 /// This provider manages the streaming of text, tool calls, and other data
 /// from AI models in a clean, efficient manner.
+@Deprecated(
+  'Not wired to any widget; pass a Stream<String> to '
+  'StreamingTextMarkdown.stream. Removed in 2.0.',
+)
 abstract class StreamProvider {
   /// Const constructor for subclasses.
   const StreamProvider();

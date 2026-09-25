@@ -55,8 +55,7 @@ void main() {
       expect(widget.textDirection, TextDirection.rtl);
     });
 
-    testWidgets(
-        'auto-detects Kurdish Sorani text as RTL without an explicit '
+    testWidgets('auto-detects Kurdish Sorani text as RTL without an explicit '
         'textDirection (regression: Kurdish-specific letters outside the '
         'base Arabic subset)', (tester) async {
       // Sorani-specific letters (ک گ ڕ ژ ڵ) that aren't part of the plain
@@ -79,28 +78,31 @@ void main() {
       expect(
         text.textDirection,
         TextDirection.rtl,
-        reason: 'Kurdish Sorani text should auto-detect as RTL the same way '
+        reason:
+            'Kurdish Sorani text should auto-detect as RTL the same way '
             'Arabic does.',
       );
     });
 
     testWidgets(
-        'does not auto-detect plain English text as RTL (control for the '
-        'Kurdish auto-detection test above)', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: StreamingTextMarkdown(
-            text: 'Hello world',
-            markdownEnabled: false,
-            animationsEnabled: false,
+      'does not auto-detect plain English text as RTL (control for the '
+      'Kurdish auto-detection test above)',
+      (tester) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: StreamingTextMarkdown(
+              text: 'Hello world',
+              markdownEnabled: false,
+              animationsEnabled: false,
+            ),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      final text = tester.widget<Text>(find.byType(Text));
-      expect(text.textDirection, isNot(TextDirection.rtl));
-    });
+        final text = tester.widget<Text>(find.byType(Text));
+        expect(text.textDirection, isNot(TextDirection.rtl));
+      },
+    );
 
     testWidgets('supports word-by-word animation', (tester) async {
       await tester.pumpWidget(
@@ -138,20 +140,20 @@ void main() {
       final controller = StreamController<String>();
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: StreamingText(
-            text: '',
-            stream: controller.stream,
-          ),
-        ),
+        MaterialApp(home: StreamingText(text: '', stream: controller.stream)),
       );
 
       await tester.pump();
       expect(find.byType(StreamingText), findsOneWidget);
 
       controller.add('Hello');
-      await tester.pump();
-      expect(find.byType(Text), findsOneWidget);
+      // Drain the typing timer so the received chunk actually reaches the
+      // displayed buffer (streamed content reveals at `typingSpeed`, it
+      // isn't shown instantly on receipt).
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.textContaining('Hello', findRichText: true), findsWidgets);
 
       await controller.close();
     });
@@ -230,8 +232,9 @@ void main() {
       expect(find.byType(StreamingTextMarkdown), findsOneWidget);
     });
 
-    testWidgets('accepts components and inlineComponents parameters',
-        (tester) async {
+    testWidgets('accepts components and inlineComponents parameters', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: StreamingTextMarkdown(
@@ -305,13 +308,12 @@ void main() {
       expect(find.byType(StreamingTextMarkdown), findsOneWidget);
     });
 
-    testWidgets('named constructors default trailingFadeEnabled to false',
-        (tester) async {
+    testWidgets('named constructors default trailingFadeEnabled to false', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: StreamingTextMarkdown.claude(
-            text: 'Test text',
-          ),
+          home: StreamingTextMarkdown.claude(text: 'Test text'),
         ),
       );
 
@@ -323,60 +325,65 @@ void main() {
     });
 
     testWidgets(
-        'completes typing exactly once with trailingFadeEnabled (regression: #12)',
-        (tester) async {
-      var completed = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: StreamingTextMarkdown(
-            text: 'short',
-            markdownEnabled: true,
-            trailingFadeEnabled: true,
-            typingSpeed: const Duration(milliseconds: 5),
-            fadeInDuration: const Duration(milliseconds: 50),
-            onComplete: () => completed++,
+      'completes typing exactly once with trailingFadeEnabled (regression: #12)',
+      (tester) async {
+        var completed = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: StreamingTextMarkdown(
+              text: 'short',
+              markdownEnabled: true,
+              trailingFadeEnabled: true,
+              typingSpeed: const Duration(milliseconds: 5),
+              fadeInDuration: const Duration(milliseconds: 50),
+              onComplete: () => completed++,
+            ),
           ),
-        ),
-      );
+        );
 
-      // Pump past typing animation and fade-out window
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
+        // Pump past typing animation and fade-out window
+        for (var i = 0; i < 10; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
 
-      expect(completed, 1, reason: 'onComplete must fire exactly once');
-    });
+        expect(completed, 1, reason: 'onComplete must fire exactly once');
+      },
+    );
 
     testWidgets(
-        'completes stream exactly once with trailingFadeEnabled (regression: #12)',
-        (tester) async {
-      final controller = StreamController<String>();
-      var completed = 0;
+      'completes stream exactly once with trailingFadeEnabled (regression: #12)',
+      (tester) async {
+        final controller = StreamController<String>();
+        var completed = 0;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: StreamingText(
-            text: '',
-            stream: controller.stream,
-            markdownEnabled: true,
-            trailingFadeEnabled: true,
-            fadeInDuration: const Duration(milliseconds: 50),
-            onComplete: () => completed++,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: StreamingText(
+              text: '',
+              stream: controller.stream,
+              markdownEnabled: true,
+              trailingFadeEnabled: true,
+              fadeInDuration: const Duration(milliseconds: 50),
+              onComplete: () => completed++,
+            ),
           ),
-        ),
-      );
+        );
 
-      controller.add('hello');
-      await tester.pump(const Duration(milliseconds: 100));
-      await controller.close();
-      // Pump past async stream-done dispatch and fade-out
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
+        controller.add('hello');
+        await tester.pump(const Duration(milliseconds: 100));
+        await controller.close();
+        // Pump past async stream-done dispatch and fade-out
+        for (var i = 0; i < 10; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
 
-      expect(completed, 1,
-          reason: 'onComplete must fire exactly once on stream done');
-    });
+        expect(
+          completed,
+          1,
+          reason: 'onComplete must fire exactly once on stream done',
+        );
+      },
+    );
   });
 
   group('StreamingTextMarkdown stream: parameter (v1.9.0)', () {
@@ -407,12 +414,16 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
       }
 
-      expect(completed, 1,
-          reason: 'onComplete must fire exactly once on stream done');
+      expect(
+        completed,
+        1,
+        reason: 'onComplete must fire exactly once on stream done',
+      );
     });
 
-    testWidgets('text-only usage still works (backward compat)',
-        (tester) async {
+    testWidgets('text-only usage still works (backward compat)', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingTextMarkdown(
@@ -426,8 +437,9 @@ void main() {
       expect(find.textContaining('static content'), findsOneWidget);
     });
 
-    testWidgets('preset constructors (.chatGPT) accept stream parameter',
-        (tester) async {
+    testWidgets('preset constructors (.chatGPT) accept stream parameter', (
+      tester,
+    ) async {
       final controller = StreamController<String>();
       var completed = 0;
 
@@ -450,8 +462,7 @@ void main() {
       expect(completed, 1);
     });
 
-    group(
-        'preset constructors accept fadeInDuration/fadeInCurve/typingSpeed '
+    group('preset constructors accept fadeInDuration/fadeInCurve/typingSpeed '
         'overrides (regression: #17)', () {
       test('.chatGPT() keeps its own tuning when overrides are omitted', () {
         const widget = StreamingTextMarkdown.chatGPT();
@@ -514,55 +525,61 @@ void main() {
     });
 
     testWidgets(
-        'swapping stream instance re-subscribes through the public widget '
-        '(v1.9.1 slice 4) — wrapper ValueKey does not include stream, so '
-        'this exercises didUpdateWidget rather than a remount', (tester) async {
-      final controllerA = StreamController<String>();
-      addTearDown(() {
-        if (!controllerA.isClosed) controllerA.close();
-      });
-      final controllerB = StreamController<String>();
-      addTearDown(() {
-        if (!controllerB.isClosed) controllerB.close();
-      });
+      'swapping stream instance re-subscribes through the public widget '
+      '(v1.9.1 slice 4) — wrapper ValueKey does not include stream, so '
+      'this exercises didUpdateWidget rather than a remount',
+      (tester) async {
+        final controllerA = StreamController<String>();
+        addTearDown(() {
+          if (!controllerA.isClosed) controllerA.close();
+        });
+        final controllerB = StreamController<String>();
+        addTearDown(() {
+          if (!controllerB.isClosed) controllerB.close();
+        });
 
-      Widget build(Stream<String> stream) {
-        return MaterialApp(
-          home: StreamingTextMarkdown(
-            text: '',
-            stream: stream,
-            markdownEnabled: false,
-            fadeInEnabled: false,
-            wordByWord: false,
-            chunkSize: 1000,
-            typingSpeed: Duration.zero,
-          ),
+        Widget build(Stream<String> stream) {
+          return MaterialApp(
+            home: StreamingTextMarkdown(
+              text: '',
+              stream: stream,
+              markdownEnabled: false,
+              fadeInEnabled: false,
+              wordByWord: false,
+              chunkSize: 1000,
+              typingSpeed: Duration.zero,
+            ),
+          );
+        }
+
+        await tester.pumpWidget(build(controllerA.stream));
+        controllerA.add('from A');
+        await tester.pump();
+        await tester.pump();
+        expect(find.textContaining('from A'), findsOneWidget);
+
+        // No StreamingTextMarkdown remount — same key/position in tree.
+        await tester.pumpWidget(build(controllerB.stream));
+        await tester.pump();
+
+        controllerA.add(' MORE (must be ignored)');
+        await tester.pump();
+        await tester.pump();
+
+        controllerB.add('from B');
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.textContaining('from B'), findsOneWidget);
+        expect(
+          find.textContaining('MORE'),
+          findsNothing,
+          reason:
+              'the old stream subscription must not still be active '
+              'after the swap',
         );
-      }
-
-      await tester.pumpWidget(build(controllerA.stream));
-      controllerA.add('from A');
-      await tester.pump();
-      await tester.pump();
-      expect(find.textContaining('from A'), findsOneWidget);
-
-      // No StreamingTextMarkdown remount — same key/position in tree.
-      await tester.pumpWidget(build(controllerB.stream));
-      await tester.pump();
-
-      controllerA.add(' MORE (must be ignored)');
-      await tester.pump();
-      await tester.pump();
-
-      controllerB.add('from B');
-      await tester.pump();
-      await tester.pump();
-
-      expect(find.textContaining('from B'), findsOneWidget);
-      expect(find.textContaining('MORE'), findsNothing,
-          reason: 'the old stream subscription must not still be active '
-              'after the swap');
-    });
+      },
+    );
   });
 
   group('completeAnimationOnTap', () {
@@ -589,44 +606,55 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(completed, 1,
-          reason: 'tap should short-circuit the animation and fire onComplete');
+      expect(
+        completed,
+        1,
+        reason: 'tap should short-circuit the animation and fire onComplete',
+      );
     });
 
     testWidgets(
-        'completeAnimationOnTap: false lets taps pass through without completing',
-        (tester) async {
-      var completed = 0;
+      'completeAnimationOnTap: false lets taps pass through without completing',
+      (tester) async {
+        var completed = 0;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: StreamingTextMarkdown(
-            text: 'hello world this should take a while to type out',
-            typingSpeed: const Duration(milliseconds: 50),
-            fadeInEnabled: false,
-            completeAnimationOnTap: false,
-            onComplete: () => completed++,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: StreamingTextMarkdown(
+              text: 'hello world this should take a while to type out',
+              typingSpeed: const Duration(milliseconds: 50),
+              fadeInEnabled: false,
+              completeAnimationOnTap: false,
+              onComplete: () => completed++,
+            ),
           ),
-        ),
-      );
+        );
 
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(completed, 0);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(completed, 0);
 
-      await tester.tap(find.byType(StreamingText));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+        await tester.tap(find.byType(StreamingText));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
 
-      expect(completed, 0, reason: 'tap must not short-circuit the animation');
+        expect(
+          completed,
+          0,
+          reason: 'tap must not short-circuit the animation',
+        );
 
-      // Let the animation finish naturally; onComplete should still fire once.
-      for (var i = 0; i < 60; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
-      expect(completed, 1,
+        // Let the animation finish naturally; onComplete should still fire once.
+        for (var i = 0; i < 60; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(
+          completed,
+          1,
           reason:
-              'natural completion should still fire onComplete exactly once');
-    });
+              'natural completion should still fire onComplete exactly once',
+        );
+      },
+    );
   });
 }

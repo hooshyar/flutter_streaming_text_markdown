@@ -2,3 +2,13 @@
 # on an open stream/ticker, or a real Timer that never fires) from stalling
 # the suite instead of failing fast.
 timeout: 60s
+
+tags:
+  # Wall-clock, ratio-based benchmark (ours vs bare GptMarkdown). Skipped by
+  # default - interleaved frame-budget measurements are inherently noisier
+  # than the rest of the suite - but explicitly selecting the tag
+  # (`flutter test --tags benchmark` / `-t benchmark`) still runs it.
+  benchmark:
+    skip: >-
+      Wall-clock benchmark, excluded from the default run. Run explicitly
+      with `flutter test --tags benchmark`.

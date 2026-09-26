@@ -4,8 +4,9 @@ import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.
 
 void main() {
   group('Simple Fix Tests', () {
-    testWidgets('Simple markdown animation should complete',
-        (WidgetTester tester) async {
+    testWidgets('Simple markdown animation should complete', (
+      WidgetTester tester,
+    ) async {
       bool completed = false;
 
       await tester.pumpWidget(
@@ -14,8 +15,9 @@ void main() {
             body: StreamingText(
               text: '**Bold** text',
               markdownEnabled: true,
-              typingSpeed:
-                  const Duration(milliseconds: 5), // Very fast for testing
+              typingSpeed: const Duration(
+                milliseconds: 5,
+              ), // Very fast for testing
               wordByWord: false,
               fadeInEnabled: false, // Disable fade-in to simplify
               onComplete: () {
@@ -37,12 +39,16 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
 
       // The animation should have completed
-      expect(completed, isTrue,
-          reason: 'Animation should complete when markdown is enabled');
+      expect(
+        completed,
+        isTrue,
+        reason: 'Animation should complete when markdown is enabled',
+      );
     });
 
-    testWidgets('Simple text animation without markdown should complete',
-        (WidgetTester tester) async {
+    testWidgets('Simple text animation without markdown should complete', (
+      WidgetTester tester,
+    ) async {
       bool completed = false;
 
       await tester.pumpWidget(
@@ -69,8 +75,9 @@ void main() {
       expect(completed, isTrue, reason: 'Simple animation should complete');
     });
 
-    testWidgets('Animation state tracking works correctly',
-        (WidgetTester tester) async {
+    testWidgets('Animation state tracking works correctly', (
+      WidgetTester tester,
+    ) async {
       // This test checks if our state management fixes work
       bool completed = false;
 
@@ -97,8 +104,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       // Should complete successfully
-      expect(completed, isTrue,
-          reason: 'State management should allow animation to complete');
+      expect(
+        completed,
+        isTrue,
+        reason: 'State management should allow animation to complete',
+      );
     });
   });
 }

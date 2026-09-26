@@ -16,8 +16,9 @@ import 'package:flutter_streaming_text_markdown/src/streaming/streaming_text.dar
 
 void main() {
   group('reduced motion', () {
-    testWidgets('reveals instantly when disableAnimations is set at mount',
-        (tester) async {
+    testWidgets('reveals instantly when disableAnimations is set at mount', (
+      tester,
+    ) async {
       const source = 'the quick brown fox jumps over the lazy dog';
       await tester.pumpWidget(
         MediaQuery(
@@ -44,22 +45,23 @@ void main() {
       expect(text.data, source);
     });
 
-    testWidgets('reacts when disableAnimations flips true mid-reveal',
-        (tester) async {
+    testWidgets('reacts when disableAnimations flips true mid-reveal', (
+      tester,
+    ) async {
       const source = 'the quick brown fox jumps over the lazy dog';
       Widget host({required bool disableAnimations}) => MediaQuery(
-            data: MediaQueryData(disableAnimations: disableAnimations),
-            child: MaterialApp(
-              home: Scaffold(
-                body: StreamingText(
-                  text: source,
-                  markdownEnabled: false,
-                  showCursor: false,
-                  typingSpeed: const Duration(milliseconds: 500),
-                ),
-              ),
+        data: MediaQueryData(disableAnimations: disableAnimations),
+        child: MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              text: source,
+              markdownEnabled: false,
+              showCursor: false,
+              typingSpeed: const Duration(milliseconds: 500),
             ),
-          );
+          ),
+        ),
+      );
 
       await tester.pumpWidget(host(disableAnimations: false));
       await tester.pump(const Duration(milliseconds: 500));

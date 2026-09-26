@@ -62,18 +62,20 @@ void main() {
       expect(c.fadeInCurve, Curves.decelerate);
     });
 
-    test('bySpeed returns a distinct, monotonically faster config per speed',
-        () {
-      final slow = LLMAnimationPresets.bySpeed(AnimationSpeed.slow);
-      final medium = LLMAnimationPresets.bySpeed(AnimationSpeed.medium);
-      final fast = LLMAnimationPresets.bySpeed(AnimationSpeed.fast);
-      final ultraFast = LLMAnimationPresets.bySpeed(AnimationSpeed.ultraFast);
+    test(
+      'bySpeed returns a distinct, monotonically faster config per speed',
+      () {
+        final slow = LLMAnimationPresets.bySpeed(AnimationSpeed.slow);
+        final medium = LLMAnimationPresets.bySpeed(AnimationSpeed.medium);
+        final fast = LLMAnimationPresets.bySpeed(AnimationSpeed.fast);
+        final ultraFast = LLMAnimationPresets.bySpeed(AnimationSpeed.ultraFast);
 
-      expect(slow.typingSpeed, greaterThan(medium.typingSpeed));
-      expect(medium.typingSpeed, greaterThan(fast.typingSpeed));
-      expect(fast.typingSpeed, greaterThan(ultraFast.typingSpeed));
-      expect(ultraFast.fadeInEnabled, isFalse);
-    });
+        expect(slow.typingSpeed, greaterThan(medium.typingSpeed));
+        expect(medium.typingSpeed, greaterThan(fast.typingSpeed));
+        expect(fast.typingSpeed, greaterThan(ultraFast.typingSpeed));
+        expect(ultraFast.fadeInEnabled, isFalse);
+      },
+    );
   });
 
   group('StreamingTextConfig', () {

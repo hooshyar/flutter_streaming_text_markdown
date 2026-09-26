@@ -374,9 +374,7 @@ class _StreamingTextState extends State<StreamingText>
   // once-compiled RegExp, scanned only over the NEW suffix since the last
   // check (append-only growth is the common case) instead of re-scanning
   // the whole buffer - or recompiling a RegExp - on every tick (W-perf).
-  static final RegExp _arabicRegex = RegExp(
-    r'[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]',
-  );
+  static final RegExp _arabicRegex = RegExp(r'[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]');
   bool _arabicCached = false;
   int _arabicCheckedLength = 0;
 
@@ -431,7 +429,8 @@ class _StreamingTextState extends State<StreamingText>
 
   void _syncEngineConfig() {
     _engine.policy = _buildPolicy();
-    _engine.atomicSpans = widget.latexEnabled ? const AtomicSpanDetector() : null;
+    _engine.atomicSpans =
+        widget.latexEnabled ? const AtomicSpanDetector() : null;
     _scheduler.interval = _effectiveInterval();
   }
 
@@ -658,8 +657,7 @@ class _StreamingTextState extends State<StreamingText>
   /// on. Hidden as soon as the reveal completes, so the final rendered text
   /// always equals the source with no trailing sentinel/widget span left in
   /// it.
-  bool get _caretVisible =>
-      widget.showCursor && !_isComplete && _error == null;
+  bool get _caretVisible => widget.showCursor && !_isComplete && _error == null;
 
   /// The ticker only needs to run for animation *decoration* - the reveal
   /// itself is driven by [_scheduler]'s own timer. Reduced motion collapses
@@ -682,9 +680,10 @@ class _StreamingTextState extends State<StreamingText>
 
   void _onTick(Duration elapsed) {
     if (!mounted) return;
-    final progress = _engine.isComplete
-        ? 1.0
-        : (_engine.progress >= 0.999 ? 0.999 : _engine.progress);
+    final progress =
+        _engine.isComplete
+            ? 1.0
+            : (_engine.progress >= 0.999 ? 0.999 : _engine.progress);
     widget.controller?.updateProgress(progress);
 
     // The caret pulse alone never needs a full `setState`: it updates
@@ -693,8 +692,10 @@ class _StreamingTextState extends State<StreamingText>
     // caret must not re-run the markdown segment cache 60x/sec while a 20k+
     // char document streams in behind it).
     if (_caretVisible) {
-      _caretOpacity.value =
-          caretPulseOpacity(_now(), reducedMotion: _reducedMotion);
+      _caretOpacity.value = caretPulseOpacity(
+        _now(),
+        reducedMotion: _reducedMotion,
+      );
     }
 
     // Only reveal progress and fade settling actually change what
@@ -846,8 +847,9 @@ class _StreamingTextState extends State<StreamingText>
   Widget Function()? _caretWidgetBuilder;
 
   InlinePattern _ensureCaretInlinePattern() {
-    return _caretInlinePatternInstance ??=
-        caretInlinePattern(() => _caretWidgetBuilder!());
+    return _caretInlinePatternInstance ??= caretInlinePattern(
+      () => _caretWidgetBuilder!(),
+    );
   }
 
   /// The [MarkdownRenderOptions] actually handed to [StreamingMarkdownView]
@@ -878,7 +880,9 @@ class _StreamingTextState extends State<StreamingText>
 
   TextDirection get _effectiveTextDirection =>
       widget.textDirection ??
-      (_containsArabic(_engine.revealed) ? TextDirection.rtl : TextDirection.ltr);
+      (_containsArabic(_engine.revealed)
+          ? TextDirection.rtl
+          : TextDirection.ltr);
 
   @override
   Widget build(BuildContext context) {
@@ -1005,8 +1009,10 @@ class _StreamingTextState extends State<StreamingText>
       // cause (text growth, a reduced-motion toggle, a theme change): the
       // ticker (see [_onTick]) is what updates it on every pulse frame in
       // between, without triggering a rebuild of its own.
-      _caretOpacity.value =
-          caretPulseOpacity(_now(), reducedMotion: _reducedMotion);
+      _caretOpacity.value = caretPulseOpacity(
+        _now(),
+        reducedMotion: _reducedMotion,
+      );
       // Rebind what the cached inline pattern (see
       // [_ensureCaretInlinePattern]) actually builds to THIS build's color,
       // without touching the pattern's own identity. Left un-invoked here -
@@ -1014,8 +1020,8 @@ class _StreamingTextState extends State<StreamingText>
       // needed - so the markdown branch (which never reads `caret` directly,
       // only `_effectiveMarkdownOptions()`'s cached pattern) doesn't pay for
       // a `StreamingCaret` instance it throws away unused on every frame.
-      _caretWidgetBuilder = () =>
-          StreamingCaret(opacity: _caretOpacity, color: caretColor);
+      _caretWidgetBuilder =
+          () => StreamingCaret(opacity: _caretOpacity, color: caretColor);
     }
 
     Widget content;
@@ -1105,16 +1111,17 @@ class _StreamingTextState extends State<StreamingText>
       } else {
         final fadeDuration =
             _reducedMotion ? Duration.zero : widget.fadeInDuration;
-        InlineSpan textSpan = _fadeAllowed
-            ? buildFadeSpan(
-                text: revealedText,
-                runs: _currentFadeRuns(),
-                now: _now(),
-                fadeDuration: fadeDuration,
-                curve: widget.fadeInCurve,
-                style: effectiveStyle,
-              )
-            : TextSpan(text: revealedText, style: effectiveStyle);
+        InlineSpan textSpan =
+            _fadeAllowed
+                ? buildFadeSpan(
+                  text: revealedText,
+                  runs: _currentFadeRuns(),
+                  now: _now(),
+                  fadeDuration: fadeDuration,
+                  curve: widget.fadeInCurve,
+                  style: effectiveStyle,
+                )
+                : TextSpan(text: revealedText, style: effectiveStyle);
 
         if (caretVisible) {
           // DESIGN.md 4.2: an inline `WidgetSpan`, baseline-aligned, with a

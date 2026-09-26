@@ -6,8 +6,9 @@ import 'dart:async';
 void main() {
   group('Issue Reproduction Tests', () {
     // Test for Issue #3: Markdown and animation conflict
-    testWidgets('Issue #3: Markdown enabled should still show animation',
-        (WidgetTester tester) async {
+    testWidgets('Issue #3: Markdown enabled should still show animation', (
+      WidgetTester tester,
+    ) async {
       const testText = '**Bold Text** and *italic text*';
       bool animationCompleted = false;
 
@@ -39,13 +40,17 @@ void main() {
       expect(find.textContaining('italic text'), findsWidgets);
 
       // Animation should complete
-      expect(animationCompleted, isTrue,
-          reason: 'Markdown animation should complete successfully');
+      expect(
+        animationCompleted,
+        isTrue,
+        reason: 'Markdown animation should complete successfully',
+      );
     });
 
     // Test for Issue #1: Animation restart bug with streaming
-    testWidgets('Issue #1: New text should animate only new content',
-        (WidgetTester tester) async {
+    testWidgets('Issue #1: New text should animate only new content', (
+      WidgetTester tester,
+    ) async {
       final streamController = StreamController<String>();
       String displayedText = '';
 
@@ -82,24 +87,31 @@ void main() {
 
       // Check that the displayed text is a genuine prefix of "Hello World" —
       // not empty, and not duplicated/restarted content.
-      final displayed = tester
-          .widgetList<Text>(find.byType(Text))
-          .map((t) =>
-              t.data ??
-              t.textSpan?.toPlainText(includePlaceholders: false) ??
-              '')
-          .join();
+      final displayed =
+          tester
+              .widgetList<Text>(find.byType(Text))
+              .map(
+                (t) =>
+                    t.data ??
+                    t.textSpan?.toPlainText(includePlaceholders: false) ??
+                    '',
+              )
+              .join();
       expect(displayed, isNotEmpty);
-      expect('Hello World'.startsWith(displayed), isTrue,
-          reason:
-              'displayed text "$displayed" should be a prefix of "Hello World"');
+      expect(
+        'Hello World'.startsWith(displayed),
+        isTrue,
+        reason:
+            'displayed text "$displayed" should be a prefix of "Hello World"',
+      );
 
       streamController.close();
     });
 
     // Test for markdown rendering with animation
-    testWidgets('Markdown should render while animating',
-        (WidgetTester tester) async {
+    testWidgets('Markdown should render while animating', (
+      WidgetTester tester,
+    ) async {
       const testText = '# Header\n**Bold** and *italic*';
       bool completed = false;
 
@@ -131,13 +143,17 @@ void main() {
       expect(find.textContaining('italic'), findsWidgets);
 
       // Should complete
-      expect(completed, isTrue,
-          reason: 'StreamingTextMarkdown should complete animation');
+      expect(
+        completed,
+        isTrue,
+        reason: 'StreamingTextMarkdown should complete animation',
+      );
     });
 
     // Test for LaTeX integration (Issue #2 - already addressed)
-    testWidgets('LaTeX expressions should render correctly',
-        (WidgetTester tester) async {
+    testWidgets('LaTeX expressions should render correctly', (
+      WidgetTester tester,
+    ) async {
       const testText = r'The equation $E = mc^2$ is famous';
       bool completed = false;
 

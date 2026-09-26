@@ -83,10 +83,12 @@ InlineSpan buildFadeSpan({
     if (s > cursor) {
       children.add(TextSpan(text: text.substring(cursor, s), style: style));
     }
-    children.add(TextSpan(
-      text: text.substring(s, end),
-      style: _fadedStyle(style, curve.transform(t).clamp(0.0, 1.0)),
-    ));
+    children.add(
+      TextSpan(
+        text: text.substring(s, end),
+        style: _fadedStyle(style, curve.transform(t).clamp(0.0, 1.0)),
+      ),
+    );
     cursor = end;
   }
   if (cursor < text.length) {

@@ -110,7 +110,10 @@ class _PhaseResult {
 /// Pumps 16ms frames, timing each one, until either [maxFrames] is reached or
 /// the widget under test stops scheduling more frames on its own (reveal
 /// finished, ticker stopped, any fade settled).
-Future<List<int>> _pumpAndTime(WidgetTester tester, {required int maxFrames}) async {
+Future<List<int>> _pumpAndTime(
+  WidgetTester tester, {
+  required int maxFrames,
+}) async {
   const frameBudget = Duration(milliseconds: 16);
   final micros = <int>[];
   final stopwatch = Stopwatch();
@@ -256,12 +259,12 @@ void main() {
       final ours = _PhaseResult(oursMicros, oursRebuilds);
       final bare = _PhaseResult(bareMicros, bareRebuilds);
 
-      final ratio = bare.medianMicros == 0
-          ? 1.0
-          : ours.medianMicros / bare.medianMicros;
-      final rebuildRatio = bare.totalRebuilds == 0
-          ? 1.0
-          : ours.totalRebuilds / bare.totalRebuilds;
+      final ratio =
+          bare.medianMicros == 0 ? 1.0 : ours.medianMicros / bare.medianMicros;
+      final rebuildRatio =
+          bare.totalRebuilds == 0
+              ? 1.0
+              : ours.totalRebuilds / bare.totalRebuilds;
 
       final report =
           'stream_benchmark ($rounds rounds, sequential, caret on): '

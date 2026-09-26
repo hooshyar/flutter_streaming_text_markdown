@@ -10,9 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 
 void main() {
-  testWidgets('swapping the controller instance rebinds (W22)', (
-    tester,
-  ) async {
+  testWidgets('swapping the controller instance rebinds (W22)', (tester) async {
     final controllerA = StreamingTextController();
     addTearDown(controllerA.dispose);
     final controllerB = StreamingTextController();
@@ -49,24 +47,34 @@ void main() {
     // actually pause the reveal.
     controllerB.pause();
     await tester.pump();
-    final beforePauseSpin = tester
-        .widgetList<Text>(find.byType(Text))
-        .map((t) => t.data ?? '')
-        .join();
+    final beforePauseSpin =
+        tester
+            .widgetList<Text>(find.byType(Text))
+            .map((t) => t.data ?? '')
+            .join();
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 20));
     }
-    final afterPauseSpin = tester
-        .widgetList<Text>(find.byType(Text))
-        .map((t) => t.data ?? '')
-        .join();
-    expect(afterPauseSpin, beforePauseSpin, reason: 'the new controller must pause it');
+    final afterPauseSpin =
+        tester
+            .widgetList<Text>(find.byType(Text))
+            .map((t) => t.data ?? '')
+            .join();
+    expect(
+      afterPauseSpin,
+      beforePauseSpin,
+      reason: 'the new controller must pause it',
+    );
 
     controllerB.resume();
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 20));
     }
-    expect(controllerB.isCompleted, isTrue, reason: 'the new controller drives completion');
+    expect(
+      controllerB.isCompleted,
+      isTrue,
+      reason: 'the new controller drives completion',
+    );
   });
 
   testWidgets(
@@ -141,44 +149,47 @@ void main() {
       // Rebuild with the exact same text/config (same element, no remount).
       await tester.pumpWidget(build());
       await tester.pump();
-      expect(completeCount, 1, reason: 'an unchanged source must not re-fire onComplete');
+      expect(
+        completeCount,
+        1,
+        reason: 'an unchanged source must not re-fire onComplete',
+      );
     },
   );
 
-  testWidgets(
-    'plain fade over 5k chars keeps transientCallbackCount <= 2',
-    (tester) async {
-      final longText = List.generate(5000, (i) => 'a').join();
+  testWidgets('plain fade over 5k chars keeps transientCallbackCount <= 2', (
+    tester,
+  ) async {
+    final longText = List.generate(5000, (i) => 'a').join();
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: StreamingText(
-              text: longText,
-              markdownEnabled: false,
-              fadeInEnabled: true,
-              fadeInDuration: const Duration(milliseconds: 200),
-              animationsEnabled: false, // reveal instantly, then let the fade run
-            ),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingText(
+            text: longText,
+            markdownEnabled: false,
+            fadeInEnabled: true,
+            fadeInDuration: const Duration(milliseconds: 200),
+            animationsEnabled: false, // reveal instantly, then let the fade run
           ),
         ),
-      );
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
 
-      var maxTransientCallbacks = 0;
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(milliseconds: 16));
-        final count = SchedulerBinding.instance.transientCallbackCount;
-        if (count > maxTransientCallbacks) maxTransientCallbacks = count;
-      }
+    var maxTransientCallbacks = 0;
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      final count = SchedulerBinding.instance.transientCallbackCount;
+      if (count > maxTransientCallbacks) maxTransientCallbacks = count;
+    }
 
-      expect(
-        maxTransientCallbacks,
-        lessThanOrEqualTo(2),
-        reason:
-            'a plain-text fade over 5k characters must use a single shared '
-            'Ticker, never one AnimationController per glyph',
-      );
-    },
-  );
+    expect(
+      maxTransientCallbacks,
+      lessThanOrEqualTo(2),
+      reason:
+          'a plain-text fade over 5k characters must use a single shared '
+          'Ticker, never one AnimationController per glyph',
+    );
+  });
 }

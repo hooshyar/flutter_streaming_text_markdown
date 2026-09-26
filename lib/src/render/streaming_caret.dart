@@ -15,7 +15,8 @@ const double caretPulseMinOpacity = 0.35;
 /// [caretPulseDuration]. Always 1.0 when [reducedMotion] is true.
 double caretPulseOpacity(Duration elapsed, {bool reducedMotion = false}) {
   if (reducedMotion) return 1.0;
-  final phase = (elapsed.inMicroseconds % caretPulseDuration.inMicroseconds) /
+  final phase =
+      (elapsed.inMicroseconds % caretPulseDuration.inMicroseconds) /
       caretPulseDuration.inMicroseconds;
   final wave = 0.5 - 0.5 * math.cos(2 * math.pi * phase);
   return caretPulseMinOpacity + (1.0 - caretPulseMinOpacity) * wave;
@@ -48,15 +49,16 @@ class StreamingCaret extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<double>(
       valueListenable: opacity,
-      builder: (context, value, _) => SizedBox.square(
-        dimension: 8,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color.withValues(alpha: value.clamp(0.0, 1.0)),
+      builder:
+          (context, value, _) => SizedBox.square(
+            dimension: 8,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color.withValues(alpha: value.clamp(0.0, 1.0)),
+              ),
+            ),
           ),
-        ),
-      ),
     );
   }
 }

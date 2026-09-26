@@ -46,11 +46,7 @@ class StreamData {
   final Map<String, dynamic>? metadata;
 
   /// Creates a new [StreamData] instance.
-  const StreamData({
-    required this.type,
-    required this.content,
-    this.metadata,
-  });
+  const StreamData({required this.type, required this.content, this.metadata});
 
   /// Creates a text stream data instance.
   factory StreamData.text(String text, {Map<String, dynamic>? metadata}) {
@@ -62,8 +58,10 @@ class StreamData {
   }
 
   /// Creates a tool call stream data instance.
-  factory StreamData.toolCall(Map<String, dynamic> toolCall,
-      {Map<String, dynamic>? metadata}) {
+  factory StreamData.toolCall(
+    Map<String, dynamic> toolCall, {
+    Map<String, dynamic>? metadata,
+  }) {
     return StreamData(
       type: StreamDataType.toolCall,
       content: toolCall,

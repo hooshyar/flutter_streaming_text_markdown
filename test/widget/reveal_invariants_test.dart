@@ -18,8 +18,10 @@ import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.
 String _plainText(WidgetTester tester) {
   final texts = tester.widgetList<Text>(find.byType(Text));
   return texts
-      .map((t) =>
-          t.textSpan?.toPlainText(includePlaceholders: false) ?? t.data ?? '')
+      .map(
+        (t) =>
+            t.textSpan?.toPlainText(includePlaceholders: false) ?? t.data ?? '',
+      )
       .join();
 }
 
@@ -137,7 +139,11 @@ void main() {
     await tester.pump();
     await _drain(tester, rounds: 300, step: const Duration(milliseconds: 2));
 
-    expect(capturedCode, isNotNull, reason: 'the code block must finish revealing');
+    expect(
+      capturedCode,
+      isNotNull,
+      reason: 'the code block must finish revealing',
+    );
     expect(
       capturedCode,
       contains('    print("hi");'),
@@ -228,7 +234,11 @@ void main() {
     controller.pause();
     await tester.pump();
     await _drain(tester, rounds: 10);
-    expect(_plainText(tester), beforePause, reason: 'paused: no growth or shrink');
+    expect(
+      _plainText(tester),
+      beforePause,
+      reason: 'paused: no growth or shrink',
+    );
 
     controller.resume();
     await _drain(tester, rounds: 300);
@@ -262,7 +272,11 @@ void main() {
     controller.pause();
     await tester.pump();
     await _drain(tester, rounds: 10);
-    expect(_plainText(tester), beforePause, reason: 'paused: no growth or shrink');
+    expect(
+      _plainText(tester),
+      beforePause,
+      reason: 'paused: no growth or shrink',
+    );
 
     controller.resume();
     await _drain(tester, rounds: 300);

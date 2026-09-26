@@ -36,14 +36,16 @@ void main() {
 
     test('produces one settled prefix plus one alpha span per fading run', () {
       const now = Duration(milliseconds: 90); // t = 0.5
-      final span = buildFadeSpan(
-        text: text,
-        runs: const [FadeRun(6, 11, Duration.zero)],
-        now: now,
-        fadeDuration: fade,
-        curve: Curves.linear,
-        style: style,
-      ) as TextSpan;
+      final span =
+          buildFadeSpan(
+                text: text,
+                runs: const [FadeRun(6, 11, Duration.zero)],
+                now: now,
+                fadeDuration: fade,
+                curve: Curves.linear,
+                style: style,
+              )
+              as TextSpan;
 
       expect(span.toPlainText(), text);
       final children = span.children!;
@@ -61,14 +63,16 @@ void main() {
     test('fading run alpha follows the curve over time', () {
       FadeRun run(int start) => FadeRun(start, text.length, Duration.zero);
       double alphaAt(Duration now) {
-        final span = buildFadeSpan(
-          text: text,
-          runs: [run(6)],
-          now: now,
-          fadeDuration: fade,
-          curve: Curves.linear,
-          style: style,
-        ) as TextSpan;
+        final span =
+            buildFadeSpan(
+                  text: text,
+                  runs: [run(6)],
+                  now: now,
+                  fadeDuration: fade,
+                  curve: Curves.linear,
+                  style: style,
+                )
+                as TextSpan;
         final runSpan = span.children!.last as TextSpan;
         return runSpan.style!.color!.a;
       }
@@ -96,14 +100,16 @@ void main() {
     });
 
     test('zero fade duration settles everything', () {
-      final span = buildFadeSpan(
-        text: text,
-        runs: const [FadeRun(0, 11, Duration.zero)],
-        now: Duration.zero,
-        fadeDuration: Duration.zero,
-        curve: Curves.linear,
-        style: style,
-      ) as TextSpan;
+      final span =
+          buildFadeSpan(
+                text: text,
+                runs: const [FadeRun(0, 11, Duration.zero)],
+                now: Duration.zero,
+                fadeDuration: Duration.zero,
+                curve: Curves.linear,
+                style: style,
+              )
+              as TextSpan;
       expect(span.toPlainText(), text);
       expect(span.children, isNull);
     });

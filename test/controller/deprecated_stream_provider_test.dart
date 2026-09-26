@@ -84,11 +84,12 @@ void main() {
         async.elapse(const Duration(seconds: 2));
 
         expect(events.any((e) => e.type == StreamDataType.completion), isTrue);
-        final textChunks = events
-            .where((e) => e.type == StreamDataType.text)
-            .map((e) => e.content as String)
-            .where((c) => c.isNotEmpty)
-            .join();
+        final textChunks =
+            events
+                .where((e) => e.type == StreamDataType.text)
+                .map((e) => e.content as String)
+                .where((c) => c.isNotEmpty)
+                .join();
         expect(textChunks, 'Hello World');
 
         provider.dispose();
@@ -139,15 +140,19 @@ void main() {
         async.elapse(const Duration(seconds: 2));
 
         expect(
-          events.any((e) =>
-              e.type == StreamDataType.text &&
-              (e.metadata?['status'] == 'paused')),
+          events.any(
+            (e) =>
+                e.type == StreamDataType.text &&
+                (e.metadata?['status'] == 'paused'),
+          ),
           isTrue,
         );
         expect(
-          events.any((e) =>
-              e.type == StreamDataType.text &&
-              (e.metadata?['status'] == 'resumed')),
+          events.any(
+            (e) =>
+                e.type == StreamDataType.text &&
+                (e.metadata?['status'] == 'resumed'),
+          ),
           isTrue,
         );
 
@@ -176,19 +181,18 @@ void main() {
         async.flushMicrotasks();
 
         expect(
-          events.any((e) =>
-              e.type == StreamDataType.text &&
-              e.metadata?['status'] == 'stopped'),
+          events.any(
+            (e) =>
+                e.type == StreamDataType.text &&
+                e.metadata?['status'] == 'stopped',
+          ),
           isTrue,
           reason: 'stopStream should emit a stopped status event',
         );
         // Only the 'stopped' status marker should have been emitted — the
         // chunk delay (500ms) never elapsed before stop, so no content
         // chunks or the completion event should follow.
-        expect(
-          events.any((e) => e.type == StreamDataType.completion),
-          isFalse,
-        );
+        expect(events.any((e) => e.type == StreamDataType.completion), isFalse);
 
         provider.dispose();
         async.flushMicrotasks();
@@ -234,7 +238,9 @@ void main() {
       );
 
       final errorCompleter = Completer<Object>();
-      provider.startStream('abc').listen(
+      provider
+          .startStream('abc')
+          .listen(
             (_) {},
             onError: (Object e) {
               if (!errorCompleter.isCompleted) errorCompleter.complete(e);
@@ -242,8 +248,9 @@ void main() {
             cancelOnError: true,
           );
 
-      final sawError = await errorCompleter.future
-          .timeout(const Duration(seconds: 5));
+      final sawError = await errorCompleter.future.timeout(
+        const Duration(seconds: 5),
+      );
 
       expect(sawError, isA<StreamException>());
       expect((sawError as StreamException).code, 'STREAM_TIMEOUT');

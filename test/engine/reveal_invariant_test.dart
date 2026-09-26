@@ -70,18 +70,15 @@ void main() {
   for (final source in _corpus) {
     for (final policyEntry in policies.entries) {
       for (var trial = 0; trial < 8; trial++) {
-        test(
-          'invariants hold: policy=${policyEntry.key} '
-          'source=${_describe(source)} trial=$trial',
-          () {
-            _runInvariantCheck(
-              source: source,
-              policy: policyEntry.value(),
-              chunks: _splitAdversarially(source, random),
-              useAtomicSpans: true,
-            );
-          },
-        );
+        test('invariants hold: policy=${policyEntry.key} '
+            'source=${_describe(source)} trial=$trial', () {
+          _runInvariantCheck(
+            source: source,
+            policy: policyEntry.value(),
+            chunks: _splitAdversarially(source, random),
+            useAtomicSpans: true,
+          );
+        });
       }
     }
   }
@@ -194,43 +191,40 @@ void main() {
     expect(engine.revealed, engine.source);
   });
 
-  test(
-    'a chunk split between a ZWJ and the surrogate half it joins to '
-    'never invalidates an already-revealed boundary (regression)',
-    () {
-      // Reproduces a real fuzz failure: chunking splits the rainbow flag's
-      // surrogate pair right after the preceding ZWJ, so `characters`
-      // reports a boundary that later gets swallowed once the pair
-      // completes and GB11 pulls it into one cluster.
-      const source =
-          'team 👨‍👩‍👧‍👦 ready, flags 🏳️‍🌈 🇺🇳 and '
-          'plain 😀 emoji';
-      const chunks = [
-        'team 👨‍👩‍👧‍👦 ready, flags ',
-        '🏳️‍🌈',
-        ' 🇺🇳 and plain 😀 emoji',
-      ];
-      final engine = RevealEngine(policy: const CharPolicy());
-      for (final chunk in chunks) {
-        engine.append(chunk);
-        expect(
-          _isGraphemeBoundary(engine.source, engine.cursor),
-          isTrue,
-          reason: 'cursor=${engine.cursor} after appending "$chunk"',
-        );
-        var guard = 0;
-        while (engine.step() && guard < source.length + 10) {
-          expect(_isGraphemeBoundary(engine.source, engine.cursor), isTrue);
-          guard++;
-        }
+  test('a chunk split between a ZWJ and the surrogate half it joins to '
+      'never invalidates an already-revealed boundary (regression)', () {
+    // Reproduces a real fuzz failure: chunking splits the rainbow flag's
+    // surrogate pair right after the preceding ZWJ, so `characters`
+    // reports a boundary that later gets swallowed once the pair
+    // completes and GB11 pulls it into one cluster.
+    const source =
+        'team 👨‍👩‍👧‍👦 ready, flags 🏳️‍🌈 🇺🇳 and '
+        'plain 😀 emoji';
+    const chunks = [
+      'team 👨‍👩‍👧‍👦 ready, flags ',
+      '🏳️‍🌈',
+      ' 🇺🇳 and plain 😀 emoji',
+    ];
+    final engine = RevealEngine(policy: const CharPolicy());
+    for (final chunk in chunks) {
+      engine.append(chunk);
+      expect(
+        _isGraphemeBoundary(engine.source, engine.cursor),
+        isTrue,
+        reason: 'cursor=${engine.cursor} after appending "$chunk"',
+      );
+      var guard = 0;
+      while (engine.step() && guard < source.length + 10) {
+        expect(_isGraphemeBoundary(engine.source, engine.cursor), isTrue);
+        guard++;
       }
-      engine.close();
-      while (!engine.isComplete) {
-        if (!engine.step()) break;
-      }
-      expect(engine.revealed, source);
-    },
-  );
+    }
+    engine.close();
+    while (!engine.isComplete) {
+      if (!engine.step()) break;
+    }
+    expect(engine.revealed, source);
+  });
 
   test(
     'a lone trailing regional indicator is withheld until its pair '
@@ -258,33 +252,33 @@ void main() {
     },
   );
 
+  test('an unmatched \$ in a closed source never stalls completion', () {
+    final engine = RevealEngine(
+      policy: const CharPolicy(),
+      atomicSpans: const AtomicSpanDetector(),
+    );
+    engine.setSource('the price is \$5 only', closed: true);
+    var guard = 0;
+    while (!engine.isComplete && guard < 1000) {
+      engine.step();
+      guard++;
+    }
+    expect(
+      engine.isComplete,
+      isTrue,
+      reason: 'an unclosed span must stop blocking once input is closed',
+    );
+    expect(engine.revealed, engine.source);
+  });
+
   test(
-    'an unmatched \$ in a closed source never stalls completion',
+    'shell \$VARS inside a fenced code block are not atomic spans (W11)',
     () {
-      final engine = RevealEngine(
-        policy: const CharPolicy(),
-        atomicSpans: const AtomicSpanDetector(),
-      );
-      engine.setSource('the price is \$5 only', closed: true);
-      var guard = 0;
-      while (!engine.isComplete && guard < 1000) {
-        engine.step();
-        guard++;
-      }
-      expect(
-        engine.isComplete,
-        isTrue,
-        reason: 'an unclosed span must stop blocking once input is closed',
-      );
-      expect(engine.revealed, engine.source);
+      const source = '```bash\necho "\$HOME and \$USER"\n```';
+      final spans = const AtomicSpanDetector().spans(source);
+      expect(spans, isEmpty);
     },
   );
-
-  test('shell \$VARS inside a fenced code block are not atomic spans (W11)', () {
-    const source = '```bash\necho "\$HOME and \$USER"\n```';
-    final spans = const AtomicSpanDetector().spans(source);
-    expect(spans, isEmpty);
-  });
 }
 
 bool _sourceStartsWith(RevealEngine engine) =>
@@ -302,8 +296,7 @@ bool _isGraphemeBoundary(String source, int index) {
   return offset == index;
 }
 
-String _describe(String s) =>
-    s.length <= 24 ? s : '${s.substring(0, 21)}...';
+String _describe(String s) => s.length <= 24 ? s : '${s.substring(0, 21)}...';
 
 /// Splits [source] into random chunks, some of which are deliberately
 /// allowed to land mid-surrogate-pair or mid-grapheme-cluster (chunked by
@@ -345,10 +338,7 @@ void _runInvariantCheck({
       isTrue,
       reason: 'revealed "${engine.revealed}" must be a prefix of "$source"',
     );
-    expect(
-      engine.cursor >= 0 && engine.cursor <= engine.source.length,
-      isTrue,
-    );
+    expect(engine.cursor >= 0 && engine.cursor <= engine.source.length, isTrue);
     if (engine.source.isNotEmpty) {
       expect(
         _isGraphemeBoundary(engine.source, engine.cursor),
@@ -356,9 +346,10 @@ void _runInvariantCheck({
         reason: 'cursor must sit on a grapheme boundary',
       );
     }
-    final spans = useAtomicSpans
-        ? const AtomicSpanDetector().spans(engine.source)
-        : const <AtomicSpan>[];
+    final spans =
+        useAtomicSpans
+            ? const AtomicSpanDetector().spans(engine.source)
+            : const <AtomicSpan>[];
     for (final span in spans) {
       // An unclosed span (no matching delimiter, e.g. a stray `\(` that
       // never gets a `\)`) only holds the cursor back while more input

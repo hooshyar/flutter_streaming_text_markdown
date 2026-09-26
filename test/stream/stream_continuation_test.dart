@@ -5,8 +5,9 @@ import 'dart:async';
 
 void main() {
   group('Streaming Fix Tests', () {
-    testWidgets('Stream should continue animation from new content',
-        (WidgetTester tester) async {
+    testWidgets('Stream should continue animation from new content', (
+      WidgetTester tester,
+    ) async {
       final streamController = StreamController<String>();
       String? lastDisplayedText;
 
@@ -53,14 +54,18 @@ void main() {
       final newTextWidgets = tester.widgetList<Text>(find.byType(Text));
       if (newTextWidgets.isNotEmpty) {
         final newText = newTextWidgets.first.data;
-        expect(newText, contains('Hello'),
-            reason: 'Previous text should still be visible');
+        expect(
+          newText,
+          contains('Hello'),
+          reason: 'Previous text should still be visible',
+        );
         expect(newText, contains('World'), reason: 'New text should be added');
       }
     });
 
-    testWidgets('Stream with markdown should work correctly',
-        (WidgetTester tester) async {
+    testWidgets('Stream with markdown should work correctly', (
+      WidgetTester tester,
+    ) async {
       final streamController = StreamController<String>();
       bool completed = false;
 

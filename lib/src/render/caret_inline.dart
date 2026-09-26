@@ -43,11 +43,12 @@ final RegExp _caretSentinelPattern = RegExp(caretSentinel);
 InlinePattern caretInlinePattern(Widget Function() caretBuilder) {
   return InlinePattern(
     pattern: _caretSentinelPattern,
-    builder: (context, match, style) => WidgetSpan(
-      alignment: PlaceholderAlignment.baseline,
-      baseline: TextBaseline.alphabetic,
-      child: caretBuilder(),
-    ),
+    builder:
+        (context, match, style) => WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: caretBuilder(),
+        ),
   );
 }
 

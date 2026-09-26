@@ -29,9 +29,8 @@ class DefaultStreamProvider implements StreamProvider {
   bool get isPaused => _isPaused;
 
   /// Creates a new [DefaultStreamProvider] instance.
-  DefaultStreamProvider({
-    StreamConfig? config,
-  }) : config = config ?? const StreamConfig();
+  DefaultStreamProvider({StreamConfig? config})
+    : config = config ?? const StreamConfig();
 
   @override
   Future<void> initialize() async {
@@ -59,10 +58,7 @@ class DefaultStreamProvider implements StreamProvider {
       config.timeoutDuration,
       onTimeout: (sink) {
         sink.addError(
-          const StreamException(
-            'Stream timeout',
-            code: 'STREAM_TIMEOUT',
-          ),
+          const StreamException('Stream timeout', code: 'STREAM_TIMEOUT'),
         );
         sink.close();
       },
@@ -83,9 +79,11 @@ class DefaultStreamProvider implements StreamProvider {
 
     if (_retryCount < config.retryAttempts) {
       _retryCount++;
-      _controller!.add(StreamData.error(
-        'Error: ${error.toString()}. Retrying... (Attempt $_retryCount/${config.retryAttempts})',
-      ));
+      _controller!.add(
+        StreamData.error(
+          'Error: ${error.toString()}. Retrying... (Attempt $_retryCount/${config.retryAttempts})',
+        ),
+      );
       Future.delayed(config.retryDelay, () {
         // Retry the stream
         _processStream(_lastInput!).catchError(_handleError);
@@ -105,14 +103,16 @@ class DefaultStreamProvider implements StreamProvider {
       if (config.includeMetadata &&
           _controller != null &&
           !_controller!.isClosed) {
-        _controller!.add(StreamData.text(
-          '',
-          metadata: {
-            'timestamp': DateTime.now().toIso8601String(),
-            'chunkSize': config.maxChunkSize,
-            'totalLength': input.length,
-          },
-        ));
+        _controller!.add(
+          StreamData.text(
+            '',
+            metadata: {
+              'timestamp': DateTime.now().toIso8601String(),
+              'chunkSize': config.maxChunkSize,
+              'totalLength': input.length,
+            },
+          ),
+        );
       }
 
       // Process the input in chunks
@@ -130,16 +130,19 @@ class DefaultStreamProvider implements StreamProvider {
         await Future.delayed(Duration(milliseconds: config.chunkDelay));
 
         if (_controller != null && !_controller!.isClosed) {
-          _controller!.add(StreamData.text(
-            chunk,
-            metadata: config.includeMetadata && processedChunks % 10 == 0
-                ? {
-                    'progress': processedChunks / chunks.length,
-                    'processedChunks': processedChunks,
-                    'totalChunks': chunks.length,
-                  }
-                : null,
-          ));
+          _controller!.add(
+            StreamData.text(
+              chunk,
+              metadata:
+                  config.includeMetadata && processedChunks % 10 == 0
+                      ? {
+                        'progress': processedChunks / chunks.length,
+                        'processedChunks': processedChunks,
+                        'totalChunks': chunks.length,
+                      }
+                      : null,
+            ),
+          );
           processedChunks++;
         }
       }
@@ -147,21 +150,20 @@ class DefaultStreamProvider implements StreamProvider {
       // Signal completion if controller is still open
       if (_controller != null && !_controller!.isClosed) {
         if (config.includeMetadata) {
-          _controller!.add(StreamData.text(
-            '',
-            metadata: {
-              'status': 'complete',
-              'timestamp': DateTime.now().toIso8601String(),
-            },
-          ));
+          _controller!.add(
+            StreamData.text(
+              '',
+              metadata: {
+                'status': 'complete',
+                'timestamp': DateTime.now().toIso8601String(),
+              },
+            ),
+          );
         }
         _controller!.add(StreamData.completion());
       }
     } catch (e) {
-      throw StreamException(
-        e.toString(),
-        code: 'STREAM_PROCESSING_ERROR',
-      );
+      throw StreamException(e.toString(), code: 'STREAM_PROCESSING_ERROR');
     } finally {
       if (_controller != null && !_controller!.isClosed) {
         await _controller!.close();
@@ -176,10 +178,7 @@ class DefaultStreamProvider implements StreamProvider {
     if (config.includeMetadata &&
         _controller != null &&
         !_controller!.isClosed) {
-      _controller!.add(StreamData.text(
-        '',
-        metadata: {'status': 'paused'},
-      ));
+      _controller!.add(StreamData.text('', metadata: {'status': 'paused'}));
     }
   }
 
@@ -189,10 +188,7 @@ class DefaultStreamProvider implements StreamProvider {
     if (config.includeMetadata &&
         _controller != null &&
         !_controller!.isClosed) {
-      _controller!.add(StreamData.text(
-        '',
-        metadata: {'status': 'resumed'},
-      ));
+      _controller!.add(StreamData.text('', metadata: {'status': 'resumed'}));
     }
   }
 
@@ -200,10 +196,7 @@ class DefaultStreamProvider implements StreamProvider {
   Future<void> stopStream() async {
     if (_controller != null && !_controller!.isClosed) {
       if (config.includeMetadata) {
-        _controller!.add(StreamData.text(
-          '',
-          metadata: {'status': 'stopped'},
-        ));
+        _controller!.add(StreamData.text('', metadata: {'status': 'stopped'}));
       }
       await _controller!.close();
     }
@@ -223,9 +216,10 @@ class DefaultStreamProvider implements StreamProvider {
     final chars = input.characters;
 
     for (var i = 0; i < chars.length; i += config.maxChunkSize) {
-      final end = (i + config.maxChunkSize < chars.length)
-          ? i + config.maxChunkSize
-          : chars.length;
+      final end =
+          (i + config.maxChunkSize < chars.length)
+              ? i + config.maxChunkSize
+              : chars.length;
       chunks.add(chars.getRange(i, end).toString());
     }
 

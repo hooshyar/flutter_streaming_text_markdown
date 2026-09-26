@@ -3,8 +3,7 @@ import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.
 
 void main() {
   group('StreamingTextController completion latch (W25)', () {
-    test(
-        'onCompleted fires once for updateProgress(1) then markCompleted '
+    test('onCompleted fires once for updateProgress(1) then markCompleted '
         '(fails on main, which fires twice)', () {
       final controller = StreamingTextController();
       var completedCount = 0;

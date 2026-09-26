@@ -10,7 +10,8 @@ void main() {
       // word-by-word mode, pause a few words in, resume, and watch for a
       // frame where the visible text contains a duplicated token like
       // "...being animated animated with...".
-      const text = '## Streaming Text Controller\n\n'
+      const text =
+          '## Streaming Text Controller\n\n'
           'This text is being animated with a StreamingTextController. '
           'You can pause the animation mid-stream and resume from exactly '
           'where you left off without repeating a word.';

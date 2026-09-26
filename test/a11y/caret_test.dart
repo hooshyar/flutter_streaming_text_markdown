@@ -50,8 +50,7 @@ void main() {
       expect(find.byType(StreamingCaret), findsNothing);
     });
 
-    testWidgets(
-        'present mid-reveal in markdown mode, gone after completion, '
+    testWidgets('present mid-reveal in markdown mode, gone after completion, '
         'final text == source', (tester) async {
       // No markdown syntax (bold/italic/etc. render without their markers,
       // so a source containing them wouldn't equal the rendered plain text)

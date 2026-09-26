@@ -215,11 +215,7 @@ class AtomicSpanDetector {
 
   static const _punctuation = '.,;:!?)]}%/"\'';
 
-  int _consumeDollarSpan(
-    String source,
-    List<AtomicSpan> result,
-    int start,
-  ) {
+  int _consumeDollarSpan(String source, List<AtomicSpan> result, int start) {
     final len = source.length;
     final searchFrom = start + 1;
     final paragraphBoundary = source.indexOf(_paragraphBreak, searchFrom);

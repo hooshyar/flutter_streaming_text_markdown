@@ -72,34 +72,36 @@ void main() {
       expect(decoration.color!.a, closeTo(0.5, 0.01));
     });
 
-    testWidgets('repaints from its own listenable without an external rebuild',
-        (tester) async {
-      final opacity = ValueNotifier<double>(1.0);
-      addTearDown(opacity.dispose);
-      await tester.pumpWidget(
-        Directionality(
-          textDirection: TextDirection.ltr,
-          child: Center(
-            child: StreamingCaret(
-              opacity: opacity,
-              color: const Color(0xFF18181B),
+    testWidgets(
+      'repaints from its own listenable without an external rebuild',
+      (tester) async {
+        final opacity = ValueNotifier<double>(1.0);
+        addTearDown(opacity.dispose);
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Center(
+              child: StreamingCaret(
+                opacity: opacity,
+                color: const Color(0xFF18181B),
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      opacity.value = 0.35;
-      await tester.pump();
+        opacity.value = 0.35;
+        await tester.pump();
 
-      final box = tester.widget<DecoratedBox>(
-        find.descendant(
-          of: find.byType(StreamingCaret),
-          matching: find.byType(DecoratedBox),
-        ),
-      );
-      final decoration = box.decoration as BoxDecoration;
-      expect(decoration.color!.a, closeTo(0.35, 0.01));
-    });
+        final box = tester.widget<DecoratedBox>(
+          find.descendant(
+            of: find.byType(StreamingCaret),
+            matching: find.byType(DecoratedBox),
+          ),
+        );
+        final decoration = box.decoration as BoxDecoration;
+        expect(decoration.color!.a, closeTo(0.35, 0.01));
+      },
+    );
   });
 
   group('StreamingTokens', () {

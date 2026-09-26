@@ -8,18 +8,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 
 void main() {
-  testWidgets('StreamingTextTheme.defaults derives from the ambient Theme',
-      (tester) async {
+  testWidgets('StreamingTextTheme.defaults derives from the ambient Theme', (
+    tester,
+  ) async {
     late StreamingTextTheme theme;
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData(
           textTheme: const TextTheme(bodyLarge: TextStyle(fontSize: 20)),
         ),
-        home: Builder(builder: (context) {
-          theme = StreamingTextTheme.defaults(context);
-          return const SizedBox();
-        }),
+        home: Builder(
+          builder: (context) {
+            theme = StreamingTextTheme.defaults(context);
+            return const SizedBox();
+          },
+        ),
       ),
     );
 
@@ -33,40 +36,45 @@ void main() {
   });
 
   testWidgets(
-      'context.streamingTextTheme falls back to defaults when no extension '
-      'is registered', (tester) async {
-    late StreamingTextTheme resolved;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(builder: (context) {
-          resolved = context.streamingTextTheme;
-          return const SizedBox();
-        }),
-      ),
-    );
+    'context.streamingTextTheme falls back to defaults when no extension '
+    'is registered',
+    (tester) async {
+      late StreamingTextTheme resolved;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              resolved = context.streamingTextTheme;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
 
-    expect(resolved.textStyle, isNotNull);
-  });
+      expect(resolved.textStyle, isNotNull);
+    },
+  );
 
   testWidgets(
-      'context.streamingTextTheme returns a registered ThemeExtension',
-      (tester) async {
-    const custom = StreamingTextTheme(
-      textStyle: TextStyle(fontSize: 42),
-    );
-    late StreamingTextTheme resolved;
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(extensions: const [custom]),
-        home: Builder(builder: (context) {
-          resolved = context.streamingTextTheme;
-          return const SizedBox();
-        }),
-      ),
-    );
+    'context.streamingTextTheme returns a registered ThemeExtension',
+    (tester) async {
+      const custom = StreamingTextTheme(textStyle: TextStyle(fontSize: 42));
+      late StreamingTextTheme resolved;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(extensions: const [custom]),
+          home: Builder(
+            builder: (context) {
+              resolved = context.streamingTextTheme;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
 
-    expect(resolved.textStyle?.fontSize, 42);
-  });
+      expect(resolved.textStyle?.fontSize, 42);
+    },
+  );
 
   group('copyWith', () {
     test('overrides only the given fields', () {
@@ -82,9 +90,7 @@ void main() {
     });
 
     test('markdownStyleSheet falls back to legacy markdownStyle', () {
-      const base = StreamingTextTheme(
-        markdownStyle: TextStyle(fontSize: 12),
-      );
+      const base = StreamingTextTheme(markdownStyle: TextStyle(fontSize: 12));
 
       final updated = base.copyWith();
 

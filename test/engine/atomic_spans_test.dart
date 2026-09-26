@@ -74,8 +74,7 @@ void main() {
   });
 
   group('an unclosed span is bounded to the current paragraph', () {
-    test('a stray, never-closed \$ does not hold once its paragraph ends',
-        () {
+    test('a stray, never-closed \$ does not hold once its paragraph ends', () {
       const text = 'First \$paragraph never closes.\n\nSecond paragraph.';
       // No span spills across the blank line into the next paragraph.
       expect(detector.spans(text), isEmpty);

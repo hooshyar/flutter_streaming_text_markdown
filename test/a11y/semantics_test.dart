@@ -15,8 +15,9 @@ import 'package:flutter_streaming_text_markdown/src/streaming/streaming_text.dar
 
 void main() {
   group('semantics', () {
-    testWidgets('partial text is excluded from semantics while revealing',
-        (tester) async {
+    testWidgets('partial text is excluded from semantics while revealing', (
+      tester,
+    ) async {
       final handle = tester.ensureSemantics();
 
       const source = 'hello world';
@@ -47,8 +48,7 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('exactly one announcement fires on completion',
-        (tester) async {
+    testWidgets('exactly one announcement fires on completion', (tester) async {
       const source = 'hello world';
       await tester.pumpWidget(
         const MaterialApp(

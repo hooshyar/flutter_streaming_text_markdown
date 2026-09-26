@@ -16,8 +16,10 @@ import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.
 String _displayed(WidgetTester tester) {
   final texts = tester.widgetList<Text>(find.byType(Text));
   return texts
-      .map((t) =>
-          t.textSpan?.toPlainText(includePlaceholders: false) ?? t.data ?? '')
+      .map(
+        (t) =>
+            t.textSpan?.toPlainText(includePlaceholders: false) ?? t.data ?? '',
+      )
       .join();
 }
 
@@ -130,10 +132,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 20));
     }
     expect(tester.takeException(), isNull);
-    expect(
-      find.textContaining('Hello', findRichText: true),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Hello', findRichText: true), findsOneWidget);
 
     await controller.close();
     for (var i = 0; i < 30; i++) {
@@ -146,122 +145,126 @@ void main() {
     );
   });
 
+  testWidgets('a stream read fresh in build() on StreamingTextMarkdown never '
+      're-listens on a config change or a plain rebuild (W9)', (tester) async {
+    final controller = StreamController<String>();
+    addTearDown(() {
+      if (!controller.isClosed) controller.close();
+    });
+
+    Widget build({required bool markdownEnabled, required int typingMs}) {
+      return MaterialApp(
+        home: Scaffold(
+          body: StreamingTextMarkdown(
+            stream: controller.stream,
+            markdownEnabled: markdownEnabled,
+            typingSpeed: Duration(milliseconds: typingMs),
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(build(markdownEnabled: false, typingMs: 5));
+    controller.add('Hello there');
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+
+    // Config change mid-stream (markdownEnabled + typingSpeed).
+    await tester.pumpWidget(build(markdownEnabled: true, typingMs: 20));
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(tester.takeException(), isNull);
+
+    // Plain rebuild, no config change.
+    await tester.pumpWidget(build(markdownEnabled: true, typingMs: 20));
+    expect(tester.takeException(), isNull);
+
+    controller.add(' more');
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+
+    await controller.close();
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(tester.takeException(), isNull);
+    expect(
+      find.textContaining('Hello there', findRichText: true),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
-    'a stream read fresh in build() on StreamingTextMarkdown never '
-    're-listens on a config change or a plain rebuild (W9)',
+    'pause holds, stop empties and goes idle, restart replays (W15)',
     (tester) async {
       final controller = StreamController<String>();
       addTearDown(() {
         if (!controller.isClosed) controller.close();
       });
+      final streamCtrl = StreamingTextController();
+      addTearDown(streamCtrl.dispose);
 
-      Widget build({required bool markdownEnabled, required int typingMs}) {
-        return MaterialApp(
+      await tester.pumpWidget(
+        MaterialApp(
           home: Scaffold(
-            body: StreamingTextMarkdown(
+            body: StreamingText(
+              text: '',
               stream: controller.stream,
-              markdownEnabled: markdownEnabled,
-              typingSpeed: Duration(milliseconds: typingMs),
+              markdownEnabled: false,
+              typingSpeed: const Duration(milliseconds: 10),
+              controller: streamCtrl,
             ),
           ),
-        );
+        ),
+      );
+      controller.add('ABCDEFGHIJ');
+      await tester.pump();
+      await tester.pump();
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
       }
+      final beforePause = _displayed(tester);
+      expect(beforePause.isNotEmpty, isTrue);
 
-      await tester.pumpWidget(build(markdownEnabled: false, typingMs: 5));
-      controller.add('Hello there');
+      streamCtrl.pause();
       await tester.pump();
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(
+        _displayed(tester),
+        beforePause,
+        reason: 'pause holds in stream mode',
+      );
+
+      streamCtrl.resume();
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(
+        _displayed(tester).length,
+        greaterThan(beforePause.length),
+        reason: 'resume continues revealing in stream mode',
+      );
+
+      streamCtrl.stop();
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 20));
+      expect(_displayed(tester), isEmpty, reason: 'stop empties the reveal');
 
-      // Config change mid-stream (markdownEnabled + typingSpeed).
-      await tester.pumpWidget(build(markdownEnabled: true, typingMs: 20));
-      expect(tester.takeException(), isNull);
-      await tester.pump(const Duration(milliseconds: 20));
-      expect(tester.takeException(), isNull);
-
-      // Plain rebuild, no config change.
-      await tester.pumpWidget(build(markdownEnabled: true, typingMs: 20));
-      expect(tester.takeException(), isNull);
-
-      controller.add(' more');
-      await tester.pump();
-      expect(tester.takeException(), isNull);
-
-      await controller.close();
+      streamCtrl.restart();
       for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(milliseconds: 20));
+        await tester.pump(const Duration(milliseconds: 10));
       }
-      expect(tester.takeException(), isNull);
-      expect(find.textContaining('Hello there', findRichText: true),
-          findsOneWidget);
+      // Restart replays everything received so far. The stream is still
+      // open, so the final grapheme stays withheld (it might still extend).
+      expect(
+        _displayed(tester),
+        'ABCDEFGHI',
+        reason: 'restart replays received content in stream mode',
+      );
     },
   );
-
-  testWidgets('pause holds, stop empties and goes idle, restart replays (W15)', (
-    tester,
-  ) async {
-    final controller = StreamController<String>();
-    addTearDown(() {
-      if (!controller.isClosed) controller.close();
-    });
-    final streamCtrl = StreamingTextController();
-    addTearDown(streamCtrl.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StreamingText(
-            text: '',
-            stream: controller.stream,
-            markdownEnabled: false,
-            typingSpeed: const Duration(milliseconds: 10),
-            controller: streamCtrl,
-          ),
-        ),
-      ),
-    );
-    controller.add('ABCDEFGHIJ');
-    await tester.pump();
-    await tester.pump();
-    for (var i = 0; i < 3; i++) {
-      await tester.pump(const Duration(milliseconds: 10));
-    }
-    final beforePause = _displayed(tester);
-    expect(beforePause.isNotEmpty, isTrue);
-
-    streamCtrl.pause();
-    await tester.pump();
-    for (var i = 0; i < 5; i++) {
-      await tester.pump(const Duration(milliseconds: 10));
-    }
-    expect(_displayed(tester), beforePause, reason: 'pause holds in stream mode');
-
-    streamCtrl.resume();
-    for (var i = 0; i < 3; i++) {
-      await tester.pump(const Duration(milliseconds: 10));
-    }
-    expect(
-      _displayed(tester).length,
-      greaterThan(beforePause.length),
-      reason: 'resume continues revealing in stream mode',
-    );
-
-    streamCtrl.stop();
-    await tester.pump();
-    expect(_displayed(tester), isEmpty, reason: 'stop empties the reveal');
-
-    streamCtrl.restart();
-    for (var i = 0; i < 30; i++) {
-      await tester.pump(const Duration(milliseconds: 10));
-    }
-    // Restart replays everything received so far. The stream is still
-    // open, so the final grapheme stays withheld (it might still extend).
-    expect(
-      _displayed(tester),
-      'ABCDEFGHI',
-      reason: 'restart replays received content in stream mode',
-    );
-  });
 
   testWidgets(
     'a stream error sets the error state, keeps revealed text, and uses '

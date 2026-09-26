@@ -9,8 +9,7 @@ import 'package:flutter_streaming_text_markdown/src/render/caret_inline.dart';
 import 'package:flutter_streaming_text_markdown/src/render/markdown_options.dart';
 
 void main() {
-  test('caretSentinel is the private-use-area marker, never real markdown',
-      () {
+  test('caretSentinel is the private-use-area marker, never real markdown', () {
     expect(caretSentinel, '');
   });
 
@@ -31,19 +30,22 @@ void main() {
       expect(identical(first.pattern, second.pattern), isTrue);
     });
 
-    testWidgets('builds a baseline-aligned WidgetSpan wrapping the caret',
-        (tester) async {
+    testWidgets('builds a baseline-aligned WidgetSpan wrapping the caret', (
+      tester,
+    ) async {
       const caret = SizedBox(key: Key('caret'), width: 8, height: 8);
       final pattern = caretInlinePattern(() => caret);
 
       late InlineSpan span;
       await tester.pumpWidget(
         MaterialApp(
-          home: Builder(builder: (context) {
-            final match = pattern.pattern.firstMatch(caretSentinel)!;
-            span = pattern.builder(context, match, const TextStyle());
-            return const SizedBox();
-          }),
+          home: Builder(
+            builder: (context) {
+              final match = pattern.pattern.firstMatch(caretSentinel)!;
+              span = pattern.builder(context, match, const TextStyle());
+              return const SizedBox();
+            },
+          ),
         ),
       );
 
@@ -54,8 +56,9 @@ void main() {
       expect(widgetSpan.child, same(caret));
     });
 
-    testWidgets('calls caretBuilder fresh on every match, not just once',
-        (tester) async {
+    testWidgets('calls caretBuilder fresh on every match, not just once', (
+      tester,
+    ) async {
       var calls = 0;
       final pattern = caretInlinePattern(() {
         calls++;
@@ -64,12 +67,14 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Builder(builder: (context) {
-            final match = pattern.pattern.firstMatch(caretSentinel)!;
-            pattern.builder(context, match, const TextStyle());
-            pattern.builder(context, match, const TextStyle());
-            return const SizedBox();
-          }),
+          home: Builder(
+            builder: (context) {
+              final match = pattern.pattern.firstMatch(caretSentinel)!;
+              pattern.builder(context, match, const TextStyle());
+              pattern.builder(context, match, const TextStyle());
+              return const SizedBox();
+            },
+          ),
         ),
       );
 
@@ -87,8 +92,7 @@ void main() {
       expect(result.autolink, isNull);
     });
 
-    test('preserves every other field and appends after existing patterns',
-        () {
+    test('preserves every other field and appends after existing patterns', () {
       final existingPattern = InlinePattern(
         pattern: RegExp('existing'),
         builder: (context, match, style) => const TextSpan(text: 'x'),

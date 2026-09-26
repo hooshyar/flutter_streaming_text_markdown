@@ -11,7 +11,8 @@ void _expectFullyOpaque(InlineSpan span) {
       expect(
         color.a,
         1.0,
-        reason: 'a character is still rendering below full opacity '
+        reason:
+            'a character is still rendering below full opacity '
             'after the streaming animation completed',
       );
     }
@@ -52,11 +53,13 @@ void main() {
       await tester.pumpAndSettle(const Duration(milliseconds: 60));
 
       final texts = tester.widgetList<Text>(find.byType(Text)).toList();
-      final combined = texts
-          .map((t) => t.textSpan?.toPlainText() ?? t.data ?? '')
-          .join();
-      expect(combined, contains('—'),
-          reason: 'the em-dash must be present in the settled output');
+      final combined =
+          texts.map((t) => t.textSpan?.toPlainText() ?? t.data ?? '').join();
+      expect(
+        combined,
+        contains('—'),
+        reason: 'the em-dash must be present in the settled output',
+      );
 
       for (final t in texts) {
         final span = t.textSpan;
@@ -73,7 +76,8 @@ void main() {
         expect(
           opacity.opacity,
           1.0,
-          reason: 'a character is still rendering below full opacity '
+          reason:
+              'a character is still rendering below full opacity '
               'after the streaming animation completed',
         );
       }

@@ -31,8 +31,9 @@ void main() {
       expect(find.byType(SelectionArea), findsOneWidget);
     });
 
-    testWidgets('does not add a SelectionArea when selectable is false',
-        (tester) async {
+    testWidgets('does not add a SelectionArea when selectable is false', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -50,8 +51,9 @@ void main() {
       expect(find.byType(SelectionArea), findsNothing);
     });
 
-    testWidgets('tap-to-complete still works when selectable is on',
-        (tester) async {
+    testWidgets('tap-to-complete still works when selectable is on', (
+      tester,
+    ) async {
       const source = 'the quick brown fox jumps over the lazy dog';
       await tester.pumpWidget(
         MaterialApp(

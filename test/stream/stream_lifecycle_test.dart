@@ -82,21 +82,22 @@ void main() {
     addTearDown(() {
       if (!controller.isClosed) controller.close();
     });
-    // Captured once: a `StreamController.stream` getter returns a fresh
-    // wrapper object on every access, so re-evaluating `controller.stream`
-    // inside `build()` on every rebuild would look like a genuine stream
-    // IDENTITY swap to the widget (which then correctly re-subscribes) —
-    // but a single-subscription controller can only ever be listened to
-    // once. Real callers hold onto one `Stream` instance across rebuilds;
-    // this test does the same.
-    final stream = controller.stream;
 
+    // `controller.stream` is read fresh on every build below - NOT cached
+    // in a local/field - because `StreamController.stream` returns a new
+    // wrapper object on every access (`identical` is always false, even
+    // though it's `==`-equal to any other access on the same controller).
+    // A caller doing exactly this (very common in real apps - `stream:
+    // myController.stream` written straight in `build()`) must not have
+    // that look like a genuine stream identity swap on every rebuild: a
+    // single-subscription stream can only ever be listened to once, so a
+    // false swap would throw "Stream has already been listened to".
     Widget build({required bool markdownEnabled, required bool wordByWord}) {
       return MaterialApp(
         home: Scaffold(
           body: StreamingText(
             text: '',
-            stream: stream,
+            stream: controller.stream,
             markdownEnabled: markdownEnabled,
             wordByWord: wordByWord,
             typingSpeed: const Duration(milliseconds: 5),
@@ -118,16 +119,83 @@ void main() {
     await tester.pump(const Duration(milliseconds: 20));
     expect(tester.takeException(), isNull);
 
+    // A plain rebuild with no config change at all: `controller.stream` is
+    // still a fresh object each time, so this must not re-listen either.
+    await tester.pumpWidget(build(markdownEnabled: true, wordByWord: true));
+    expect(tester.takeException(), isNull);
+
     controller.add(' more');
     await tester.pump();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
     expect(tester.takeException(), isNull);
+    expect(
+      find.textContaining('Hello', findRichText: true),
+      findsOneWidget,
+    );
 
     await controller.close();
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 20));
     }
     expect(tester.takeException(), isNull);
+    expect(
+      find.textContaining('Hello there more', findRichText: true),
+      findsOneWidget,
+    );
   });
+
+  testWidgets(
+    'a stream read fresh in build() on StreamingTextMarkdown never '
+    're-listens on a config change or a plain rebuild (W9)',
+    (tester) async {
+      final controller = StreamController<String>();
+      addTearDown(() {
+        if (!controller.isClosed) controller.close();
+      });
+
+      Widget build({required bool markdownEnabled, required int typingMs}) {
+        return MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              stream: controller.stream,
+              markdownEnabled: markdownEnabled,
+              typingSpeed: Duration(milliseconds: typingMs),
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(build(markdownEnabled: false, typingMs: 5));
+      controller.add('Hello there');
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
+
+      // Config change mid-stream (markdownEnabled + typingSpeed).
+      await tester.pumpWidget(build(markdownEnabled: true, typingMs: 20));
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(tester.takeException(), isNull);
+
+      // Plain rebuild, no config change.
+      await tester.pumpWidget(build(markdownEnabled: true, typingMs: 20));
+      expect(tester.takeException(), isNull);
+
+      controller.add(' more');
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+
+      await controller.close();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('Hello there', findRichText: true),
+          findsOneWidget);
+    },
+  );
 
   testWidgets('pause holds, stop empties and goes idle, restart replays (W15)', (
     tester,

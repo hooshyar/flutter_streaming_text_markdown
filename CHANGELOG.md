@@ -2,10 +2,9 @@
 
 ## Unreleased
 
-A ground-up correctness and architecture pass (see `AUDIT-2026-09-26.md` for
-the full engineering audit this work is based on). No public API was
-removed and the version stays at 1.10.1 in this changeset — see
-`doc/MIGRATION.md` for upgrade notes.
+A ground-up correctness and architecture pass. No public API was removed
+and the version stays at 1.10.1 in this changeset — see `doc/MIGRATION.md`
+for upgrade notes.
 
 ### Fixed
 
@@ -29,13 +28,26 @@ Every W-numbered bug from the audit is fixed:
 * **W8** — a style or `Brightness` change after completion now updates the
   rendered output immediately (the stale per-text style cache is gone).
 * **W9** — a config change (`typingSpeed`/`chunkSize`/`wordByWord`/
-  `markdownEnabled`) mid-stream applies in place and never throws
-  `StateError: Stream has already been listened to`.
+  `markdownEnabled`) mid-stream, or a plain rebuild with no change at all,
+  applies in place and never throws `StateError: Stream has already been
+  listened to` — including when the caller reads `stream:
+  controller.stream` directly inside `build()` instead of caching the
+  `Stream` in a field. (`StreamController.stream` returns a new,
+  `==`-equal-but-not-`identical` wrapper object on every access, so the
+  stream-swap check now compares by value, not identity.)
 * **W10** — `latexEnabled: true` no longer throws away markdown rendering:
-  headings, lists, and links keep rendering correctly alongside LaTeX
-  (delegated to `gpt_markdown`'s `useDollarSignsForLatex`).
+  headings, lists, and links keep rendering correctly alongside LaTeX. See
+  W11 for how `$...$`/`$$...$$` math is now handled.
 * **W11** — shell-style `$VARS` inside fenced or inline code are no longer
-  misdetected as LaTeX; they reach `codeBuilder` verbatim.
+  misdetected as LaTeX and reach `codeBuilder` verbatim. `latexEnabled`
+  rewrites `$...$`/`$$...$$` to `gpt_markdown`'s native `\(...\)`/`\[...\]`
+  syntax itself, skipping fenced/inline code, instead of forwarding
+  `useDollarSignsForLatex` to `gpt_markdown` (whose own rewrite runs before
+  it knows what is code). A `$` is only ever treated as LaTeX when it looks
+  like real math rather than currency: `$5`, `Cost $10 - $20`, and `$
+  alone` are left as plain text, on both a closed source and mid-stream
+  (previously an open stream could freeze right before a bare `$5` while
+  waiting for a closing delimiter that would never come).
 * **W15** — controller `pause`/`resume`/`stop`/`restart` all work correctly
   in stream mode (previously `pause` was ignored for streams, and
   `stop`/`restart` were ignored in every mode).
@@ -72,9 +84,9 @@ Every W-numbered bug from the audit is fixed:
 
 * The hand-rolled LaTeX renderer and `LaTeXProcessor`/`TextSegment` regex
   pipeline are deleted. Neither was ever exported, so this is non-breaking.
-  LaTeX is now delegated entirely to `gpt_markdown` 1.3
-  (`useDollarSignsForLatex`) plus `flutter_math_fork` for the default
-  renderer.
+  LaTeX rendering now goes through `gpt_markdown` 1.3 (its native
+  `\(...\)`/`\[...\]` syntax — see W11 for how `$...$`/`$$...$$` reach it)
+  plus `flutter_math_fork` for the default renderer.
 * Internal dead code removed: `_cursorController`, `_markdownCache`,
   `_completeMarkdownCache`, `_isAnimationActive`,
   `_resumeWordByWordTypingFromOldText`, `_safeSetState`, the unbounded

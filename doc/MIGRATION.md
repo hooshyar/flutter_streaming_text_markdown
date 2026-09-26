@@ -1,7 +1,7 @@
 # Migration guide
 
 This covers the "Correct & fast" rewrite (see `CHANGELOG.md`'s `## Unreleased`
-section and `AUDIT-2026-09-26.md`). **No public API was removed** and the
+section). **No public API was removed** and the
 package version does not change in this release — every item below is either
 a deprecation (old code keeps compiling and working, with a warning) or a
 behavior fix. You do not have to change anything to upgrade; this guide is

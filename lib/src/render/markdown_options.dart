@@ -127,7 +127,13 @@ class MarkdownRenderOptions {
   /// including the `WxH` size parsed from the image's alt text.
   final ImageBuilder? imageBuilder;
 
-  /// Forwarded to `GptMarkdown.useDollarSignsForLatex`. When `null`, the
-  /// renderer falls back to the widget's `latexEnabled` value.
+  /// When `null` (the default) and `latexEnabled` is on, `$...$`/`$$...$$`
+  /// math is rewritten to `gpt_markdown`'s native `\(...\)`/`\[...\]`
+  /// syntax by the package itself - safely, skipping fenced/inline code
+  /// and pandoc-style currency (`$5`) - and `gpt_markdown`'s own
+  /// `useDollarSignsForLatex` is never set. Set this explicitly to opt
+  /// into `gpt_markdown`'s own (code-oblivious) dollar-sign rewrite
+  /// instead; it is then forwarded to `GptMarkdown.useDollarSignsForLatex`
+  /// verbatim.
   final bool? useDollarSignsForLatex;
 }

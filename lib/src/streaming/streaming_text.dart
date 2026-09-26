@@ -711,7 +711,17 @@ class _StreamingTextState extends State<StreamingText>
 
     // 2. Stream identity swap (covers stream->stream, stream->null,
     // null->stream): a fresh engine + scheduler, a fresh subscription.
-    if (!identical(widget.stream, oldWidget.stream)) {
+    //
+    // Compared with `!=`, not `identical()` (W9): `StreamController.stream`
+    // returns a NEW wrapper object on every access (`identical` is always
+    // false) even though it's `==`-equal (compares the same underlying
+    // controller) - so a caller who reads `stream: controller.stream`
+    // directly inside `build()`, instead of caching the `Stream` in a field,
+    // would otherwise look like a genuine stream swap on every single
+    // rebuild (any config change, an ancestor rebuild, ...), tearing down
+    // and re-subscribing a single-subscription stream that can only ever be
+    // listened to once - throwing "Stream has already been listened to".
+    if (widget.stream != oldWidget.stream) {
       _handleStreamSwap();
       return;
     }

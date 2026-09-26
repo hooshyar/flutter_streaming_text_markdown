@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
+import '../engine/atomic_spans.dart';
 import 'markdown_options.dart';
 import 'render_text_transform.dart';
 
@@ -69,9 +70,14 @@ class StreamingMarkdownView extends StatelessWidget {
   /// Forwarded to `GptMarkdown.textScaler`.
   final TextScaler? textScaler;
 
-  /// Whether LaTeX (`$...$` / `$$...$$`) is delegated to `gpt_markdown` via
-  /// `useDollarSignsForLatex`. Overridden by
-  /// [MarkdownRenderOptions.useDollarSignsForLatex] when that is set.
+  /// Whether `$...$` / `$$...$$` LaTeX is recognized at all. When
+  /// [MarkdownRenderOptions.useDollarSignsForLatex] is left `null`, this
+  /// widget rewrites those delimiters to `gpt_markdown`'s native
+  /// `\(...\)` / `\[...\]` syntax itself (see [AtomicSpanDetector.
+  /// rewriteDollarDelimiters]) instead of forwarding
+  /// `useDollarSignsForLatex` to `gpt_markdown` - its own rewrite runs
+  /// before it knows what is code, so `$VARS` inside a fenced shell block
+  /// gets mangled into a LaTeX delimiter (W11).
   final bool latexEnabled;
 
   /// Text style applied to the default LaTeX fallback builder installed when
@@ -176,7 +182,17 @@ class StreamingMarkdownView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final opts = options;
-    final renderText = withholdOpenFence(text, isComplete: isComplete);
+    final withheldText = withholdOpenFence(text, isComplete: isComplete);
+    // Only forward `useDollarSignsForLatex` to gpt_markdown when the caller
+    // set it explicitly - that opts into gpt_markdown's own naive, code-
+    // oblivious `$...$` rewrite on purpose. Otherwise, when latexEnabled is
+    // on, do the rewrite ourselves (code-aware, currency-safe) and let
+    // gpt_markdown parse the resulting `\(...\)`/`\[...\]` natively.
+    final explicitUseDollarSigns = opts?.useDollarSignsForLatex;
+    final renderText =
+        explicitUseDollarSigns == null && latexEnabled
+            ? const AtomicSpanDetector().rewriteDollarDelimiters(withheldText)
+            : withheldText;
 
     final effectiveImageBuilder =
         imageBuilder != null
@@ -223,7 +239,7 @@ class StreamingMarkdownView extends StatelessWidget {
       textAlign: textAlign,
       textScaler: textScaler,
       isStreaming: isStreaming,
-      useDollarSignsForLatex: opts?.useDollarSignsForLatex ?? latexEnabled,
+      useDollarSignsForLatex: explicitUseDollarSigns ?? false,
       imageBuilder: effectiveImageBuilder,
       onLinkTap: onLinkTap,
       codeBuilder: codeBuilder,

@@ -31,6 +31,24 @@ class AtomicSpan {
 /// This is a lightweight, single-pass scanner - good enough to keep a
 /// [RevealEngine] cursor out of the middle of a formula; it is not a full
 /// markdown/LaTeX parser.
+///
+/// A single `$` only ever opens/closes a math span when it looks like real
+/// LaTeX rather than currency, using pandoc's own heuristic: an opening `$`
+/// must be immediately followed by a non-space character, a closing `$`
+/// must be immediately preceded by a non-space character and NOT followed
+/// by a digit, and a `$` immediately followed by a run of digits and then
+/// whitespace/punctuation (`$5`, `$10 - $20`, `$ alone`) is currency, never
+/// an opening delimiter. Without this, `latexEnabled` on an open (still
+/// streaming) source would treat a bare `$5` as an unclosed span and freeze
+/// the reveal right before it, since more input could - as far as the
+/// detector could tell - still arrive to "close" it.
+///
+/// An unclosed span (no matching delimiter found yet) is only withheld
+/// within the current paragraph (up to the next blank line, `\n\n`, or the
+/// end of the source if the paragraph hasn't finished yet): once a
+/// paragraph has actually ended without a matching delimiter turning up
+/// inside it, a stray `$`/`\(`/`\[` was never going to close there and must
+/// not hold the cursor hostage waiting for one in some later paragraph.
 class AtomicSpanDetector {
   /// Creates a detector. Stateless and cheap to construct.
   const AtomicSpanDetector();
@@ -43,6 +61,7 @@ class AtomicSpanDetector {
   static const _parenClose = r'\)';
   static const _bracketOpen = r'\[';
   static const _bracketClose = r'\]';
+  static const _paragraphBreak = '\n\n';
 
   /// Returns every LaTeX span found in [source], outside of code.
   List<AtomicSpan> spans(String source) {
@@ -77,7 +96,13 @@ class AtomicSpanDetector {
         continue;
       }
       if (source.startsWith(_dollar, i)) {
-        i = _consumeSpan(source, result, i, _dollar, _dollar);
+        if (_dollarOpensMath(source, i)) {
+          i = _consumeDollarSpan(source, result, i);
+        } else {
+          // Currency (or otherwise not a real opening delimiter): a plain
+          // character, not the start of a span.
+          i++;
+        }
         continue;
       }
       if (source.startsWith(_parenOpen, i)) {
@@ -93,6 +118,140 @@ class AtomicSpanDetector {
     return result;
   }
 
+  /// Rewrites paired, non-code `$...$` / `$$...$$` spans found by [spans] to
+  /// `gpt_markdown`'s native `\(...\)` / `\[...\]` LaTeX syntax, leaving
+  /// currency-shaped `$`, fenced/inline code, and already-native `\(...\)`/
+  /// `\[...\]` spans untouched.
+  ///
+  /// Used instead of forwarding `useDollarSignsForLatex` to `gpt_markdown`
+  /// itself: that rewrite runs before `gpt_markdown` knows what is code,
+  /// so `$VARS` inside a fenced shell block gets mangled into a LaTeX
+  /// delimiter (W11). This scan already skips code and applies the
+  /// currency heuristic above, so it is safe to run over the full, mixed
+  /// markdown+code source.
+  String rewriteDollarDelimiters(String source) {
+    final dollarSpans =
+        spans(source)
+            .where(
+              (s) =>
+                  s.closed &&
+                  (source.startsWith(_dollarDollar, s.start) ||
+                      source.startsWith(_dollar, s.start)),
+            )
+            .toList();
+    if (dollarSpans.isEmpty) return source;
+
+    final buffer = StringBuffer();
+    var cursor = 0;
+    for (final span in dollarSpans) {
+      buffer.write(source.substring(cursor, span.start));
+      final isDouble = source.startsWith(_dollarDollar, span.start);
+      final delimiterLength = isDouble ? 2 : 1;
+      final inner = source.substring(
+        span.start + delimiterLength,
+        span.end - delimiterLength,
+      );
+      if (isDouble) {
+        buffer
+          ..write(_bracketOpen)
+          ..write(inner)
+          ..write(_bracketClose);
+      } else {
+        buffer
+          ..write(_parenOpen)
+          ..write(inner)
+          ..write(_parenClose);
+      }
+      cursor = span.end;
+    }
+    buffer.write(source.substring(cursor));
+    return buffer.toString();
+  }
+
+  /// Whether a `$` at [index] can open a LaTeX span at all, per the
+  /// pandoc-style currency rules on the class doc.
+  bool _dollarOpensMath(String source, int index) {
+    final next = index + 1;
+    if (next >= source.length) return false;
+    final nextChar = source[next];
+    if (_isSpace(nextChar)) return false;
+    if (_isDigit(nextChar)) {
+      var j = next;
+      while (j < source.length && _isDigit(source[j])) {
+        j++;
+      }
+      if (j >= source.length) {
+        // A trailing run of digits with nothing after it yet (still
+        // streaming): can't tell currency from math, so don't hold on it.
+        return false;
+      }
+      final after = source[j];
+      if (_isSpace(after) || _isPunctuation(after)) {
+        return false; // `$5 `, `$10-`, ... : currency.
+      }
+    }
+    return true;
+  }
+
+  /// Whether a `$` at [index] can close a LaTeX span, per the pandoc-style
+  /// rules on the class doc.
+  bool _dollarClosesMath(String source, int index) {
+    if (index == 0) return false;
+    if (_isSpace(source[index - 1])) return false;
+    final next = index + 1;
+    if (next < source.length && _isDigit(source[next])) return false;
+    return true;
+  }
+
+  static bool _isSpace(String c) =>
+      c == ' ' || c == '\t' || c == '\n' || c == '\r';
+
+  static bool _isDigit(String c) {
+    final unit = c.codeUnitAt(0);
+    return unit >= 0x30 && unit <= 0x39;
+  }
+
+  static bool _isPunctuation(String c) => _punctuation.contains(c);
+
+  static const _punctuation = '.,;:!?)]}%/"\'';
+
+  int _consumeDollarSpan(
+    String source,
+    List<AtomicSpan> result,
+    int start,
+  ) {
+    final len = source.length;
+    final searchFrom = start + 1;
+    final paragraphBoundary = source.indexOf(_paragraphBreak, searchFrom);
+    final bounded = paragraphBoundary != -1;
+    final limit = bounded ? paragraphBoundary : len;
+
+    var closeAt = -1;
+    var j = searchFrom;
+    while (j < limit) {
+      if (source[j] == _dollar && _dollarClosesMath(source, j)) {
+        closeAt = j;
+        break;
+      }
+      j++;
+    }
+
+    if (closeAt != -1) {
+      final end = closeAt + 1;
+      result.add(AtomicSpan(start, end, closed: true));
+      return end;
+    }
+    if (bounded) {
+      // The paragraph already ended with no matching close: this `$` was
+      // never going to become math here, so it must not hold the cursor.
+      return start + 1;
+    }
+    // The paragraph itself hasn't finished yet - stay ambiguous/withheld
+    // only up to what's arrived so far.
+    result.add(AtomicSpan(start, len, closed: false));
+    return len;
+  }
+
   int _consumeSpan(
     String source,
     List<AtomicSpan> result,
@@ -100,10 +259,25 @@ class AtomicSpanDetector {
     String open,
     String close,
   ) {
+    final len = source.length;
     final searchFrom = start + open.length;
+    final paragraphBoundary = source.indexOf(_paragraphBreak, searchFrom);
+    final bounded = paragraphBoundary != -1;
+    final limit = bounded ? paragraphBoundary : len;
+
     final closeAt = source.indexOf(close, searchFrom);
-    final end = closeAt == -1 ? source.length : closeAt + close.length;
-    result.add(AtomicSpan(start, end, closed: closeAt != -1));
-    return end;
+    if (closeAt != -1 && closeAt < limit) {
+      final end = closeAt + close.length;
+      result.add(AtomicSpan(start, end, closed: true));
+      return end;
+    }
+    if (bounded) {
+      // No matching close turned up before this paragraph ended: not a
+      // real span, so don't hold the cursor waiting for one that would
+      // only ever appear in some later paragraph.
+      return start + open.length;
+    }
+    result.add(AtomicSpan(start, len, closed: false));
+    return len;
   }
 }

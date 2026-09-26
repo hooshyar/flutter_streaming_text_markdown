@@ -16,15 +16,25 @@ void main() {
 
   group('caretInlinePattern', () {
     test('matches the sentinel and only the sentinel', () {
-      final pattern = caretInlinePattern(const SizedBox());
+      final pattern = caretInlinePattern(() => const SizedBox());
       expect(pattern.pattern.hasMatch(caretSentinel), isTrue);
       expect(pattern.pattern.hasMatch('plain text'), isFalse);
+    });
+
+    test('reuses the same compiled RegExp instance across calls', () {
+      // gpt_markdown's segment cache keys on `listEquals(inlinePatterns, ...)`,
+      // which falls back to element identity for `InlinePattern` (it has no
+      // value equality). A fresh `RegExp` per call would already break that
+      // even before the `InlinePattern` wrapper is considered.
+      final first = caretInlinePattern(() => const SizedBox());
+      final second = caretInlinePattern(() => const SizedBox());
+      expect(identical(first.pattern, second.pattern), isTrue);
     });
 
     testWidgets('builds a baseline-aligned WidgetSpan wrapping the caret',
         (tester) async {
       const caret = SizedBox(key: Key('caret'), width: 8, height: 8);
-      final pattern = caretInlinePattern(caret);
+      final pattern = caretInlinePattern(() => caret);
 
       late InlineSpan span;
       await tester.pumpWidget(
@@ -43,11 +53,33 @@ void main() {
       expect(widgetSpan.baseline, TextBaseline.alphabetic);
       expect(widgetSpan.child, same(caret));
     });
+
+    testWidgets('calls caretBuilder fresh on every match, not just once',
+        (tester) async {
+      var calls = 0;
+      final pattern = caretInlinePattern(() {
+        calls++;
+        return SizedBox(key: ValueKey(calls));
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(builder: (context) {
+            final match = pattern.pattern.firstMatch(caretSentinel)!;
+            pattern.builder(context, match, const TextStyle());
+            pattern.builder(context, match, const TextStyle());
+            return const SizedBox();
+          }),
+        ),
+      );
+
+      expect(calls, 2);
+    });
   });
 
   group('withCaretPattern', () {
     test('appends the pattern to an empty options bundle', () {
-      final pattern = caretInlinePattern(const SizedBox());
+      final pattern = caretInlinePattern(() => const SizedBox());
       final result = withCaretPattern(null, pattern);
 
       expect(result.inlinePatterns, [pattern]);
@@ -61,7 +93,7 @@ void main() {
         pattern: RegExp('existing'),
         builder: (context, match, style) => const TextSpan(text: 'x'),
       );
-      final caretPattern = caretInlinePattern(const SizedBox());
+      final caretPattern = caretInlinePattern(() => const SizedBox());
 
       const styleSheet = GptMarkdownStyleSheet();
       final original = MarkdownRenderOptions(

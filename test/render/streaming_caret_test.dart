@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_streaming_text_markdown/src/render/streaming_caret.dart';
 import 'package:flutter_streaming_text_markdown/src/theme/streaming_tokens.dart';
@@ -44,11 +45,16 @@ void main() {
 
   group('StreamingCaret', () {
     testWidgets('renders an 8x8 circle at the given opacity', (tester) async {
+      final opacity = ValueNotifier<double>(0.5);
+      addTearDown(opacity.dispose);
       await tester.pumpWidget(
-        const Directionality(
+        Directionality(
           textDirection: TextDirection.ltr,
           child: Center(
-            child: StreamingCaret(opacity: 0.5, color: Color(0xFF18181B)),
+            child: StreamingCaret(
+              opacity: opacity,
+              color: const Color(0xFF18181B),
+            ),
           ),
         ),
       );
@@ -64,6 +70,35 @@ void main() {
       final decoration = box.decoration as BoxDecoration;
       expect(decoration.shape, BoxShape.circle);
       expect(decoration.color!.a, closeTo(0.5, 0.01));
+    });
+
+    testWidgets('repaints from its own listenable without an external rebuild',
+        (tester) async {
+      final opacity = ValueNotifier<double>(1.0);
+      addTearDown(opacity.dispose);
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: StreamingCaret(
+              opacity: opacity,
+              color: const Color(0xFF18181B),
+            ),
+          ),
+        ),
+      );
+
+      opacity.value = 0.35;
+      await tester.pump();
+
+      final box = tester.widget<DecoratedBox>(
+        find.descendant(
+          of: find.byType(StreamingCaret),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      final decoration = box.decoration as BoxDecoration;
+      expect(decoration.color!.a, closeTo(0.35, 0.01));
     });
   });
 

@@ -15,18 +15,38 @@ import 'markdown_options.dart';
 /// could never contain by accident.
 const String caretSentinel = '';
 
-/// An inline pattern that matches [caretSentinel] and renders [caret] as a
-/// middle-aligned widget span in its place.
+/// The sentinel's regex, compiled once.
+///
+/// `gpt_markdown`'s segment cache invalidates whenever
+/// `GptMarkdownConfig.inlinePatterns` fails `listEquals` against the previous
+/// build's list - and since [InlinePattern] has no value equality, that falls
+/// back to *element identity* (see `GptMarkdownConfig.isSame`). A fresh
+/// `RegExp(...)` (and fresh [InlinePattern]) built every frame therefore
+/// looks like a *different* pattern on every single build, defeating the
+/// cache on every tick the caret is visible. Compiling the pattern once,
+/// module-level, is half of keeping the [InlinePattern] instance itself
+/// stable across builds - see [caretInlinePattern].
+final RegExp _caretSentinelPattern = RegExp(caretSentinel);
+
+/// An inline pattern that matches [caretSentinel] and renders the widget
+/// [caretBuilder] returns as a middle-aligned widget span in its place.
 ///
 /// Patterns are matched before the built-in Markdown components, so this
 /// always wins over any (impossible) literal interpretation of the sentinel.
-InlinePattern caretInlinePattern(Widget caret) {
+///
+/// Takes a builder rather than a fixed [Widget] so that ONE [InlinePattern]
+/// instance can be created once (e.g. cached for the lifetime of a State) and
+/// reused across every build even while the caret itself changes (pulsing
+/// opacity, a theme-dependent color): the returned [InlinePattern]'s identity
+/// - which is what `gpt_markdown`'s segment cache keys on - never changes,
+/// only what [caretBuilder] hands back when the pattern is actually matched.
+InlinePattern caretInlinePattern(Widget Function() caretBuilder) {
   return InlinePattern(
-    pattern: RegExp(caretSentinel),
+    pattern: _caretSentinelPattern,
     builder: (context, match, style) => WidgetSpan(
       alignment: PlaceholderAlignment.baseline,
       baseline: TextBaseline.alphabetic,
-      child: caret,
+      child: caretBuilder(),
     ),
   );
 }

@@ -153,9 +153,12 @@ void main() {
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
-      expect(find.textContaining('Hello', findRichText: true), findsWidgets);
-
+      // The engine withholds an open stream's final grapheme (the next
+      // chunk might extend it) - closing releases it.
       await controller.close();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.textContaining('Hello', findRichText: true), findsWidgets);
     });
 
     testWidgets('supports custom text style', (tester) async {

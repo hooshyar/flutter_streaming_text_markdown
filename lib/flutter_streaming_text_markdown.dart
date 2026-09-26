@@ -554,8 +554,7 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
       child: Padding(
         padding: effectivePadding,
         child: StreamingText(
-          key: ValueKey(
-              'streaming_text_${widget.wordByWord}_${widget.chunkSize}_${widget.typingSpeed.inMilliseconds}_${widget.latexEnabled}'),
+          key: ValueKey('streaming_text_${widget.latexEnabled}'),
           text: widget.text,
           stream: widget.stream,
           style: _effectiveTheme.textStyle,

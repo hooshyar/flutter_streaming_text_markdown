@@ -41,6 +41,14 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
+      // Close the stream and let the drain finish: the reveal engine
+      // intentionally withholds an open stream's final grapheme (the next
+      // chunk might still extend it), so "World"'s trailing "d" only lands
+      // once the stream actually closes.
+      await streamController.close();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
       // The text should have progressed (not restarted)
       final newTextWidgets = tester.widgetList<Text>(find.byType(Text));
       if (newTextWidgets.isNotEmpty) {
@@ -49,8 +57,6 @@ void main() {
             reason: 'Previous text should still be visible');
         expect(newText, contains('World'), reason: 'New text should be added');
       }
-
-      streamController.close();
     });
 
     testWidgets('Stream with markdown should work correctly',

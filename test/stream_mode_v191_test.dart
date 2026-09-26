@@ -106,10 +106,19 @@ void main() {
       expect(partial.length, lessThan(chunk.length),
           reason: 'the whole chunk must NOT appear in one frame');
 
-      // After cumulative pump time >= 16 * 50ms, all 16 chars are visible.
+      // After cumulative pump time >= 16 * 50ms, all but the very last
+      // character are visible: with the engine rewrite, the final grapheme
+      // of an OPEN stream is intentionally withheld (the next chunk might
+      // still extend it) — see RevealEngine's open-input safety guarantee.
       for (var i = 0; i < 18; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
+      expect(_displayed(tester), equals(chunk.substring(0, chunk.length - 1)));
+
+      // Closing the stream releases that withheld final character.
+      await controller.close();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
       expect(_displayed(tester), equals(chunk));
     });
 
@@ -216,7 +225,9 @@ void main() {
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 20));
       }
-      expect(_displayed(tester), equals('Hello'));
+      // All but the last character are visible: the engine withholds an
+      // open stream's final grapheme (the next chunk might extend it).
+      expect(_displayed(tester), equals('Hell'));
       // Not complete yet — stream is still open.
       expect(onCompleteCount, 0);
 
@@ -716,6 +727,14 @@ void main() {
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 20));
       }
+      // All but the last character: the engine withholds an open stream's
+      // final grapheme (the next chunk might extend it).
+      expect(_displayed(tester), equals('ABCD'));
+
+      // Closing the stream releases it.
+      await controller.close();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
       expect(_displayed(tester), equals('ABCDE'));
     });
   });

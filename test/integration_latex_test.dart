@@ -96,11 +96,14 @@ void main() {
       await tester.pump();
       await tester.pump();
       await drain();
-      expect(find.textContaining('and that is it'), findsOneWidget);
 
-      // Close the stream
+      // Close the stream. The reveal engine intentionally withholds an open
+      // stream's final grapheme (the next chunk might still extend it), so
+      // the trailing "it" only fully lands once the stream actually closes.
       await controller.close();
       await tester.pump(const Duration(milliseconds: 200));
+      await drain();
+      expect(find.textContaining('and that is it'), findsOneWidget);
     });
 
     testWidgets('Mixed markdown and LaTeX content streaming', (tester) async {

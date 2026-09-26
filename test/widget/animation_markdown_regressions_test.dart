@@ -34,9 +34,9 @@ void main() {
       // Let animation run for a reasonable time
       await tester.pump(const Duration(milliseconds: 500));
 
-      // Text should be visible
-      final textFinder = find.byType(Text);
-      expect(textFinder, findsWidgets);
+      // The markdown-stripped content should be visible, not just some Text.
+      expect(find.textContaining('Bold Text'), findsWidgets);
+      expect(find.textContaining('italic text'), findsWidgets);
 
       // Animation should complete
       expect(animationCompleted, isTrue,
@@ -80,9 +80,19 @@ void main() {
       // Not restart from the beginning
       await tester.pump(const Duration(milliseconds: 50));
 
-      // Check that text is being displayed progressively
-      final textWidgets = tester.widgetList<Text>(find.byType(Text));
-      expect(textWidgets.isNotEmpty, isTrue);
+      // Check that the displayed text is a genuine prefix of "Hello World" —
+      // not empty, and not duplicated/restarted content.
+      final displayed = tester
+          .widgetList<Text>(find.byType(Text))
+          .map((t) =>
+              t.data ??
+              t.textSpan?.toPlainText(includePlaceholders: false) ??
+              '')
+          .join();
+      expect(displayed, isNotEmpty);
+      expect('Hello World'.startsWith(displayed), isTrue,
+          reason:
+              'displayed text "$displayed" should be a prefix of "Hello World"');
 
       streamController.close();
     });
@@ -114,8 +124,11 @@ void main() {
       // Let animation progress
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Should find text widgets being rendered
-      expect(find.byType(Text), findsWidgets);
+      // The markdown-rendered heading and inline styles should carry their
+      // actual text content, not just be "some Text widget".
+      expect(find.textContaining('Header'), findsWidgets);
+      expect(find.textContaining('Bold'), findsWidgets);
+      expect(find.textContaining('italic'), findsWidgets);
 
       // Should complete
       expect(completed, isTrue,
@@ -148,8 +161,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      // LaTeX should be rendered (as styled text in the current implementation)
-      expect(find.byType(Text), findsWidgets);
+      // The surrounding prose should reach the screen verbatim; the
+      // equation itself renders through a math widget, not plain Text.
+      expect(find.textContaining('The equation'), findsWidgets);
+      expect(find.textContaining('is famous'), findsWidgets);
       expect(completed, isTrue, reason: 'LaTeX animation should complete');
     });
   });

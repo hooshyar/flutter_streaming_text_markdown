@@ -204,7 +204,10 @@ This is **important** mathematics.''';
       controller.skipToEnd();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.byType(Text), findsWidgets);
+      // skipToEnd should reveal the full surrounding prose, not just any Text.
+      expect(find.textContaining('Start'), findsWidgets);
+      expect(find.textContaining('middle'), findsWidgets);
+      expect(find.textContaining('end'), findsWidgets);
     });
 
     testWidgets('Character-by-character LaTeX streaming', (tester) async {
@@ -240,8 +243,9 @@ This is **important** mathematics.''';
         reason: 'LaTeX character-by-character animation should complete',
       );
 
-      // Check content is displayed
-      expect(find.byType(Text), findsWidgets);
+      // Check the surrounding prose is actually displayed, not just any Text.
+      expect(find.textContaining('Hi'), findsWidgets);
+      expect(find.textContaining('bye'), findsWidgets);
     });
 
     testWidgets('LaTeX streaming with Arabic RTL text', (tester) async {

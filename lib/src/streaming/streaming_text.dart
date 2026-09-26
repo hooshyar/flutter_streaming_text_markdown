@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
+import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:gpt_markdown/gpt_markdown.dart' hide RevealEngine;
 
 import '../controller/streaming_text_controller.dart';
@@ -9,9 +10,12 @@ import '../engine/atomic_spans.dart';
 import '../engine/reveal_engine.dart';
 import '../engine/reveal_scheduler.dart';
 import '../engine/unit_policy.dart';
+import '../render/caret_inline.dart';
 import '../render/fade_span.dart';
 import '../render/markdown_options.dart';
 import '../render/markdown_renderer.dart';
+import '../render/streaming_caret.dart';
+import '../theme/streaming_tokens.dart';
 
 /// A widget that displays streaming text with real-time updates and markdown support.
 ///
@@ -318,6 +322,18 @@ class _StreamingTextState extends State<StreamingText>
 
   bool _isComplete = false;
   Object? _error;
+
+  /// Mirrors `MediaQuery.maybeDisableAnimationsOf(context)`, kept in sync in
+  /// [didChangeDependencies]. Reduced motion behaves like
+  /// `animationsEnabled: false`: instant reveal, zero-duration fade, and a
+  /// static (non-pulsing) caret.
+  bool _reducedMotion = false;
+
+  /// Tracks whether the single completion accessibility announcement has
+  /// already fired for the current revealing-to-complete cycle, mirroring
+  /// [_isComplete] as observed by [build] - reset the moment [_isComplete]
+  /// goes back to `false` (restart).
+  bool _announcedCompletion = false;
 
   /// Re-entrancy guard for [_handleControllerChange]: several branches call
   /// engine/scheduler methods that can synchronously re-notify the
@@ -628,7 +644,20 @@ class _StreamingTextState extends State<StreamingText>
 
   // ---- Ticker (single, per Phase B seam) -------------------------------
 
-  bool get _needsTicking => _scheduler.isRunning || _fadeActive;
+  /// Whether the caret should currently be shown (DESIGN.md 4.2): revealing
+  /// (or waiting for the first token), no error, and [StreamingText.showCursor]
+  /// on. Hidden as soon as the reveal completes, so the final rendered text
+  /// always equals the source with no trailing sentinel/widget span left in
+  /// it.
+  bool get _caretVisible =>
+      widget.showCursor && !_isComplete && _error == null;
+
+  /// The ticker only needs to run for animation *decoration* - the reveal
+  /// itself is driven by [_scheduler]'s own timer. Reduced motion collapses
+  /// all of it to static frames (DESIGN.md section 7): no fade curve, no
+  /// caret pulse.
+  bool get _needsTicking =>
+      !_reducedMotion && (_scheduler.isRunning || _fadeActive || _caretVisible);
 
   void _syncTicker() {
     if (!mounted) return;
@@ -637,6 +666,8 @@ class _StreamingTextState extends State<StreamingText>
       if (!_ticker!.isTicking) {
         _ticker!.start();
       }
+    } else {
+      _ticker?.stop();
     }
   }
 
@@ -709,6 +740,31 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (reduced == _reducedMotion) return;
+    _reducedMotion = reduced;
+    if (_reducedMotion && !_isComplete && _error == null) {
+      // Reduced motion behaves like `animationsEnabled: false`: reveal
+      // instantly. Deferred to a post-frame callback since this can run
+      // mid-build (e.g. in response to a MediaQuery change propagating down
+      // the tree), and `_engine.revealAll()` may synchronously call
+      // `setState` via `_handleEngineComplete`.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _engine.revealAll();
+        });
+        _scheduler.wake();
+        _syncTicker();
+      });
+    } else {
+      _syncTicker();
+    }
+  }
+
+  @override
   void dispose() {
     _streamSubscription?.cancel();
     _scheduler.dispose();
@@ -724,24 +780,39 @@ class _StreamingTextState extends State<StreamingText>
       widget.textDirection ??
       (_containsArabic(_engine.revealed) ? TextDirection.rtl : TextDirection.ltr);
 
-  Alignment _alignmentFor(TextAlign align) {
-    switch (align) {
-      case TextAlign.right:
-      case TextAlign.end:
-        return Alignment.centerRight;
-      case TextAlign.center:
-        return Alignment.center;
-      default:
-        return Alignment.centerLeft;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.completeAnimationOnTap ? _handleTap : null,
-      child: _buildContent(context),
-    );
+    // Fires the single completion announcement (DESIGN.md section 6:
+    // "exactly one announcement of the full source, or of the label, on
+    // completion") exactly once per revealing-to-complete transition, purely
+    // by observing `_isComplete` here on every rebuild - independent of
+    // which code path (stream done, tap-to-complete, controller skipToEnd,
+    // instant reveal) actually flipped it.
+    if (_isComplete && _error == null) {
+      if (!_announcedCompletion) {
+        _announcedCompletion = true;
+        final message = widget.semanticsLabel ?? _engine.revealed;
+        final direction = _effectiveTextDirection;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          // `SemanticsService.announce` is deprecated in favor of
+          // `sendAnnouncement` starting with a Flutter version newer than
+          // this package's `>=3.32.0` floor, where `sendAnnouncement` does
+          // not exist yet - `announce` is the only one available on both.
+          // ignore: deprecated_member_use
+          SemanticsService.announce(message, direction);
+        });
+      }
+    } else {
+      _announcedCompletion = false;
+    }
+
+    // The tap-to-complete `GestureDetector` is built inside `_buildContent`,
+    // as a descendant of `SelectionArea` rather than an ancestor: a
+    // `GestureDetector` wrapping a `SelectionArea` loses the tap to
+    // `SelectionArea`'s own gesture recognizers in the arena, silently
+    // breaking tap-to-complete whenever `selectable` is on.
+    return _buildContent(context);
   }
 
   Widget _buildErrorContent(BuildContext context, Object error) {
@@ -802,84 +873,187 @@ class _StreamingTextState extends State<StreamingText>
     );
   }
 
+  /// Maps a resolved [TextAlign] onto an [AlignmentGeometry] for the block
+  /// that positions the (possibly narrower-than-available-width) rendered
+  /// content. Directional (`AlignmentDirectional`) rather than physical, so
+  /// `start`/`end` follow the ambient [Directionality] instead of being
+  /// hard-coded to left/right (W-a11y: "drop the forced right alignment").
+  AlignmentGeometry _blockAlignmentFor(TextAlign align) {
+    switch (align) {
+      case TextAlign.right:
+      case TextAlign.end:
+        return AlignmentDirectional.centerEnd;
+      case TextAlign.center:
+      case TextAlign.justify:
+        return Alignment.center;
+      case TextAlign.left:
+      case TextAlign.start:
+        return AlignmentDirectional.centerStart;
+    }
+  }
+
   Widget _buildContent(BuildContext context) {
     final error = _error;
-    if (error != null) {
-      return _buildErrorContent(context, error);
-    }
-
-    final effectiveStyle = widget.style ?? DefaultTextStyle.of(context).style;
-    final revealedText = _engine.revealed;
     final direction = _effectiveTextDirection;
-    final isRtl = direction == TextDirection.rtl;
-    final alignment =
-        widget.textAlign ?? (isRtl ? TextAlign.right : TextAlign.left);
+    // DESIGN.md section 7: static full-opacity caret under reduced motion
+    // (still hidden on completion, same as the pulsing case).
+    final caretVisible = _caretVisible;
+    Widget? caret;
+    if (caretVisible) {
+      final tokens = StreamingTokens.of(Theme.of(context).brightness);
+      final caretColor = widget.cursorColor ?? tokens.textPrimary;
+      final opacity = caretPulseOpacity(_now(), reducedMotion: _reducedMotion);
+      caret = StreamingCaret(opacity: opacity, color: caretColor);
+    }
 
-    if (widget.markdownEnabled) {
-      Widget markdownContent = Container(
-        width: double.infinity,
-        alignment: _alignmentFor(alignment),
-        child: StreamingMarkdownView(
-          text: revealedText,
-          isComplete: _isComplete,
-          isStreaming: widget.stream != null && !_isComplete,
-          style: widget.markdownStyleSheet,
+    Widget content;
+    if (error != null) {
+      content = _buildErrorContent(context, error);
+    } else {
+      final effectiveStyle = widget.style ?? DefaultTextStyle.of(context).style;
+      final revealedText = _engine.revealed;
+      // W-a11y: `TextAlign.start` (not a hard-coded left/right guess) so the
+      // renderer's own directional layout does the right thing for RTL.
+      final alignment = widget.textAlign ?? TextAlign.start;
+
+      if (widget.markdownEnabled) {
+        final renderText =
+            caretVisible ? '$revealedText$caretSentinel' : revealedText;
+        final effectiveOptions = caretVisible
+            ? withCaretPattern(widget.markdownOptions, caretInlinePattern(caret!))
+            : widget.markdownOptions;
+
+        final blockAlignment = _blockAlignmentFor(alignment);
+        // W21: a `LayoutBuilder` that only forces a width when the incoming
+        // constraint is bounded, instead of unconditionally requesting
+        // `double.infinity` (which throws inside an unbounded ancestor such
+        // as a bare `Row`).
+        Widget markdownContent = LayoutBuilder(
+          builder: (context, constraints) {
+            final child = StreamingMarkdownView(
+              text: renderText,
+              isComplete: _isComplete,
+              isStreaming: widget.stream != null && !_isComplete,
+              style: widget.markdownStyleSheet,
+              textDirection: direction,
+              textAlign: widget.textAlign,
+              textScaler: widget.textScaler,
+              latexEnabled: widget.latexEnabled,
+              latexStyle: widget.latexStyle,
+              latexScale: widget.latexScale,
+              options: effectiveOptions,
+              imageBuilder: widget.imageBuilder,
+              onLinkTap: widget.onLinkTap,
+              codeBuilder: widget.codeBuilder,
+              latexBuilder: widget.latexBuilder,
+              sourceTagBuilder: widget.sourceTagBuilder,
+              highlightBuilder: widget.highlightBuilder,
+              linkBuilder: widget.linkBuilder,
+              // ignore: deprecated_member_use_from_same_package
+              components: widget.components,
+              // ignore: deprecated_member_use_from_same_package
+              inlineComponents: widget.inlineComponents,
+            );
+            if (!constraints.hasBoundedWidth) {
+              return Align(alignment: blockAlignment, child: child);
+            }
+            return Container(
+              width: constraints.maxWidth,
+              alignment: blockAlignment,
+              child: child,
+            );
+          },
+        );
+        markdownContent = _wrapTrailingFade(markdownContent);
+        content = Directionality(
           textDirection: direction,
-          textAlign: widget.textAlign,
-          textScaler: widget.textScaler,
-          latexEnabled: widget.latexEnabled,
-          latexStyle: widget.latexStyle,
-          latexScale: widget.latexScale,
-          options: widget.markdownOptions,
-          imageBuilder: widget.imageBuilder,
-          onLinkTap: widget.onLinkTap,
-          codeBuilder: widget.codeBuilder,
-          latexBuilder: widget.latexBuilder,
-          sourceTagBuilder: widget.sourceTagBuilder,
-          highlightBuilder: widget.highlightBuilder,
-          linkBuilder: widget.linkBuilder,
-          // ignore: deprecated_member_use_from_same_package
-          components: widget.components,
-          // ignore: deprecated_member_use_from_same_package
-          inlineComponents: widget.inlineComponents,
-        ),
-      );
-      markdownContent = _wrapTrailingFade(markdownContent);
-      return Directionality(textDirection: direction, child: markdownContent);
-    }
-
-    if (_fadeAllowed) {
-      Widget fadeContent = Text.rich(
-        buildFadeSpan(
-          text: revealedText,
-          runs: _currentFadeRuns(),
-          now: _now(),
-          fadeDuration: widget.fadeInDuration,
-          curve: widget.fadeInCurve,
+          child: markdownContent,
+        );
+      } else if (!_fadeAllowed && !caretVisible) {
+        // No fade, no caret: the exact pre-existing plain-text widget shape
+        // (a `Text` with `.data` set, not `Text.rich`), so callers/tests
+        // that match on it are unaffected by this slice.
+        final textContent = Text(
+          revealedText,
           style: effectiveStyle,
-        ),
-        textAlign: alignment,
-        textDirection: direction,
-        softWrap: widget.softWrap ?? true,
-        overflow: widget.overflow ?? TextOverflow.clip,
-        textScaler: widget.textScaler ?? MediaQuery.textScalerOf(context),
-        maxLines: widget.maxLines,
-        strutStyle: widget.strutStyle,
-      );
-      return _wrapTrailingFade(fadeContent);
+          textAlign: alignment,
+          textDirection: direction,
+          softWrap: widget.softWrap ?? true,
+          overflow: widget.overflow ?? TextOverflow.clip,
+          textScaler: widget.textScaler ?? MediaQuery.textScalerOf(context),
+          maxLines: widget.maxLines,
+          strutStyle: widget.strutStyle,
+        );
+        content = _wrapTrailingFade(textContent);
+      } else {
+        final fadeDuration =
+            _reducedMotion ? Duration.zero : widget.fadeInDuration;
+        InlineSpan textSpan = _fadeAllowed
+            ? buildFadeSpan(
+                text: revealedText,
+                runs: _currentFadeRuns(),
+                now: _now(),
+                fadeDuration: fadeDuration,
+                curve: widget.fadeInCurve,
+                style: effectiveStyle,
+              )
+            : TextSpan(text: revealedText, style: effectiveStyle);
+
+        if (caretVisible) {
+          // DESIGN.md 4.2: an inline `WidgetSpan`, baseline-aligned, with a
+          // 4px leading gap - not on a new line.
+          textSpan = TextSpan(
+            style: effectiveStyle,
+            children: [
+              textSpan,
+              const WidgetSpan(child: SizedBox(width: 4)),
+              WidgetSpan(
+                alignment: PlaceholderAlignment.baseline,
+                baseline: TextBaseline.alphabetic,
+                child: caret!,
+              ),
+            ],
+          );
+        }
+
+        final textContent = Text.rich(
+          textSpan,
+          textAlign: alignment,
+          textDirection: direction,
+          softWrap: widget.softWrap ?? true,
+          overflow: widget.overflow ?? TextOverflow.clip,
+          textScaler: widget.textScaler ?? MediaQuery.textScalerOf(context),
+          maxLines: widget.maxLines,
+          strutStyle: widget.strutStyle,
+        );
+        content = _wrapTrailingFade(textContent);
+      }
     }
 
-    Widget plainContent = Text(
-      revealedText,
-      style: effectiveStyle,
-      textAlign: alignment,
-      textDirection: direction,
-      softWrap: widget.softWrap ?? true,
-      overflow: widget.overflow ?? TextOverflow.clip,
-      textScaler: widget.textScaler ?? MediaQuery.textScalerOf(context),
-      maxLines: widget.maxLines,
-      strutStyle: widget.strutStyle,
+    // Tap-to-complete: a GestureDetector wrapping the raw content, applied
+    // BEFORE `SelectionArea` wraps it (see the comment on [build]) so
+    // `selectable: true` doesn't silently break it.
+    content = GestureDetector(
+      onTap: widget.completeAnimationOnTap ? _handleTap : null,
+      child: content,
     );
-    return _wrapTrailingFade(plainContent);
+
+    if (widget.selectable) {
+      content = SelectionArea(child: content);
+    }
+
+    // DESIGN.md section 6 / acceptance criterion 9: mid-stream text is
+    // excluded from semantics; a supplied `semanticsLabel` always replaces
+    // the raw text node (even once complete) rather than being read
+    // alongside it.
+    final label = widget.semanticsLabel;
+    return Semantics(
+      label: label,
+      liveRegion: _isComplete,
+      child: ExcludeSemantics(
+        excluding: !_isComplete || label != null,
+        child: content,
+      ),
+    );
   }
 }

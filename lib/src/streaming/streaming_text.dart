@@ -345,6 +345,15 @@ class _StreamingTextState extends State<StreamingText>
   /// whole widget (Phase B seam): never one per character.
   Ticker? _ticker;
 
+  /// Whether the *previous* [_onTick] rebuilt for reveal/fade activity (as
+  /// opposed to a caret-only pulse). Kept so the tick where activity just
+  /// stopped still gets exactly one more rebuild - otherwise the last
+  /// rendered frame is whatever was on screen a tick before settling (e.g. a
+  /// fade span frozen at ~0.999 opacity instead of the fully-opaque rest
+  /// state) because the tick that observes "no longer active" never
+  /// `setState`s to show it.
+  bool _lastTickWasActive = false;
+
   /// A monotonic clock shared between [RevealEngine]'s reveal-run
   /// timestamps and this widget's fade rendering, so `now - revealedAt`
   /// stays consistent without needing wall-clock [DateTime] math.
@@ -677,8 +686,28 @@ class _StreamingTextState extends State<StreamingText>
         ? 1.0
         : (_engine.progress >= 0.999 ? 0.999 : _engine.progress);
     widget.controller?.updateProgress(progress);
-    setState(() {});
-    widget.onTextChanged?.call();
+
+    // The caret pulse alone never needs a full `setState`: it updates
+    // [_caretOpacity] directly, which [StreamingCaret] listens to and
+    // repaints from by itself (W-perf: the whole point is that a pulsing
+    // caret must not re-run the markdown segment cache 60x/sec while a 20k+
+    // char document streams in behind it).
+    if (_caretVisible) {
+      _caretOpacity.value =
+          caretPulseOpacity(_now(), reducedMotion: _reducedMotion);
+    }
+
+    // Only reveal progress and fade settling actually change what
+    // `_buildContent` renders - rebuild for those, not for every tick. Still
+    // rebuild the one tick right after activity stops (`_lastTickWasActive`)
+    // so the settled/fully-opaque frame actually gets drawn, rather than
+    // freezing on whatever was on screen mid-fade.
+    final isActive = _scheduler.isRunning || _fadeActive;
+    if (isActive || _lastTickWasActive) {
+      setState(() {});
+      widget.onTextChanged?.call();
+    }
+    _lastTickWasActive = isActive;
     if (!_needsTicking) {
       _ticker?.stop();
     }
@@ -770,8 +799,69 @@ class _StreamingTextState extends State<StreamingText>
     _scheduler.dispose();
     _ticker?.dispose();
     _groupAnimationController.dispose();
+    _caretOpacityNotifier?.dispose();
     widget.controller?.removeListener(_handleControllerChange);
     super.dispose();
+  }
+
+  // ---- Caret (markdown-cache-safe, Phase C perf fix) --------------------
+
+  /// The caret's opacity, updated in place every pulse frame instead of
+  /// forcing a `setState` on the whole widget (see [_onTick]). [StreamingCaret]
+  /// listens to this directly, so a pulsing caret repaints only itself - not
+  /// the markdown subtree, which would otherwise re-run `gpt_markdown`'s
+  /// segment cache on every frame for no visible reason.
+  ValueNotifier<double>? _caretOpacityNotifier;
+
+  ValueNotifier<double> get _caretOpacity =>
+      _caretOpacityNotifier ??= ValueNotifier<double>(1.0);
+
+  /// One [InlinePattern] instance reused for the lifetime of this State.
+  ///
+  /// `gpt_markdown`'s segment cache drops everything whenever
+  /// `inlinePatterns` fails `listEquals` against the previous build - which,
+  /// since [InlinePattern] has no value equality, means "the same object
+  /// reference" (see `GptMarkdownConfig.isSame`). Building a new
+  /// [InlinePattern] (and a new backing `RegExp`) every frame the caret pulses
+  /// was exactly what defeated the cache; this field, plus the builder
+  /// indirection in [_caretInlinePattern], is what keeps its identity stable
+  /// while what it renders (the caret's color, fed by [_caretWidgetBuilder])
+  /// still tracks the current build.
+  InlinePattern? _caretInlinePatternInstance;
+
+  /// What [_caretInlinePatternInstance]'s builder actually calls. Reassigned
+  /// on every build that shows a caret (cheap: a field write, not a widget
+  /// rebuild) so the *pattern* stays identical while the *caret it draws*
+  /// stays current.
+  Widget Function()? _caretWidgetBuilder;
+
+  InlinePattern _ensureCaretInlinePattern() {
+    return _caretInlinePatternInstance ??=
+        caretInlinePattern(() => _caretWidgetBuilder!());
+  }
+
+  /// The [MarkdownRenderOptions] actually handed to [StreamingMarkdownView]
+  /// while the caret is visible: [widget.markdownOptions] plus the cached
+  /// caret pattern, appended - but only rebuilt (a cheap object allocation
+  /// either way, kept cheap so the *pattern* stays the identical instance)
+  /// when [widget.markdownOptions] itself changes identity, so an unrelated
+  /// rebuild (a caret pulse, a reveal tick) reuses the exact same
+  /// [MarkdownRenderOptions] object too.
+  MarkdownRenderOptions? _cachedEffectiveOptions;
+  MarkdownRenderOptions? _cachedBaseOptions;
+  bool _cachedBaseOptionsSet = false;
+
+  MarkdownRenderOptions _effectiveMarkdownOptions() {
+    if (!_cachedBaseOptionsSet ||
+        !identical(_cachedBaseOptions, widget.markdownOptions)) {
+      _cachedBaseOptions = widget.markdownOptions;
+      _cachedBaseOptionsSet = true;
+      _cachedEffectiveOptions = withCaretPattern(
+        widget.markdownOptions,
+        _ensureCaretInlinePattern(),
+      );
+    }
+    return _cachedEffectiveOptions!;
   }
 
   // ---- Build --------------------------------------------------------
@@ -898,12 +988,24 @@ class _StreamingTextState extends State<StreamingText>
     // DESIGN.md section 7: static full-opacity caret under reduced motion
     // (still hidden on completion, same as the pulsing case).
     final caretVisible = _caretVisible;
-    Widget? caret;
     if (caretVisible) {
       final tokens = StreamingTokens.of(Theme.of(context).brightness);
       final caretColor = widget.cursorColor ?? tokens.textPrimary;
-      final opacity = caretPulseOpacity(_now(), reducedMotion: _reducedMotion);
-      caret = StreamingCaret(opacity: opacity, color: caretColor);
+      // Keep the shared notifier correct even on a build the ticker didn't
+      // cause (text growth, a reduced-motion toggle, a theme change): the
+      // ticker (see [_onTick]) is what updates it on every pulse frame in
+      // between, without triggering a rebuild of its own.
+      _caretOpacity.value =
+          caretPulseOpacity(_now(), reducedMotion: _reducedMotion);
+      // Rebind what the cached inline pattern (see
+      // [_ensureCaretInlinePattern]) actually builds to THIS build's color,
+      // without touching the pattern's own identity. Left un-invoked here -
+      // only called lazily, below, wherever a caret widget is actually
+      // needed - so the markdown branch (which never reads `caret` directly,
+      // only `_effectiveMarkdownOptions()`'s cached pattern) doesn't pay for
+      // a `StreamingCaret` instance it throws away unused on every frame.
+      _caretWidgetBuilder = () =>
+          StreamingCaret(opacity: _caretOpacity, color: caretColor);
     }
 
     Widget content;
@@ -919,9 +1021,14 @@ class _StreamingTextState extends State<StreamingText>
       if (widget.markdownEnabled) {
         final renderText =
             caretVisible ? '$revealedText$caretSentinel' : revealedText;
-        final effectiveOptions = caretVisible
-            ? withCaretPattern(widget.markdownOptions, caretInlinePattern(caret!))
-            : widget.markdownOptions;
+        // Reuses one cached `InlinePattern`/`MarkdownRenderOptions` pair
+        // across builds (see [_effectiveMarkdownOptions]) instead of
+        // allocating fresh ones every frame: `gpt_markdown`'s segment cache
+        // keys `inlinePatterns` on element *identity* (`InlinePattern` has no
+        // value equality), so a fresh instance every tick looked like a
+        // config change on every frame and dropped the whole cache.
+        final effectiveOptions =
+            caretVisible ? _effectiveMarkdownOptions() : widget.markdownOptions;
 
         final blockAlignment = _blockAlignmentFor(alignment);
         // W21: a `LayoutBuilder` that only forces a width when the incoming
@@ -1010,7 +1117,7 @@ class _StreamingTextState extends State<StreamingText>
               WidgetSpan(
                 alignment: PlaceholderAlignment.baseline,
                 baseline: TextBaseline.alphabetic,
-                child: caret!,
+                child: _caretWidgetBuilder!(),
               ),
             ],
           );

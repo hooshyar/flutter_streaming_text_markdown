@@ -6,11 +6,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 
 /// Returns the text currently rendered by the (non-markdown) StreamingText.
+///
+/// While revealing, showCursor defaults to true and the widget renders a
+/// `Text.rich` with a caret WidgetSpan instead of a plain `Text` with
+/// `.data`. Read the plain text content only (excluding the caret
+/// placeholder) so this helper works whether or not a caret is present.
 String _displayed(WidgetTester tester) {
   final texts = tester.widgetList<Text>(find.byType(Text));
   // The widget renders its content in a single Text when markdownEnabled:false
   // and not animating fade-in. Concatenate defensively in case of splits.
-  return texts.map((t) => t.data ?? '').join();
+  return texts
+      .map((t) =>
+          t.data ??
+          t.textSpan?.toPlainText(includePlaceholders: false) ??
+          '')
+      .join();
 }
 
 void main() {

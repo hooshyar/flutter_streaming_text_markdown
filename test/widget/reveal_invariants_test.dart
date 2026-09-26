@@ -11,9 +11,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 
+// While revealing, showCursor defaults to true and the widget renders a
+// `Text.rich` with a caret WidgetSpan instead of a plain `Text.data`. These
+// invariants are about the revealed source text, not the caret, so exclude
+// placeholder spans.
 String _plainText(WidgetTester tester) {
   final texts = tester.widgetList<Text>(find.byType(Text));
-  return texts.map((t) => t.textSpan?.toPlainText() ?? t.data ?? '').join();
+  return texts
+      .map((t) =>
+          t.textSpan?.toPlainText(includePlaceholders: false) ?? t.data ?? '')
+      .join();
 }
 
 Future<void> _drain(

@@ -26,13 +26,28 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
   /// The style for inline LaTeX expressions
   final TextStyle? inlineLatexStyle;
 
-  /// The style for block LaTeX expressions
+  /// The style for block LaTeX expressions.
+  @Deprecated(
+    'No-op. LaTeX rendering is delegated to gpt_markdown; use a '
+    'StreamingText/StreamingTextMarkdown latexBuilder to style block LaTeX '
+    'directly. Will be removed in 2.0.0.',
+  )
   final TextStyle? blockLatexStyle;
 
-  /// Scale factor for LaTeX equations (default: 1.0)
+  /// Scale factor for LaTeX equations (default: 1.0).
+  @Deprecated(
+    'No-op at the theme level. Use the widget-level latexScale parameter '
+    'on StreamingText/StreamingTextMarkdown instead. Will be removed in '
+    '2.0.0.',
+  )
   final double? latexScale;
 
-  /// Whether to enable fade-in animations for LaTeX content
+  /// Whether to enable fade-in animations for LaTeX content.
+  @Deprecated(
+    'No-op. LaTeX rendering is delegated to gpt_markdown, which has no '
+    'per-run fade hook of its own; use latexBuilder to control LaTeX '
+    'rendering directly. Will be removed in 2.0.0.',
+  )
   final bool? latexFadeInEnabled;
 
   /// Creates a [StreamingTextTheme]
@@ -60,11 +75,14 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
         fontSize: (baseTextStyle.fontSize ?? 14) * 1.1,
         fontWeight: FontWeight.w500,
       ),
+      // ignore: deprecated_member_use_from_same_package
       blockLatexStyle: baseTextStyle?.copyWith(
         fontSize: (baseTextStyle.fontSize ?? 14) * 1.2,
         fontWeight: FontWeight.w500,
       ),
+      // ignore: deprecated_member_use_from_same_package
       latexScale: 1.0,
+      // ignore: deprecated_member_use_from_same_package
       latexFadeInEnabled: false, // Disabled by default for performance
     );
   }
@@ -85,13 +103,17 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
       // ignore: deprecated_member_use_from_same_package
       markdownStyle: markdownStyle ?? this.markdownStyle,
       // ignore: deprecated_member_use_from_same_package
-      markdownStyleSheet: markdownStyleSheet ??
+      markdownStyleSheet:
+          markdownStyleSheet ??
           this.markdownStyleSheet ??
           (markdownStyle ?? this.markdownStyle),
       defaultPadding: defaultPadding ?? this.defaultPadding,
       inlineLatexStyle: inlineLatexStyle ?? this.inlineLatexStyle,
+      // ignore: deprecated_member_use_from_same_package
       blockLatexStyle: blockLatexStyle ?? this.blockLatexStyle,
+      // ignore: deprecated_member_use_from_same_package
       latexScale: latexScale ?? this.latexScale,
+      // ignore: deprecated_member_use_from_same_package
       latexFadeInEnabled: latexFadeInEnabled ?? this.latexFadeInEnabled,
     );
   }
@@ -106,15 +128,26 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
       textStyle: TextStyle.lerp(textStyle, other.textStyle, t),
       // ignore: deprecated_member_use_from_same_package
       markdownStyle: TextStyle.lerp(markdownStyle, other.markdownStyle, t),
-      markdownStyleSheet:
-          TextStyle.lerp(markdownStyleSheet, other.markdownStyleSheet, t),
+      markdownStyleSheet: TextStyle.lerp(
+        markdownStyleSheet,
+        other.markdownStyleSheet,
+        t,
+      ),
       defaultPadding: EdgeInsets.lerp(defaultPadding, other.defaultPadding, t),
-      inlineLatexStyle:
-          TextStyle.lerp(inlineLatexStyle, other.inlineLatexStyle, t),
+      inlineLatexStyle: TextStyle.lerp(
+        inlineLatexStyle,
+        other.inlineLatexStyle,
+        t,
+      ),
+      // ignore: deprecated_member_use_from_same_package
       blockLatexStyle:
-          TextStyle.lerp(blockLatexStyle, other.blockLatexStyle, t),
+      // ignore: deprecated_member_use_from_same_package
+      TextStyle.lerp(blockLatexStyle, other.blockLatexStyle, t),
+      // ignore: deprecated_member_use_from_same_package
       latexScale: lerpDouble(latexScale, other.latexScale, t),
+      // ignore: deprecated_member_use_from_same_package
       latexFadeInEnabled:
+          // ignore: deprecated_member_use_from_same_package
           t < 0.5 ? latexFadeInEnabled : other.latexFadeInEnabled,
     );
   }

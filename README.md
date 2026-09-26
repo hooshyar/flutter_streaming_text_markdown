@@ -9,19 +9,6 @@
 [![downloads](https://img.shields.io/pub/dm/flutter_streaming_text_markdown)](https://pub.dev/packages/flutter_streaming_text_markdown/score)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/LICENSE)
 
-## 🆕 v1.9.1 — stream-mode reliability fixes
-- ✅ Streamed chunks now **animate per your typing settings** instead of appearing instantly; `wordByWord` no longer splits words at chunk boundaries.
-- ✅ `onComplete` / `controller.progress` are now **stream-accurate** — completion fires exactly once, after the stream closes *and* the displayed text catches up.
-- ✅ Tap-to-complete and `skipToEnd()` are **stream-safe**: they catch up to received text, never erase it.
-- ✅ Swapping the `stream:` instance re-subscribes (same semantics as `StreamBuilder` — create your stream once, not in `build()`).
-- ✅ `autoScroll` keeps the view pinned to the bottom *while* content grows.
-
-### From v1.9.0 — `StreamingTextMarkdown` takes a `Stream<String>`
-- ✅ `stream:` parameter on `StreamingTextMarkdown` and every preset (`.chatGPT()`, `.claude()`, `.typewriter()`, `.instant()`, `.fromPreset()`). Pass an LLM token stream directly — no need to drop down to the lower-level `StreamingText`.
-- ✅ `text:` is now optional (defaults to `''`). Existing code is unchanged.
-- ✅ Per-character fade-in auto-suppressed for streams; use `trailingFadeEnabled` for a smooth reveal.
-- ✅ **Still here from v1.8**: `components` / `inlineComponents` for full block- and inline-level markdown overrides, plus `imageBuilder`, `onLinkTap`, `codeBuilder`, `latexBuilder`, `linkBuilder`.
-
 ## ✨ Features
 
 - 🤖 **LLM Optimized** - Built specifically for ChatGPT, Claude, and AI text streaming
@@ -33,6 +20,8 @@
 - 🎭 **Multiple Animation Types** - Character-by-character, word-by-word, and chunk-based
 - ⏱️ **Real-time Streaming** - Direct `Stream<String>` integration
 - 🎯 **Interactive Controls** - Tap-to-skip and programmatic control
+- ♿ **Accessibility** - Reduced-motion support, single-announcement semantics, and selectable text
+- ⚠️ **Stream error handling** - `errorBuilder` plus a controller error state, with revealed text kept on screen
 
 ## 🎬 Demo
 
@@ -48,7 +37,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_streaming_text_markdown: ^1.9.1
+  flutter_streaming_text_markdown: ^1.10.1
 ```
 
 ## 🚀 Quick Start
@@ -144,6 +133,30 @@ StreamingTextMarkdown(
 )
 ```
 
+### Handling stream errors
+
+If the `Stream<String>` you pass emits an error, the text revealed so far
+stays on screen either way. Pass `errorBuilder` to render your own view; the
+`controller` (if any) also transitions to `StreamingTextState.error` via
+`markError`, and `controller.error` exposes the error object:
+
+```dart
+StreamingTextMarkdown(
+  stream: chatService.streamReply(prompt),
+  controller: controller,
+  errorBuilder: (context, error) => Row(
+    children: [
+      const Icon(Icons.error_outline),
+      const SizedBox(width: 8),
+      Expanded(child: Text('Something went wrong: $error')),
+    ],
+  ),
+)
+```
+
+Without an `errorBuilder`, the default view shows the text revealed so far
+plus a trailing `Error: $error` line in `Theme.of(context).colorScheme.error`.
+
 ### Bridging OpenAI / Anthropic SSE to `Stream<String>`
 
 Most LLM HTTP APIs return Server-Sent Events. Convert their token stream to a plain `Stream<String>` of text deltas — then hand it to `StreamingText`.
@@ -199,7 +212,12 @@ Stream<String> anthropicChat(String prompt) async* {
 }
 ```
 
-> ⚠️ **Choose `trailingFadeEnabled` over `fadeInEnabled` for streams.** Per-character fades spawn one `AnimationController` per glyph — fine for static text, but unbounded streams will exhaust memory. The widget auto-disables `fadeInEnabled` when a `stream` is set; `trailingFadeEnabled` gives you a smooth gradient reveal with constant memory.
+> `fadeInEnabled` is safe for streams too — the per-character fade is driven
+> by a single `Ticker` (not one `AnimationController` per glyph), so it has
+> constant memory regardless of stream length. It only applies in
+> plain-text mode though; for markdown content (the common case for LLM
+> output) use `trailingFadeEnabled` for a bottom-edge gradient reveal
+> instead.
 
 ### When to use which widget
 
@@ -270,10 +288,20 @@ controller.onStateChanged((state) => print('State: $state'));
 controller.onProgressChanged((progress) => print('Progress: $progress'));
 controller.onCompleted(() => print('Finished!'));
 
-// Speed control
-controller.speedMultiplier = 2.0;  // 2x speed
-controller.speedMultiplier = 0.5;  // Half speed
+// Speed control — divides typingSpeed, so higher is faster
+controller.speedMultiplier = 2.0;  // 2x speed (half the typingSpeed duration)
+controller.speedMultiplier = 0.5;  // Half speed (double the typingSpeed duration)
+
+// Error handling — set when a stream's Stream<String> emits an error
+controller.markError(someError);
+controller.error;            // The Object passed to markError, or null
 ```
+
+`onCompleted` fires **at most once** per revealing→complete transition,
+however it was triggered — `updateProgress(1.0)`, `markCompleted()`, and
+`skipToEnd()` all route through the same completion latch, so wiring more
+than one of them (or calling one twice) never double-fires your callback.
+`restart()`/`stop()` re-arm it for the next cycle.
 
 ## ⚙️ Configuration
 
@@ -282,14 +310,14 @@ controller.speedMultiplier = 0.5;  // Half speed
 | Property | Type | Description |
 |----------|------|-------------|
 | `text` | `String` | The text content to display. Optional — defaults to `''` so you can pass only `stream:` when streaming from an LLM. |
-| `stream` | `Stream<String>?` | Optional stream of text chunks from an LLM API. When non-null, content arrives via the stream and per-character fade-in is auto-suppressed (use `trailingFadeEnabled`). |
+| `stream` | `Stream<String>?` | Optional stream of text chunks from an LLM API. When non-null, content arrives via the stream instead of `text`. |
 | `controller` | `StreamingTextController?` | Controller for programmatic control |
 | `onComplete` | `VoidCallback?` | Callback when animation completes |
 | `completeAnimationOnTap` | `bool` | Whether tapping the widget jumps the animation to completion. Defaults to `true`; set `false` to let it play through regardless of taps. |
 | `typingSpeed` | `Duration` | Speed of typing animation |
 | `wordByWord` | `bool` | Whether to animate word by word |
 | `chunkSize` | `int` | Number of characters to reveal at once |
-| `fadeInEnabled` | `bool` | Per-character fade-in. Auto-disabled for Arabic/RTL and for `Stream<String>` sources — use `trailingFadeEnabled` for streams. |
+| `fadeInEnabled` | `bool` | Per-character fade-in, opacity-only, driven by a single `Ticker` (constant memory). Only applies in plain-text mode (`markdownEnabled: false`) and is suppressed for Arabic/RTL — use `trailingFadeEnabled` for markdown content. |
 | `fadeInDuration` | `Duration` | Duration of fade-in animation (also used for trailing-fade dismiss) |
 | `trailingFadeEnabled` | `bool` | Bottom-edge gradient fade while streaming. Animates away on completion. Recommended for `Stream<String>` and markdown content. |
 | `textDirection` | `TextDirection?` | Text direction (LTR or RTL) |
@@ -298,22 +326,33 @@ controller.speedMultiplier = 0.5;  // Half speed
 | `latexEnabled` | `bool` | Enable LaTeX mathematical expressions |
 | `latexStyle` | `TextStyle?` | Style for LaTeX expressions |
 | `latexScale` | `double` | Scale factor for LaTeX rendering |
-| `latexFadeInEnabled` | `bool?` | Enable fade-in for LaTeX (null = auto) |
+| `latexFadeInEnabled` | `bool?` | **Deprecated**, no-op. LaTeX rendering is delegated to `gpt_markdown`, which has no per-run fade hook; use `latexBuilder` instead. |
 | `imageBuilder` | `Widget Function(BuildContext, String)?` | Custom widget for markdown images |
 | `onLinkTap` | `void Function(String url, String title)?` | Callback when a link is tapped |
 | `codeBuilder` | `Widget Function(BuildContext, String name, String code, bool closed)?` | Custom widget for code blocks |
 | `latexBuilder` | `Widget Function(BuildContext, String tex, TextStyle, bool inline)?` | Custom widget for LaTeX expressions |
 | `linkBuilder` | `Widget Function(BuildContext, InlineSpan label, String path, TextStyle)?` | Custom widget for links |
-| `components` | `List<MarkdownComponent>?` | Block-level component overrides — headers, lists, code blocks, tables, blockquotes. `null` keeps `gpt_markdown` defaults. |
-| `inlineComponents` | `List<MarkdownComponent>?` | Inline-level component overrides — bold, italic, strikethrough, links, inline code. `null` keeps `gpt_markdown` defaults. |
+| `components` | `List<MarkdownComponent>?` | **Deprecated** — use `markdownOptions.blockComponents`. Block-level component overrides. Passing this at all (even an empty list) drops `gpt_markdown`'s incremental segment cache. |
+| `inlineComponents` | `List<MarkdownComponent>?` | **Deprecated** — use `markdownOptions.inlinePatterns`. Inline-level component overrides, with the same segment-cache cost as `components`. |
+| `markdownOptions` | `MarkdownRenderOptions?` | Bundles every `gpt_markdown` 1.3 pass-through without its own top-level parameter — see [MarkdownRenderOptions](#-markdownrenderoptions) below. |
+| `selectable` | `bool` | Wraps the rendered output in a `SelectionArea` so users can select/copy text. Defaults to `false`. Tap-to-complete still works. |
+| `showCursor` | `bool?` | Shows an 8px pulsing dot caret while revealing. `null` (default) resolves to `stream != null` — on for live streams, off for static text. Hidden automatically on completion. |
+| `cursorColor` | `Color?` | Color of the caret shown while `showCursor` resolves to `true`. Defaults to the theme's text-primary token. |
+| `semanticsLabel` | `String?` | Accessibility label announced/exposed to assistive technology instead of the revealed text itself — see [Accessibility](#-accessibility) below. |
+| `errorBuilder` | `Widget Function(BuildContext, Object error)?` | Called when `stream` emits an error — see [Handling stream errors](#handling-stream-errors) below. |
 
 #### Choosing a fade for streaming content
 
+Per-character fade is driven by a single `Ticker` regardless of how much
+text there is (a plain 5k-char fade uses at most 2 transient tickers), so
+it's safe for streams too — it's markdown mode and Arabic/RTL where it's
+unavailable or suppressed:
+
 | Source | Recommended | Why |
 |--------|-------------|-----|
-| Static `text` (LTR) | `fadeInEnabled: true` | Cheap per-character fade, looks great |
-| Static `text` (Arabic/RTL) | `trailingFadeEnabled: true` | Per-character fade auto-disabled for RTL |
-| `Stream<String>` | `trailingFadeEnabled: true` | Per-character fade auto-disabled to avoid an unbounded number of `AnimationController`s |
+| Static or streamed `text`, markdown off | `fadeInEnabled: true` | Single-ticker per-character fade, looks great |
+| Arabic/RTL content | `trailingFadeEnabled: true` | Per-character fade is suppressed for Arabic (shaping risk) regardless of source |
+| Markdown-enabled content | `trailingFadeEnabled: true` | Per-character fade only applies in plain-text mode; use the bottom-edge gradient instead |
 
 ## Markdown Support
 
@@ -324,6 +363,41 @@ The widget supports common markdown syntax:
 - Italic text (`*text*` or `_text_`)
 - Lists (ordered and unordered)
 - Line breaks
+
+## 🧩 MarkdownRenderOptions
+
+`components` / `inlineComponents` are deprecated because passing either one
+(even an empty list) drops `gpt_markdown`'s incremental segment cache.
+`markdownOptions` bundles every other `gpt_markdown` 1.3 pass-through — style
+sheet, per-component builders, autolink config, and more — without that
+cost:
+
+```dart
+StreamingTextMarkdown(
+  text: llmResponse,
+  markdownOptions: MarkdownRenderOptions(
+    styleSheet: GptMarkdownStyleSheet(
+      inlineCode: InlineCodeStyle(color: Colors.deepPurple),
+    ),
+    autolink: true,
+    maxLines: 200,
+    // Recolour link labels without changing anything else about how
+    // links render — see LinkBuildDetails.defaultSpan/.asWidgetSpan.
+    inlineLinkBuilder: (link) => link.defaultSpan(),
+  ),
+)
+```
+
+Every field maps 1:1 onto a `GptMarkdown` constructor parameter of the same
+name; a `null` field simply falls back to `gpt_markdown`'s own default. See
+the class docs on `MarkdownRenderOptions` for the full field list —
+`styleSheet`, `inlineCodeStyle`, the block-level builders (`headingBuilder`,
+`tableBuilder`, `blockQuoteBuilder`, `orderedListBuilder`,
+`unOrderedListBuilder`, `hrBuilder`, `checkboxBuilder`,
+`radioOptionBuilder`), the `on*` callbacks, `autolink`/`autolinkSchemes`,
+`maxLines`/`overflow`/`followLinkColor`, `blockComponents`/`inlinePatterns`/
+`inlineDirectives`, the `inline*Builder`s, `imageBuilder`, and
+`useDollarSignsForLatex`.
 
 ## 🔢 LaTeX Support
 
@@ -357,10 +431,15 @@ StreamingTextMarkdown(
     fontSize: 18,
   ),
   latexScale: 1.2,                 // Scale factor for LaTeX
-  latexFadeInEnabled: false,       // Disable fade-in for LaTeX (recommended)
   markdownEnabled: true,
 )
 ```
+
+> `latexFadeInEnabled` (both the widget parameter and
+> `StreamingTextTheme.latexFadeInEnabled`) is deprecated and now a no-op —
+> LaTeX rendering is delegated to `gpt_markdown`, which has no per-run fade
+> hook of its own. Use a `latexBuilder` if you need to control LaTeX
+> rendering directly.
 
 ### LaTeX Theme Support
 
@@ -368,9 +447,6 @@ StreamingTextMarkdown(
 // Global LaTeX styling through theme
 final customTheme = StreamingTextTheme(
   inlineLatexStyle: TextStyle(color: Colors.blue),
-  blockLatexStyle: TextStyle(color: Colors.purple),
-  latexScale: 1.3,
-  latexFadeInEnabled: false,
 );
 
 StreamingTextMarkdown(
@@ -406,16 +482,18 @@ $$\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$$
 
 ### LaTeX Animation Behavior
 
-- LaTeX expressions are treated as **atomic units** during streaming
+- LaTeX expressions are treated as **atomic units** during streaming — the
+  cursor never lands strictly inside a `$…$`/`$$…$$`/`\(…\)`/`\[…\]` span
 - They appear completely when their turn comes in the animation
-- Fade-in effects can be disabled for LaTeX for better performance
+- Per-run fade is suppressed for LaTeX spans by default for performance
 - Works seamlessly with word-by-word and character-by-character modes
 
 ### Performance Tips
 
-1. **Disable fade-in for LaTeX**: Set `latexFadeInEnabled: false` for better performance
-2. **Cache complex expressions**: LaTeX rendering is automatically optimized
-3. **Mix with regular text**: Combine LaTeX with markdown for rich content
+1. **Mix with regular text**: Combine LaTeX with markdown for rich content
+2. **`$VARS`-style text in code fences is safe**: content inside fenced or
+   inline code is never mistaken for LaTeX, even when it looks like a
+   dollar-sign variable
 
 ### Example: Scientific Documentation
 
@@ -502,6 +580,31 @@ The theme system follows Flutter's standard inheritance pattern:
 1. Widget-level theme (if provided)
 2. Global theme extension
 3. Default theme based on the current context
+
+## ♿ Accessibility
+
+```dart
+StreamingTextMarkdown(
+  stream: chatService.streamReply(prompt),
+  semanticsLabel: 'Assistant response',
+  selectable: true,
+)
+```
+
+- **Reduced motion**: when the platform's reduce-motion setting is on
+  (`MediaQuery.maybeDisableAnimationsOf`), text reveals instantly with a
+  static caret and no fade — no extra configuration needed.
+- **Semantics**: partial, mid-stream text is excluded from the accessibility
+  tree, and assistive technology gets exactly one announcement — of the
+  full revealed text, or of `semanticsLabel` when you set one — on
+  completion.
+- **Selectable text**: `selectable: true` wraps the rendered output in a
+  `SelectionArea`. Tap-to-complete keeps working alongside it.
+- **Caret**: `showCursor` (`null` by default, resolving to `stream != null`)
+  shows an 8px pulsing dot while revealing, styled by `cursorColor` (falls
+  back to the theme's text-primary token) and hidden automatically once
+  complete, so the final text always matches the source exactly — including
+  in markdown mode.
 
 ## Contributing
 

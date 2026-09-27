@@ -3,29 +3,11 @@ import 'package:flutter/widgets.dart';
 
 /// The Unicode object-replacement character `gpt_markdown`'s `TextPainter`
 /// emits, once per inline `WidgetSpan`, in `text.toPlainText()` - the caret
-/// is exactly one such `WidgetSpan`. Verify round 3 found the caret's own
-/// placeholder can transiently appear MID-paragraph (not merely trailing
-/// the very last paragraph) while a block is still being resolved (e.g. a
-/// table momentarily re-rendering as a bare placeholder while its next row
-/// is incomplete) - so every occurrence of this character, in every
-/// paragraph, is excluded from the growth/fade-tracking text entirely (see
-/// [RenderMarkdownFadeMask]'s doc). A `WidgetSpan` for other inline content
-/// (an image, a link/source-tag widget) produces the same character and is
-/// excluded the same way - those never get their own fade run, but the
-/// real text around them still does, and nothing about excluding them ever
-/// causes settled text to dip.
+/// is exactly one such `WidgetSpan`. Every occurrence of this character, in
+/// every paragraph, is excluded from the fade-tracking text entirely (see
+/// [RenderMarkdownFadeMask]'s doc): it can appear transiently mid-paragraph,
+/// not merely trailing the very last one, while a block is still resolving.
 const int _objectReplacementChar = 0xFFFC;
-
-/// One still-fading `[start, end)` range in the GLOBAL offset space (the
-/// concatenation, in paint order, of every `RenderParagraph`'s own rendered
-/// text - see [RenderMarkdownFadeMask]'s doc). Never source-text
-/// coordinates.
-class _GlobalRun {
-  _GlobalRun(this.start, this.end, this.revealedAt);
-  int start;
-  int end;
-  final Duration revealedAt;
-}
 
 /// A cached `(span, plainText)` pair for one `RenderParagraph`, so a
 /// paragraph whose content hasn't changed since the last layout doesn't
@@ -36,8 +18,60 @@ class _ParaCache {
   final String text;
 }
 
-/// One `RenderParagraph`'s slice of the current layout's global offset
-/// space: `[globalStart, globalStart + length)`.
+/// One still-fading `[start, end)` range in a SLOT's own local
+/// fade-tracking-text coordinate space (never a global/concatenated space,
+/// and never source-text coordinates).
+class _SlotRun {
+  _SlotRun(this.start, this.end, this.revealedAt);
+  int start;
+  int end;
+  final Duration revealedAt;
+}
+
+/// One slot's persisted state across layouts: the committed baseline text
+/// its runs are keyed against, its still-fading runs, and the bookkeeping
+/// needed for the rewrite hysteresis (adopt only once the SAME new text has
+/// been seen on two consecutive layouts).
+class _BaselineSlot {
+  _BaselineSlot(this.text);
+
+  /// The last text this slot was confirmed to actually contain - runs are
+  /// always in THIS string's coordinate space. Only ever updated on
+  /// confirmed growth or a hysteresis-confirmed rewrite adopt - never on a
+  /// transient shrink or an unconfirmed rewrite candidate.
+  String text;
+
+  /// Still-fading runs against [text]'s coordinate space, oldest first.
+  final List<_SlotRun> runs = <_SlotRun>[];
+
+  /// A candidate replacement text seen on the immediately-preceding layout
+  /// that was neither growth nor a transient shrink of [text] - `null` when
+  /// there is no pending rewrite candidate.
+  String? pendingText;
+
+  /// How many CONSECUTIVE layouts [pendingText] has been seen unchanged.
+  /// Adopted once this reaches 2.
+  int pendingCount = 0;
+
+  /// Provisional runs for [pendingText], armed the moment it's FIRST seen
+  /// (not merely once adopted) via the same history-overlap de-duplication
+  /// a brand new slot gets - see [RenderMarkdownFadeMask._collectDims]'s
+  /// doc for why painting must consult these while a candidate is still
+  /// pending, not just [runs]/[text]: [text] is deliberately left untouched
+  /// during the pending window (that's the whole point of the hysteresis),
+  /// but the slot's ACTUAL on-screen text already shows [pendingText] - if
+  /// paint only ever validated against [text], content that shares nothing
+  /// with the old (possibly artifact) [text] would render fully opaque for
+  /// the entire pending window, a real, visible pop. Preserving these
+  /// across repeated identical sightings (rather than re-arming with a
+  /// fresh timestamp) also means the tail of a since-adopted rewrite
+  /// continues the SAME fade a user may already be watching, instead of
+  /// restarting it at adopt time.
+  final List<_SlotRun> pendingRuns = <_SlotRun>[];
+}
+
+/// This layout's `(paragraph, length, indexMap)` for one slot - rebuilt
+/// fresh every [RenderMarkdownFadeMask.performLayout].
 ///
 /// [length] counts characters in the FADE-TRACKING text (every
 /// [_objectReplacementChar] removed), not the paragraph's own raw
@@ -45,10 +79,9 @@ class _ParaCache {
 /// index back to the paragraph's own real local index; `null` means the
 /// identity mapping (no placeholder characters were removed, the common
 /// case).
-class _Slot {
-  _Slot(this.paragraph, this.globalStart, this.length, this.indexMap);
+class _PaintSlot {
+  _PaintSlot(this.paragraph, this.length, this.indexMap);
   final RenderParagraph paragraph;
-  final int globalStart;
   final int length;
   final List<int>? indexMap;
 
@@ -58,8 +91,6 @@ class _Slot {
     final map = indexMap;
     if (map == null) return i;
     if (i < map.length) return map[i];
-    // One past the end: one past the last kept character's real index (or
-    // 0 if every character in this paragraph was a placeholder).
     return map.isEmpty ? 0 : map[map.length - 1] + 1;
   }
 }
@@ -78,81 +109,96 @@ class _Slot {
 /// never re-runs layout - purely a paint-time effect driven by [repaint]
 /// (the same ticker that already drives the caret/plain-text fade).
 ///
-/// **Design (round 3): one global offset space over ALL paragraphs.**
-/// [performLayout] walks every `RenderParagraph` in [child]'s subtree, in
-/// paint order, and concatenates each one's own rendered plain text into
-/// one flat "global text" - the same shape a plain, non-markdown streaming
-/// document would have if it were all one paragraph. Growth is tracked
-/// against THAT concatenation, not against any single paragraph:
+/// **Design (round 5, advisor-directed): per-slot state, no global offset
+/// space.**
 ///
-/// - **Round 1** mapped the reveal engine's own fade runs (source-text
-///   coordinates) onto the rendered paragraph by distance-from-the-end;
-///   wrong whenever markdown syntax made the rendered text a different
-///   length than the source (a `**word**`/link/inline-code/image tail),
-///   which mis-dimmed already-settled text.
-/// - **Round 2** switched to tracking the LAST paragraph's own rendered
-///   growth directly, resetting to empty on every paragraph-identity
-///   change. Two problems: `gpt_markdown` recreates a paragraph for every
-///   new list item/table cell/code line/quote (so most content popped in
-///   unfaded instead of fading), AND it turns out to recreate even a
-///   plain, continuously-growing top-level paragraph's `RenderParagraph`
-///   object on many individual rebuilds too - so tracking "the same
-///   paragraph object" is not a reliable growth signal even within a
-///   single, never-block-broken paragraph. The run's range also still
-///   included the caret's own trailing placeholder character, dimming the
-///   caret with every word.
-/// - **Round 3 (this version)** never keys anything off paragraph object
-///   identity for correctness - only for a `toPlainText()` cache (skip
-///   recomputing it for a paragraph whose `InlineSpan` is `identical` to
-///   what was cached; a churned/replaced object just costs a
-///   `toPlainText()` call, never a wrong answer). The GLOBAL concatenated
-///   STRING is compared against the highest-water-mark text ever observed
-///   (not merely the previous layout's - `gpt_markdown` can transiently
-///   WITHHOLD already-shown content again, e.g. a table hiding its body
-///   rows again for a frame while its next row is still incomplete, then
-///   restoring them verbatim), three ways:
-///   - if the new text is SHORTER than the peak, it's a transient
-///     regression, not a rewrite - nothing changes; the content simply
-///     isn't in `_slots` to paint this frame, and resumes as ordinary
-///     growth once it reappears. Judged on length alone (not "and it's
-///     still a literal prefix of the peak"): the filler content shown
-///     during a hiccup like a table's body rows briefly disappearing isn't
-///     always a clean prefix cut of what was there before, so requiring an
-///     exact prefix match missed real cases of this;
-///   - if the new text is at least as long AND starts with the peak, it's
-///     pure growth (the overwhelmingly common case) - the delta is one new
-///     run `[peakLength, newLength)`;
-///   - otherwise (a genuine upstream rewrite - a `**` closing, a link
-///     resolving, a list marker paragraph being replaced outright by its
-///     first word instead of growing into it, or a non-append source
-///     reset) every live run is CLIPPED to end at or before the point
-///     where the text actually diverges, so already-settled text can never
-///     dip - runs only ever exist for content still WITHIN `fadeDuration`
-///     (settled ones are pruned every refresh), so nothing clipped here
-///     could have already reached full opacity. The diverging tail is then
-///     re-armed as a fresh run in this SAME global coordinate space - never
-///     re-derived from source text or another paragraph's space - which
-///     carries none of the cross-space mapping risk the first two rounds'
-///     bugs came from.
+/// Rounds 1-4 (see doc/BENCHMARKS.md's B1-S6 history) all tracked growth
+/// against ONE flat concatenation of every `RenderParagraph`'s rendered
+/// text. That collapsed under four distinct failure modes verify round 5
+/// found (`scratchpad/stm/vb5/`):
 ///
-/// A brand new paragraph (a new list item, cell, code line...) needs no
-/// special case at all under this scheme: its content simply extends the
-/// global text's growing tail exactly like plain prose would (or, when a
-/// placeholder paragraph gets replaced outright rather than grown into,
-/// falls into the rewrite branch above and still gets a fresh run) - either
-/// way it fades in like real content, never popping in fully opaque.
+/// - **(a) Growing list items.** A global peak plus `peak.contains(slotText)`
+///   re-arms a WHOLE list item every time it grows (`'Alpha '` becoming
+///   `'Alpha bravo'`), because the peak string itself keeps changing shape
+///   underneath already-settled content elsewhere in the same peak.
+/// - **(b) Artifact frames become the peak.** A transient render like
+///   `'\n\n\n-'` gets adopted as the new peak, and later real content pops
+///   because it no longer looks like growth relative to that artifact.
+/// - **(c) Repeated content.** Identical text in two places (`'- Yes'`
+///   three times, identical table cells) collapses under a single string
+///   comparison, so one occurrence gets excluded/mis-tracked.
+/// - **(d) A non-strictly-increasing epoch.** Summing a per-engine base with
+///   the engine's own epoch is not monotonic across an engine swap (see
+///   `StreamingText._fadeEpoch`'s doc) - a repeat value fails to clear
+///   cached state at all.
 ///
-/// At paint time, each run's GLOBAL `[start, end)` is mapped back onto the
-/// individual paragraph(s) it actually spans via a binary search over that
-/// layout's `(paragraph, globalStart)` slot list (built fresh every
-/// layout, so it's never stale relative to the current tree).
+/// The redesign tracks each `RenderParagraph`'s SLOT (its ordinal index in
+/// paint order) independently, keyed by `(slot, localStart, localEnd, t0)`
+/// - never a global string. This makes (a)-(c) structural non-issues: a
+/// slot's own text is compared only against ITS OWN previous text, so two
+/// slots with identical content never interact, and a list item's own
+/// growth is tracked exactly like a single growing paragraph would be.
+/// (d) is fixed on the `StreamingText` side (a real monotonic counter).
 ///
-/// **Caret exclusion.** The caret renders as exactly one `WidgetSpan`
-/// (one [_objectReplacementChar] in `toPlainText()`) appended after the
-/// whole document, which can only ever land in the LAST paragraph found
-/// this layout. Its trailing placeholder character(s) are stripped from
-/// that paragraph's contribution BEFORE it enters the global text at all,
-/// so a run's end can never land on the caret's own glyph.
+/// Per slot, each layout classifies the new text against the slot's
+/// baseline:
+///
+/// - **growth** (new text starts with the old, and is longer): adopt the
+///   new text as the baseline and arm `[old.length, new.length)`.
+/// - **identical**: nothing changes.
+/// - **transient shrink** (the old text starts with the new, shorter, one):
+///   the baseline is KEPT as-is and nothing is armed - `gpt_markdown` can
+///   transiently withhold already-shown content again (a table hiding its
+///   body rows for a frame), and the content simply isn't painted (nothing
+///   to dim) until it resumes growing from the retained baseline.
+/// - **rewrite** (neither of the above): the baseline is kept until the
+///   SAME new text is observed on two CONSECUTIVE layouts, then adopted -
+///   this is what makes a single-frame artifact (b) or an in-flight
+///   reflow harmless; only a genuinely stable replacement ever gets
+///   adopted. On adopt: runs over the common prefix of old/new text are
+///   kept (truncated to the prefix boundary, never extended); the
+///   rewritten tail is armed as a fresh run ONLY IF the old text's region
+///   beyond that prefix still had an active (unexpired) run - i.e. it
+///   hadn't fully settled - otherwise the tail is left unarmed (renders
+///   opaque immediately, since it's replacing already-settled content).
+///   Adopting never removes or shrinks a still-active run over the shared
+///   prefix, so it can never LOWER an already-visible glyph's opacity.
+/// - **new slot** (beyond the current baseline count): adopted outright and
+///   its whole text armed as a fresh run - a brand new list item, cell,
+///   code line, or quote needs no special case, it fades in like any other
+///   new content.
+/// - **slot count drop**: extra baseline slots beyond the new, lower count
+///   are RETAINED indefinitely (never discarded by a count change alone -
+///   only an [epoch] change ever clears them). A fixed short hysteresis
+///   (e.g. "two consecutive layouts") was tried first and rejected: a real
+///   `gpt_markdown` table transiently collapsing to just its header while
+///   its next body row is still incomplete measurably outlasts two
+///   layouts (`scratchpad/stm/`'s diagnostic reproduction held a lower
+///   count for four consecutive layouts before the row reappeared) - a
+///   short timeout dropped the hidden rows' baseline/runs regardless, so
+///   they came back as "new" slots and re-faded from scratch, exactly the
+///   double-fade bug this design exists to prevent. Retaining indefinitely
+///   costs nothing bounded content can't already afford (a document's
+///   paragraph count is bounded, and [epoch] clears everything on a
+///   genuinely new document anyway) and this is the side that can never
+///   cause a visible flash: a retained-but-currently-absent slot simply
+///   isn't painted (there is no current paragraph for it) until its exact
+///   content reappears at the same ordinal position, at which point it is
+///   the ordinary "identical"/"growth" case, not a new slot.
+///
+/// **Paint-time validity.** A run is only ever painted against the SLOT'S
+/// CURRENT rendered text (which may differ from the run's own baseline
+/// text during a transient shrink or an unconfirmed rewrite candidate): if
+/// the current text doesn't contain the exact same characters the run
+/// covers at the same positions, the run is dropped for this frame. A
+/// dropped run may only ever make its range appear OPAQUE (paint nothing,
+/// i.e. full alpha) - it can never paint alpha 0, so a mismatch can at
+/// worst pop a few characters in early, never blank out settled text.
+///
+/// **Caret exclusion.** The caret renders as exactly one `WidgetSpan` (one
+/// [_objectReplacementChar] in `toPlainText()`), stripped out of every
+/// slot's fade-tracking text before any comparison happens, so a run's
+/// range can never land on the caret's own glyph.
 ///
 /// **Compositing.** See [paint]'s doc for why this goes through a retained
 /// [ColorFilterLayer] rather than a raw `canvas.saveLayer` bracket.
@@ -183,7 +229,7 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
 
   /// A monotonically-increasing "this is a genuinely new document" signal
   /// (see `StreamingText._fadeEpoch`'s doc). A change from the previously
-  /// seen value drops every cached offset/run - never tries to diff the new
+  /// seen value drops every cached slot/run - never tries to diff the new
   /// text against stale state.
   final int epoch;
 
@@ -282,15 +328,17 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
 
   int _epoch;
 
-  /// See [MarkdownFadeMask.epoch]. A change drops every cached offset/run
+  /// See [MarkdownFadeMask.epoch]. A change drops every cached slot/run
   /// immediately (not deferred to the next layout) - see the class doc.
   set epoch(int value) {
     if (_epoch == value) return;
     _epoch = value;
     _paraCache.clear();
-    _slots = <_Slot>[];
-    _peakGlobalText = '';
-    _runs.clear();
+    _paintSlots = <_PaintSlot>[];
+    _currentTexts = <String>[];
+    _baseline.clear();
+    _orphanPool.clear();
+    _lastCommittedPaintText.clear();
     markNeedsPaint();
   }
 
@@ -308,25 +356,22 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
   final Map<RenderParagraph, _ParaCache> _paraCache =
       <RenderParagraph, _ParaCache>{};
 
-  /// This layout's `(paragraph, globalStart, length)` slots, in paint
-  /// order - rebuilt fresh every [performLayout].
-  List<_Slot> _slots = <_Slot>[];
+  /// This layout's paint-time slots, in paint order (index == slot ordinal)
+  /// - rebuilt fresh every [performLayout].
+  List<_PaintSlot> _paintSlots = <_PaintSlot>[];
 
-  /// The LONGEST global concatenation (in paint order, every paragraph's
-  /// own rendered text, EXCLUDING the last paragraph's trailing caret
-  /// placeholder(s)) ever observed, not merely last layout's. `mend()`/
-  /// `gpt_markdown` can transiently WITHHOLD already-shown content again
-  /// (e.g. a table hides its body rows again for a frame or two while its
-  /// next row is still incomplete, before re-showing all of them at once) -
-  /// comparing only against the immediately-previous layout would treat
-  /// that "comes back verbatim" text as brand new growth and re-fade
-  /// already-settled words. See [_refresh] for the three-way growth/
-  /// temporary-regression/genuine-divergence split this enables.
-  String _peakGlobalText = '';
+  /// This layout's fade-tracking text per slot (index == slot ordinal) -
+  /// may differ from the matching [_baseline] entry's `text` during a
+  /// transient shrink or an unconfirmed rewrite candidate. Used only for
+  /// paint-time run validity checks.
+  List<String> _currentTexts = <String>[];
 
-  /// Still-fading runs, in [_peakGlobalText]'s coordinate space, oldest
-  /// first.
-  final List<_GlobalRun> _runs = <_GlobalRun>[];
+  /// Persisted per-slot state (baseline text, runs, rewrite hysteresis),
+  /// indexed by slot ordinal. Can be LONGER than [_paintSlots] whenever the
+  /// document currently renders fewer paragraphs than it has at its peak -
+  /// see the class doc's "slot count drop" bullet for why these are never
+  /// proactively discarded by a count change alone.
+  final List<_BaselineSlot> _baseline = <_BaselineSlot>[];
 
   /// Retains the `ColorFilterLayer` [paint] pushes across frames, per the
   /// advisor directive - a fresh `ColorFilterLayer` every single frame
@@ -361,10 +406,10 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
   }
 
   /// Walks every `RenderParagraph` in [child]'s subtree (in paint order),
-  /// rebuilds [_slots], and updates [_peakGlobalText]/[_runs]. Only ever run
-  /// from [performLayout] - i.e. only when [child]'s actual content/shape
-  /// changed - never from a ticker-only [paint] pass, so a pure fade-
-  /// settling frame never re-walks the render tree.
+  /// rebuilds [_paintSlots]/[_currentTexts], and updates [_baseline]. Only
+  /// ever run from [performLayout] - i.e. only when [child]'s actual
+  /// content/shape changed - never from a ticker-only [paint] pass, so a
+  /// pure fade-settling frame never re-walks the render tree.
   void _refresh() {
     final c = child;
     final found = <RenderParagraph>[];
@@ -382,10 +427,9 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
       _paraCache.removeWhere((k, _) => !keep.contains(k));
     }
 
-    final buffer = StringBuffer();
-    final slots = <_Slot>[];
-    for (var i = 0; i < found.length; i++) {
-      final para = found[i];
+    final paintSlots = <_PaintSlot>[];
+    final currentTexts = <String>[];
+    for (final para in found) {
       final span = para.text;
       final cached = _paraCache[para];
       String text;
@@ -397,10 +441,7 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
       }
 
       // Strip every object-replacement character (the caret, or any other
-      // inline `WidgetSpan`) out of the fade-tracking text entirely - see
-      // `_objectReplacementChar`'s doc for why this can't be limited to
-      // "trailing, in the last paragraph only" the way an earlier version
-      // of this file did.
+      // inline `WidgetSpan`) out of the fade-tracking text entirely.
       String fadeText;
       List<int>? indexMap;
       if (!text.contains(String.fromCharCode(_objectReplacementChar))) {
@@ -419,245 +460,414 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
         indexMap = map;
       }
 
-      slots.add(_Slot(para, buffer.length, fadeText.length, indexMap));
-      buffer.write(fadeText);
+      paintSlots.add(_PaintSlot(para, fadeText.length, indexMap));
+      currentTexts.add(fadeText);
     }
-    _slots = slots;
-    final newGlobalText = buffer.toString();
 
-    final peak = _peakGlobalText;
-    if (newGlobalText.length < peak.length) {
-      // A TEMPORARY regression: the currently-rendered text is shorter
-      // than the highest-water mark already reached (e.g. a table's body
-      // rows briefly disappearing - sometimes replaced by unrelated filler
-      // content, not simply truncated - while its next row is still
-      // incomplete, then reappearing once it resolves). Deliberately not
-      // limited to "and it's still a literal prefix of the peak": the
-      // filler gpt_markdown shows during a transient hiccup like this
-      // isn't necessarily a clean prefix cut, so checking length ALONE is
-      // what actually catches it. Leave every run and `_peakGlobalText`
-      // untouched either way - content not currently present simply won't
-      // be found in `_slots` this frame (nothing to paint); once the real
-      // content comes back it will again start with `peak` (unless it's
-      // GENUINELY a shorter, different, intentionally-reset document, in
-      // which case the next real growth/divergence resolves it correctly
-      // anyway - see the non-prefix-reset case in the `else` branch) and
-      // resume as ordinary growth from exactly where it left off, so
-      // nothing already faded in gets treated as new.
-    } else if (newGlobalText.startsWith(peak)) {
-      // Pure growth relative to the highest-water mark ever seen - the
-      // overwhelmingly common case.
-      final growth = newGlobalText.length - peak.length;
-      if (growth > 0) {
-        _runs.add(_GlobalRun(peak.length, newGlobalText.length, now()));
+    final n = currentTexts.length;
+    final nowValue = now();
+
+    // A lower slot count than `_baseline.length` is deliberately NEVER
+    // treated as a permanent removal here - see the class doc's "slot count
+    // drop" bullet. The extra baseline entries are simply left untouched
+    // (not iterated below, since the loop only covers `0..n-1`); they carry
+    // no per-frame cost and only ever matter again if their exact content
+    // reappears at the same ordinal position.
+
+    // Departures discovered WITHIN this single `_refresh` call (a slot's
+    // baseline changing to something that isn't a growth of its old text -
+    // see the PASS 1 loop below) - searched by `_overlapWithHistory` IN
+    // ADDITION TO the persistent, paint-committed `_orphanPool`, and
+    // discarded at the end of this method either way (never merged into
+    // `_orphanPool` itself).
+    //
+    // This closes a real ordering race `_orphanPool` alone can't: slots are
+    // processed by ordinal index, and `_orphanPool` only gains a new entry
+    // once `_commitPaintedTexts` runs at the NEXT paint - so when slot 0
+    // vacates `'Alpha bravo'` (adopting an artifact instead) and slot 1,
+    // in this SAME pass, is trying to adopt that exact `'Alpha bravo'`
+    // text apparently relocating from slot 0, `_orphanPool` alone hasn't
+    // caught up yet and slot 1 would arm a fully fresh (wrong) fade for
+    // content already on screen. The dependency can point EITHER way
+    // between two slots in the same layout (verified directly: the
+    // opposite direction - a LOWER-indexed slot needing a HIGHER-indexed
+    // slot's departure - is exactly as common, e.g. slot 0 reclaiming
+    // `'Alpha bravo'` from slot 1 in the same layout that slot 1 itself
+    // moves on to `'Charlie '`), so a SINGLE index-order pass can't collect
+    // a departure before an earlier slot needs it. `_refresh` is therefore
+    // split into two passes over `0..n-1`:
+    // - PASS 1 classifies every slot (growth/identical/shrink/rewrite-
+    //   candidate), applies anything that doesn't need overlap info
+    //   (growth, identical, shrink) immediately, and for a rewrite
+    //   candidate records its departure into `frameDepartures` right away
+    //   and stashes the slot's index for pass 2 - so by the time PASS 2
+    //   starts, EVERY slot's departure this layout is already known,
+    //   regardless of which index it came from.
+    // - PASS 2 handles everything that needed overlap info (a brand new
+    //   slot's arm, and a rewrite candidate's first-sighting `pendingRuns`
+    //   / an already-pending candidate's adoption), now that
+    //   `frameDepartures` is complete.
+    //
+    // Verified directly against `markdown_fade_verify4_test.dart`'s
+    // bulleted/nested-list `caret=true` cases, which failed consistently
+    // in isolation (not merely under full-suite timing noise) before this
+    // fix, with a real one-frame dip visible in the pixel trace.
+    final frameDepartures = <String>[];
+    final rewriteIndices = <int>[];
+
+    // PASS 1.
+    for (var i = 0; i < n; i++) {
+      if (i >= _baseline.length) continue; // a brand new slot - PASS 2.
+
+      final bs = _baseline[i];
+      final newText = currentTexts[i];
+      // Prune runs that can no longer be active BEFORE diffing, so a
+      // rewrite's "was the old region still fading" check below only ever
+      // sees genuinely still-active runs, never a stale one that merely
+      // hasn't been swept yet.
+      bs.runs.removeWhere((r) => nowValue - r.revealedAt >= fadeDuration);
+      bs.pendingRuns.removeWhere(
+        (r) => nowValue - r.revealedAt >= fadeDuration,
+      );
+
+      final oldText = bs.text;
+      if (newText == oldText) {
+        bs.pendingText = null;
+        bs.pendingCount = 0;
+        bs.pendingRuns.clear();
+        continue;
       }
-      _peakGlobalText = newGlobalText;
-    } else {
-      // A genuine reflow: `newGlobalText` is at least as long as `peak` but
-      // ISN'T a plain append (a `**` closing, a link resolving, `mend()`
-      // releasing a withheld tail into different content, or `gpt_markdown`
-      // transiently re-rendering an entire list/table as one placeholder
-      // paragraph before restoring it - verify round 4's flash bug: that
-      // placeholder text is neither shorter than `peak` nor a prefix of it,
-      // so naively re-arming everything past a bare common-PREFIX point
-      // re-faded every already-settled list item on both the hiccup and the
-      // restoration, 3-5 times each).
-      //
-      // First, the cheapest and most exact case: `peak` (unmodified,
-      // contiguous) simply RELOCATED - something was inserted before and/or
-      // after it, e.g. a lone marker/placeholder paragraph "Alpha " getting
-      // prefixed by a transient "\n\n" artifact before the rest of that
-      // list item streams in. Every existing run shifts by exactly how far
-      // `peak` moved (still the same characters, just further along); only
-      // the genuinely new edges around it get a fresh run. This is checked
-      // before the prefix/suffix split below because that split requires a
-      // non-empty match at BOTH ends to recognize an insertion - it can't
-      // see a relocation where the common material sits at neither end of
-      // `newGlobalText`.
-      final peakPos = peak.isEmpty ? -1 : newGlobalText.indexOf(peak);
-      if (peakPos != -1) {
-        if (peakPos > 0) {
-          for (final run in _runs) {
-            run.start += peakPos;
-            run.end += peakPos;
-          }
-          // The material BEFORE the relocated `peak` is deliberately never
-          // armed as a fresh run, even though it's technically "new
-          // characters" - it's exactly as likely to be a transient artifact
-          // (stray newlines/markers gpt_markdown shows before the real
-          // content of a list item resolves) as real content, and unlike
-          // the material after `peak` there is no later growth check that
-          // would ever re-validate it: if the artifact disappears on a
-          // LATER frame (peak still frozen, so this same branch never
-          // revisits it), a run created here would keep dimming whatever
-          // now occupies those global positions - verified directly: this
-          // is what made an unrelated, already-progressing word visibly
-          // dip after a list item's leading marker artifact came and went.
-        }
-        // The material AFTER the relocated `peak`, in contrast, IS armed:
-        // it's the tail of the document, exactly where genuinely new
-        // content actually streams in, and if it turns out to have been an
-        // artifact too, the next real growth step's `startsWith(peak)`
-        // check (using the still-frozen, reliable `peak`) simply adds
-        // another run for whatever the tail turns out to really be -
-        // nothing here depends on this guess having been correct.
-        final afterStart = peakPos + peak.length;
-        if (newGlobalText.length > afterStart) {
-          _runs.add(_GlobalRun(afterStart, newGlobalText.length, now()));
-        }
-        // `_peakGlobalText` deliberately NOT updated here (see the class
-        // doc's "peak only ever advances on confirmed growth" invariant) -
-        // `newGlobalText` may itself be a transient artifact, and adopting
-        // it as the trusted baseline would make the NEXT frame's comparison
-        // fail once the artifact clears, re-arming the very content this
-        // branch just correctly preserved. Comparing against the same
-        // reliable `peak` again next frame converges once the real
-        // structure settles into a clean superset of it.
-        _refreshFinish();
-        return;
+      if (newText.length > oldText.length && newText.startsWith(oldText)) {
+        // Pure growth - the overwhelmingly common case.
+        bs.runs.add(_SlotRun(oldText.length, newText.length, nowValue));
+        bs.text = newText;
+        bs.pendingText = null;
+        bs.pendingCount = 0;
+        bs.pendingRuns.clear();
+        continue;
+      }
+      if (newText.length < oldText.length && oldText.startsWith(newText)) {
+        // Transient shrink - `gpt_markdown`/`mend()` withheld already-shown
+        // content again. Keep the baseline untouched; nothing to arm since
+        // the withheld content simply isn't in `currentTexts` to paint this
+        // frame. Resumes as ordinary growth once it reappears.
+        bs.pendingText = null;
+        bs.pendingCount = 0;
+        bs.pendingRuns.clear();
+        continue;
       }
 
-      // Otherwise, diff on the common PREFIX *and* common SUFFIX (bounded
-      // so they can't overlap within `peak`): the next most common reflow
-      // shape is "something got INSERTED in the middle" of `peak` itself
-      // (`peak` unchanged before and after the insertion point, only the
-      // gap between is new). `unexplained` is how much of `peak` ISN'T
-      // accounted for by that split.
-      final prefixLen = _commonPrefixLength(peak, newGlobalText);
-      final maxSuffix =
-          (peak.length - prefixLen) < (newGlobalText.length - prefixLen)
-              ? peak.length - prefixLen
-              : newGlobalText.length - prefixLen;
-      final suffixLen = _commonSuffixLength(peak, newGlobalText, maxSuffix);
-      final unexplained = peak.length - prefixLen - suffixLen;
+      // A rewrite candidate: neither growth nor a transient shrink of the
+      // baseline. This slot's rendered text has, as of THIS layout,
+      // genuinely departed from `oldText` (whether or not the hysteresis
+      // ever adopts a stable replacement) - record that immediately so
+      // EVERY slot in PASS 2 (regardless of index) can see it.
+      if (oldText.isNotEmpty) frameDepartures.add(oldText);
 
-      if (unexplained <= 0) {
-        // A clean insertion: `peak == newGlobalText[0:prefixLen] +
-        // newGlobalText[newGlobalText.length-suffixLen:]` with a brand new
-        // gap in between. Nothing in `peak` moved out of that shape, so:
-        //  - a run entirely before the insertion point is untouched;
-        //  - a run entirely at/after the (new) suffix start just SHIFTS
-        //    forward by exactly how much the document grew - the same
-        //    characters, now further along;
-        //  - a run straddling the inserted gap can't be described that
-        //    simply; per the "prefer no fade over a flash" directive it's
-        //    dropped rather than guessed at (it was in-flight, never
-        //    already-settled, so dropping it can't cause a flash - at
-        //    worst a few characters stop fading early).
-        final growth = newGlobalText.length - peak.length;
-        final suffixStartInPeak = peak.length - suffixLen;
-        for (final run in _runs) {
-          if (run.end <= prefixLen) {
-            continue;
-          } else if (run.start >= suffixStartInPeak) {
-            run.start += growth;
-            run.end += growth;
-          } else {
-            run.end = run.start;
-          }
-        }
-        _runs.removeWhere((r) => r.end <= r.start);
-
-        final middleStart = prefixLen;
-        final middleEnd = newGlobalText.length - suffixLen;
-        if (middleEnd > middleStart) {
-          _runs.add(_GlobalRun(middleStart, middleEnd, now()));
-        }
+      if (bs.pendingText == newText) {
+        bs.pendingCount += 1;
       } else {
-        // Neither a clean insertion nor a whole-peak relocation - `peak`
-        // isn't fully (or almost fully) explained by a prefix+suffix split.
-        // Every existing run past the confirmed common prefix is discarded
-        // rather than guessed at: `_slots`/global offsets are rebuilt fresh
-        // from the CURRENT tree every layout, so a stale run's numeric
-        // range - computed against a DIFFERENT structure - could now
-        // overlap anything once paragraphs have been reshuffled, including
-        // content that has nothing to do with what that run originally
-        // described (verified directly: leaving runs untouched here made
-        // an unrelated already-fading word visibly dip, because the run's
-        // old numbers landed on it purely by coincidence after a reflow).
-        // A discarded IN-FLIGHT run just pops that word to full opacity a
-        // little early - never a flash of already-settled text, since
-        // settled text has no active run to discard in the first place.
-        for (final run in _runs) {
-          if (run.end > prefixLen) run.end = prefixLen;
-        }
-        _runs.removeWhere((r) => r.end <= r.start);
-
-        // Arm a fresh run ONLY for whatever lies beyond both the confirmed
-        // common prefix AND the previous peak's own length - i.e. content
-        // that is unambiguously new (the document is longer than it has
-        // ever been), not a guess about content that merely looks
-        // different right now. This is what keeps a transient artifact
-        // (verify round 4's list/table flash) from ever re-fading
-        // already-settled text: that text sits within the old peak's
-        // length, never in the "unambiguously new" range armed below.
-        //
-        // `peak.length` is only a reliable BOUNDARY when nothing before it
-        // changed length - if the reflow itself inserted or removed
-        // characters ahead of this point (e.g. an extra artifact newline),
-        // everything from here on shifts, and `peak.length` can land mid-
-        // PARAGRAPH in `newGlobalText` instead of exactly at a paragraph's
-        // own boundary. Several blanket rules were tried and rejected here:
-        // leaving it as a raw character offset dimmed one trailing
-        // character of an already-settled word (a small but real,
-        // measurable dip); ALWAYS snapping forward to the next paragraph
-        // excluded an entire genuinely-new cell/list-item whenever the
-        // boundary happened to land just a couple of characters inside THAT
-        // paragraph rather than a stale one before it (a pop); ALWAYS
-        // snapping backward to the paragraph's start re-armed (and so
-        // re-faded) a paragraph that was actually mostly old (the opposite
-        // bug); a 50/50 "how much of the slot's LENGTH did the old peak
-        // overlap" fraction is just as easily thrown off by a shift as a
-        // raw offset is, and picked the wrong side outright on a borderline
-        // case. What's actually reliable: whether the old peak contains
-        // this exact paragraph's CURRENT text anywhere at all (a plain
-        // substring search, ignoring position).
-        var armFrom = prefixLen > peak.length ? prefixLen : peak.length;
-        for (final slot in slots) {
-          final slotEnd = slot.globalStart + slot.length;
-          if (armFrom > slot.globalStart && armFrom < slotEnd) {
-            // Does the OLD peak actually contain this slot's own CURRENT
-            // text anywhere (not necessarily at the same position - just a
-            // plain substring search)? If so, this exact paragraph content
-            // already existed and has simply been given a new (possibly
-            // shifted) position by the reflow - snap FORWARD, past it
-            // entirely, so none of it gets re-armed. If the old peak never
-            // contained this text at all, the paragraph is genuinely new -
-            // snap BACKWARD to its start so the whole thing gets faded
-            // instead of popping in unfaded. A fixed 50/50 fraction of "how
-            // much of the slot's LENGTH the old peak's length overlapped"
-            // was tried first and rejected: it's just as easily thrown off
-            // by a shift as a raw character offset is, and a borderline
-            // case (a slot barely past 50% by sheer coincidence) picked the
-            // wrong side outright.
-            final slotText = newGlobalText.substring(slot.globalStart, slotEnd);
-            armFrom = peak.contains(slotText) ? slotEnd : slot.globalStart;
-            break;
-          }
-          if (armFrom <= slot.globalStart) break;
-        }
-        if (newGlobalText.length > armFrom) {
-          _runs.add(_GlobalRun(armFrom, newGlobalText.length, now()));
-        }
+        bs.pendingText = newText;
+        bs.pendingCount = 1;
+        bs.pendingRuns.clear();
       }
-      // `peak` still advances even out of a reflow - once the real
-      // structure resolves, comparing against the now-longer `peak` again
-      // next frame is what lets a LATER, genuinely different artifact (not
-      // simply the same one recurring) still be judged correctly, and
-      // `_slots`/`_collectDims` only ever look at CURRENT paragraphs, so an
-      // out-of-date `peak` string never leaks into what's actually painted.
-      _peakGlobalText = newGlobalText;
+      rewriteIndices.add(i);
     }
 
-    _refreshFinish();
+    // PASS 2 - `frameDepartures` is now complete for this layout.
+    for (var i = 0; i < n; i++) {
+      if (i < _baseline.length) continue;
+      final newText = currentTexts[i];
+      // A brand new slot (a new list item, cell, code line, quote...).
+      //
+      // Real `gpt_markdown` streaming can insert a transient artifact
+      // paragraph BEFORE genuinely continuing content, which momentarily
+      // shoves that content's ordinal index forward WHILE it also grows
+      // (e.g. slot 0 was growing `'Alpha '`; the next layout transiently
+      // renders an artifact at slot 0 and the grown `'Alpha bravo'` at a
+      // brand new slot 1, before slot 0 reclaims `'Alpha bravo'` on a
+      // LATER layout once the artifact clears) - verify round 5's
+      // diagnostic reproduction (`scratchpad/stm/`) confirmed this exact
+      // shape for list items with a caret. Treating slot 1 as
+      // unconditionally, fully brand new would re-arm `'Alpha'` from
+      // scratch even though it was already on screen.
+      //
+      // An earlier version of this fix tried to INHERIT slot 0's actual
+      // runs into the new slot outright (treating it as a confirmed
+      // relocation) - rejected once tested against this exact case: the
+      // "relocation" often turns out to be a transient DUPLICATE, not a
+      // real move (slot 0 itself reclaims the same text on the very next
+      // layout via ordinary growth), leaving TWO independent baseline
+      // entries tracking the same content under different indices. The
+      // newer entry then goes stale the moment slot 0 wins the content
+      // back, and the next genuinely different content landing at that
+      // stale index reads as a mismatched, invalid run - which paints
+      // OPAQUE (a pop), not merely a dip.
+      //
+      // The safe fix that carries none of that duplicate-state risk: scan
+      // EVERY text this mask has ever confirmed committed (any slot, at
+      // any point in this document's history - not just the CURRENT
+      // baseline, which real `gpt_markdown` streaming can transiently
+      // clear from every slot at once mid-shuffle, e.g. while a THIRD
+      // list item's own artifact briefly displaces `'Alpha bravo'`
+      // entirely, out of every slot simultaneously) for the LONGEST
+      // committed text that is a prefix of this new slot's text. That
+      // much of the new text has unambiguously already been shown before
+      // - leave it unarmed (paints opaque immediately, never a fresh
+      // low-alpha restart), and only arm the genuinely new suffix beyond
+      // it.
+      final overlap = _overlapWithHistory(
+        newText,
+        frameDepartures,
+        i > 0 ? _baseline[i - 1].text : null,
+      );
+      final bs = _BaselineSlot(newText);
+      if (newText.length > overlap) {
+        bs.runs.add(_SlotRun(overlap, newText.length, nowValue));
+      }
+      _baseline.add(bs);
+    }
+
+    for (final i in rewriteIndices) {
+      final bs = _baseline[i];
+      final newText = currentTexts[i];
+      // Only ADOPTED (see [_adoptRewrite]) once the SAME candidate has been
+      // observed on two CONSECUTIVE layouts - a single-frame artifact never
+      // survives long enough to be adopted at all. Provisional runs are
+      // armed the moment the candidate is FIRST seen (via
+      // [_overlapWithHistory], exactly like a brand new slot) so paint has
+      // something better than "everything is invalid, snap opaque" to show
+      // for the whole pending window - see [_BaselineSlot.pendingRuns]'s
+      // doc. `bs.pendingCount == 1` here means PASS 1 just set this
+      // candidate for the first time this call.
+      if (bs.pendingCount == 1) {
+        final overlap = _overlapWithHistory(
+          newText,
+          frameDepartures,
+          i > 0 ? _baseline[i - 1].text : null,
+        );
+        if (newText.length > overlap) {
+          bs.pendingRuns.add(_SlotRun(overlap, newText.length, nowValue));
+        }
+      }
+      if (bs.pendingCount >= 2) {
+        _adoptRewrite(bs, newText);
+      }
+    }
+
+    _paintSlots = paintSlots;
+    _currentTexts = currentTexts;
   }
 
-  /// Prunes runs that can no longer be active, so a long-running stream
-  /// never accumulates an unbounded backlog of settled runs. Shared by
-  /// every branch of [_refresh].
-  void _refreshFinish() {
-    final nowValue = now();
-    _runs.removeWhere((r) => nowValue - r.revealedAt >= fadeDuration);
+  /// Adopts [newText] as slot [bs]'s new baseline, having been confirmed
+  /// stable for two consecutive layouts. Keeps every run over the common
+  /// prefix (truncated, never extended - so this can never LOWER an
+  /// already-visible glyph's opacity), and promotes
+  /// [_BaselineSlot.pendingRuns] - armed when the candidate was FIRST seen,
+  /// via [_overlapWithHistory] at that time (see that field's doc) - into
+  /// [_BaselineSlot.runs], preserving their original `revealedAt` so the
+  /// tail continues whatever fade a user may already have been watching
+  /// during the pending window instead of restarting it here.
+  ///
+  /// An earlier version of this gated the whole tail on whether [bs]'s OWN
+  /// run list still had anything active beyond the common prefix
+  /// (`wasTailFading`) - as a proxy for "is this replacing settled content,
+  /// in which case don't fade the replacement either". Rejected once
+  /// tested: [bs]'s own runs can be empty for reasons that have NOTHING to
+  /// do with whether the NEW text was ever shown before - e.g. this exact
+  /// slot's PREVIOUS content was itself de-duplicated against history a
+  /// moment ago (so it has no runs of its own), even though the text now
+  /// replacing it (e.g. the next list item's real content) has never been
+  /// on screen. Gating on the old slot's own fading state made that
+  /// genuinely brand new content pop in fully opaque. [pendingRuns] is the
+  /// right signal instead: it was computed from [newText] itself against
+  /// the FULL history, so it already says "already shown" or "never shown"
+  /// correctly regardless of what [bs] itself was doing before.
+  void _adoptRewrite(_BaselineSlot bs, String newText) {
+    final oldText = bs.text;
+    final prefixLen = _commonPrefixLength(oldText, newText);
+
+    for (final run in bs.runs) {
+      if (run.end > prefixLen) run.end = prefixLen;
+    }
+    bs.runs.removeWhere((r) => r.end <= r.start);
+
+    for (final r in bs.pendingRuns) {
+      final start = r.start < prefixLen ? prefixLen : r.start;
+      if (r.end > start) {
+        bs.runs.add(_SlotRun(start, r.end, r.revealedAt));
+      }
+    }
+    bs.pendingRuns.clear();
+
+    bs.text = newText;
+    bs.pendingText = null;
+    bs.pendingCount = 0;
+  }
+
+  /// Every text this mask has ever actually PAINTED for some slot (see
+  /// [_commitPaintedTexts]) since the last [epoch] change - see
+  /// [_overlapWithHistory]. Deliberately populated at PAINT time, never at
+  /// [_refresh] (layout) time: `gpt_markdown` can run several internal
+  /// rebuild/relayout passes within a single frame, so a slot's content at
+  /// one [_refresh] call can be superseded by another [_refresh] call
+  /// before Flutter ever actually paints a frame - recording eagerly at
+  /// layout time was tried first and rejected because it let a transient,
+  /// NEVER-ONSCREEN duplicate (e.g. a list item's real content momentarily
+  /// also appearing, one frame early, under a brand new slot before its
+  /// real home reclaims it) poison a LATER, genuinely first-ever paint of
+  /// different content that happened to share a prefix, marking it opaque
+  /// despite a user never having seen it. Recording only what
+  /// [_collectDims] (called from [paint]) actually consumed guarantees
+  /// every entry here was truly, at some point, on screen.
+  ///
+  /// This is a POOL OF ORPHANS, not a full paint history - it holds a text
+  /// exactly when some slot stopped displaying it for a reason OTHER than
+  /// growing past it (see [_commitPaintedTexts]), and each entry is
+  /// CONSUMED (removed) the moment [_overlapWithHistory] uses it. A plain
+  /// "was this text ever painted" record (an earlier version of this) was
+  /// rejected on two counts:
+  /// - it can't tell apart a slot's own natural GROWTH (`'Run'` ->
+  ///   `'Run the'` -> `'Run the tests'`) from a genuine departure - every
+  ///   intermediate growth stage got recorded too, so a LATER, genuinely
+  ///   different second `"Run the tests"` list item found a false "already
+  ///   shown" match against the FIRST item's own now-superseded growth
+  ///   stages and popped in opaque despite never having been on screen;
+  /// - a persistent (non-consuming) "committed more times than currently
+  ///   claimed" count was tried next and still double-counted: once a
+  ///   spare was found for one relocation, the same historical entry could
+  ///   still show as "spare" for a SECOND, unrelated event later, because
+  ///   nothing ever reduced the count back down when it got used.
+  final List<String> _orphanPool = <String>[];
+
+  /// The most entries [_orphanPool] is allowed to hold before the oldest
+  /// are dropped - a generous bound so an effectively-unbounded stream
+  /// can't grow this list without limit; ordinary documents (a bounded
+  /// number of paragraphs, each orphaned at most a handful of times) never
+  /// come close to it.
+  static const int _maxOrphanPool = 2048;
+
+  /// The last text actually painted for each slot ordinal (parallel to
+  /// [_baseline]/[_paintSlots]) - lets [_commitPaintedTexts] tell a genuine
+  /// transition (worth possibly orphaning the old value) apart from an
+  /// unchanged repaint.
+  final List<String> _lastCommittedPaintText = <String>[];
+
+  /// Detects every slot whose rendered text genuinely changed since the
+  /// last real paint and, when that change was NOT simple growth (the old
+  /// text is not a prefix of the new one - i.e. the old text is nowhere
+  /// left for this slot to have grown out of), adds the OLD text to
+  /// [_orphanPool] as a candidate for [_overlapWithHistory] to match
+  /// elsewhere. Called once per real [paint] (both the enabled-with-
+  /// active-dims path and the nothing-to-dim path; either way the content
+  /// is truly on screen this frame) - see [_orphanPool]'s doc for why this
+  /// must be paint-time, not layout-time.
+  void _commitPaintedTexts() {
+    final n =
+        _paintSlots.length < _currentTexts.length
+            ? _paintSlots.length
+            : _currentTexts.length;
+    while (_lastCommittedPaintText.length < n) {
+      _lastCommittedPaintText.add('');
+    }
+    for (var i = 0; i < n; i++) {
+      final t = _currentTexts[i];
+      final old = _lastCommittedPaintText[i];
+      if (t != old) {
+        if (old.isNotEmpty && !t.startsWith(old)) {
+          _orphanPool.add(old);
+          if (_orphanPool.length > _maxOrphanPool) {
+            _orphanPool.removeAt(0);
+          }
+        }
+        _lastCommittedPaintText[i] = t;
+      }
+    }
+  }
+
+  /// The length of the longest prefix of [text] that matches (and CONSUMES,
+  /// removing it) an entry in [_orphanPool] OR [frameDepartures] - i.e. text
+  /// some OTHER slot used to display and has since genuinely stopped
+  /// displaying (not merely grown past). That's unambiguously the same
+  /// content having moved to a different slot (`gpt_markdown`'s own
+  /// transient paragraph churn - see the class doc), so it's safe to treat
+  /// as already-shown here too. Consuming the match (rather than leaving it
+  /// in the pool) means a SECOND, later, genuinely-different occurrence of
+  /// the same text - `'- Yes'` three times, identical table cells - can't
+  /// also match the same one-time orphan; it finds the pool empty for that
+  /// text and properly fades on its own.
+  ///
+  /// [frameDepartures] (this SAME `_refresh` call's own local list, never
+  /// [_orphanPool] itself) is searched too, and takes priority when both
+  /// pools contain a match of equal length - it reflects a departure that
+  /// just happened moments ago, in a slot processed earlier in this exact
+  /// pass, which is the freshest possible evidence.
+  int _overlapWithHistory(
+    String text,
+    List<String> frameDepartures,
+    String? adjacentLiveText,
+  ) {
+    // A LIVE check first, never consumed: if the IMMEDIATELY PRECEDING
+    // slot's CURRENT baseline text shares a common prefix with `text`,
+    // that much content is genuinely on screen RIGHT NOW at that other
+    // slot - "new text at slot i shares a prefix with slot i-1, which
+    // hasn't departed at all yet" is a real, common shape (a nested list's
+    // parent item still growing at its own slot while `gpt_markdown`
+    // transiently also renders its already-shown prefix under a brand new
+    // slot immediately after it) - ONLY a live read, so nothing is
+    // removed; the other slot keeps its own independent tracking
+    // untouched.
+    //
+    // Deliberately scoped to ONLY the immediately preceding slot, not every
+    // live baseline entry: checking against the WHOLE baseline was tried
+    // first and rejected - it also matched genuinely repeated but UNRELATED
+    // content (bug (c): a SECOND, later `'- Yes'`/`'- Run the tests'` list
+    // item legitimately shares full text with an EARLIER one that is very
+    // much still live and NOT departing, and both must fade independently).
+    //
+    // Also requires `text` to be a STRICT, shorter prefix of
+    // `adjacentLiveText` (never an exact-length match) - even scoped to
+    // just the adjacent slot, an identical ADJACENT table cell (`'| Yes |
+    // Yes |'` - two distinct cells, genuinely equal length, genuinely
+    // side by side) would otherwise match too. A transient duplicate from
+    // `gpt_markdown`'s own paragraph churn is always a snapshot of the
+    // source paragraph MID-GROWTH - strictly shorter, by construction,
+    // never equal length - which is exactly what distinguishes it from two
+    // independent, equal-length, coincidentally-identical cells.
+    var bestLength = 0;
+    if (adjacentLiveText != null && adjacentLiveText.length > text.length) {
+      final cp = _commonPrefixLength(adjacentLiveText, text);
+      if (cp == text.length) bestLength = cp;
+    }
+    // `>` (strict) from here on: a tie with the live check above is left
+    // as a free, non-consuming live match rather than needlessly consuming
+    // an orphan/departure entry that could still be useful for something
+    // else this same layout.
+    var bestInFrame = false;
+    var bestIndex = -1;
+    for (var i = 0; i < _orphanPool.length; i++) {
+      final t = _orphanPool[i];
+      if (t.length > bestLength && text.startsWith(t)) {
+        bestLength = t.length;
+        bestIndex = i;
+        bestInFrame = false;
+      }
+    }
+    for (var i = 0; i < frameDepartures.length; i++) {
+      final t = frameDepartures[i];
+      if (t.length > bestLength && text.startsWith(t)) {
+        bestLength = t.length;
+        bestIndex = i;
+        bestInFrame = true;
+      }
+    }
+    if (bestIndex == -1) return bestLength;
+    if (bestInFrame) {
+      frameDepartures.removeAt(bestIndex);
+    } else {
+      _orphanPool.removeAt(bestIndex);
+    }
+    return bestLength;
   }
 
   /// Every still-fading run's rect (in THIS render object's local
@@ -668,55 +878,63 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
   List<(Rect rect, double alpha)> debugActiveDims() => _collectDims();
 
   List<(Rect rect, double alpha)> _collectDims() {
-    if (_runs.isEmpty || _slots.isEmpty) return const [];
+    if (_paintSlots.isEmpty || _baseline.isEmpty) return const [];
     final nowValue = now();
     final dims = <(Rect, double)>[];
 
-    for (final run in _runs) {
-      if (run.end <= run.start) continue;
-      final elapsed = nowValue - run.revealedAt;
-      if (elapsed >= fadeDuration) continue;
-      final t =
-          elapsed <= Duration.zero
-              ? 0.0
-              : (fadeDuration <= Duration.zero
-                  ? 1.0
-                  : elapsed.inMicroseconds / fadeDuration.inMicroseconds);
-      final progress = curve.transform(t.clamp(0.0, 1.0)).clamp(0.0, 1.0);
-      if (progress >= 1.0) continue;
+    final n =
+        _paintSlots.length < _baseline.length
+            ? _paintSlots.length
+            : _baseline.length;
+    for (var i = 0; i < n; i++) {
+      final bs = _baseline[i];
+      final slot = _paintSlots[i];
+      final currentText = _currentTexts[i];
 
-      // Binary search for the first slot whose range could contain
-      // `run.start`, then walk forward while still overlapping the run -
-      // a run may straddle more than one paragraph's slot.
-      var lo = 0;
-      var hi = _slots.length - 1;
-      var firstOverlap = _slots.length;
-      while (lo <= hi) {
-        final mid = (lo + hi) >> 1;
-        final slot = _slots[mid];
-        if (slot.globalStart + slot.length > run.start) {
-          firstOverlap = mid;
-          hi = mid - 1;
-        } else {
-          lo = mid + 1;
-        }
+      // While a rewrite candidate is pending (`bs.text` deliberately still
+      // holds the OLD, possibly-artifact text - see `_BaselineSlot.
+      // pendingRuns`'s doc), the slot's CURRENT text already matches
+      // `pendingText`, not `bs.text` - use the matching (text, runs) pair,
+      // never `bs.text`/`bs.runs` against a `currentText` they were never
+      // computed against.
+      final String baselineText;
+      final List<_SlotRun> runs;
+      if (bs.pendingText != null && currentText == bs.pendingText) {
+        baselineText = bs.pendingText!;
+        runs = bs.pendingRuns;
+      } else {
+        baselineText = bs.text;
+        runs = bs.runs;
       }
+      if (runs.isEmpty) continue;
 
-      for (var i = firstOverlap; i < _slots.length; i++) {
-        final slot = _slots[i];
-        if (slot.globalStart >= run.end) break;
-        final localStart = (run.start - slot.globalStart).clamp(0, slot.length);
-        final localEnd = (run.end - slot.globalStart).clamp(0, slot.length);
-        if (localEnd <= localStart) continue;
+      for (final run in runs) {
+        if (run.end <= run.start) continue;
+        final elapsed = nowValue - run.revealedAt;
+        if (elapsed >= fadeDuration) continue;
+        final t =
+            elapsed <= Duration.zero
+                ? 0.0
+                : (fadeDuration <= Duration.zero
+                    ? 1.0
+                    : elapsed.inMicroseconds / fadeDuration.inMicroseconds);
+        final progress = curve.transform(t.clamp(0.0, 1.0)).clamp(0.0, 1.0);
+        if (progress >= 1.0) continue;
+
+        // Paint-time validity: the run only ever describes `baselineText`'s
+        // coordinate space. If the slot's CURRENT text doesn't contain the
+        // exact same characters at the exact same positions the run covers,
+        // drop it entirely for this frame - painting nothing snaps that
+        // range to fully opaque, never to alpha 0.
+        if (!_runValid(baselineText, currentText, run.start, run.end)) {
+          continue;
+        }
 
         final para = slot.paragraph;
         if (!para.attached) continue; // defensive; see `_refresh`'s doc.
 
-        // Translate from fade-tracking-local (placeholder characters
-        // removed) back to the paragraph's own REAL local offsets before
-        // asking it for boxes.
-        final realStart = slot.toRealIndex(localStart);
-        final realEnd = slot.toRealIndex(localEnd);
+        final realStart = slot.toRealIndex(run.start);
+        final realEnd = slot.toRealIndex(run.end);
         if (realEnd <= realStart) continue;
 
         final boxes = para.getBoxesForSelection(
@@ -743,6 +961,12 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
     final c = child;
     if (c == null) return;
 
+    // Every real paint means every current slot's text is genuinely on
+    // screen this frame - record that before anything else so
+    // `_orphanPool` only ever reflects content a user could actually
+    // have seen. See its doc for why this can't happen at layout time.
+    _commitPaintedTexts();
+
     if (!_enabled) {
       _layerHandle.layer = null;
       context.paintChild(c, offset);
@@ -768,9 +992,7 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
     // left unbalanced - and starts a brand new, EMPTY canvas for anything
     // painted afterwards. The subsequent `dstIn` rects would then land on
     // that empty canvas instead of over the child's actual content, so
-    // they silently do nothing: exactly verify round 3's "text after a
-    // table/code block renders 15-21% darker than final" overshoot (the
-    // dim never applied at all).
+    // they silently do nothing.
     //
     // `context.pushLayer` with a real layer (`ColorFilterLayer`, here with
     // an identity/no-op filter) sidesteps this: everything painted while
@@ -806,14 +1028,15 @@ int _commonPrefixLength(String a, String b) {
   return i;
 }
 
-/// The length of the common suffix shared by [a] and [b], never exceeding
-/// [maxLen] (the caller bounds this so a prefix match and a suffix match
-/// can never overlap the same characters of the shorter string).
-int _commonSuffixLength(String a, String b, int maxLen) {
-  var i = 0;
-  while (i < maxLen &&
-      a.codeUnitAt(a.length - 1 - i) == b.codeUnitAt(b.length - 1 - i)) {
-    i++;
+/// Whether [current] contains the exact same characters [baseline] has in
+/// `[start, end)` at that same range - the paint-time validity check that
+/// lets a run be dropped (never lowered to alpha 0) the moment the slot's
+/// actually-rendered text no longer matches what the run was computed
+/// against.
+bool _runValid(String baseline, String current, int start, int end) {
+  if (end > baseline.length || current.length < end) return false;
+  for (var i = start; i < end; i++) {
+    if (current.codeUnitAt(i) != baseline.codeUnitAt(i)) return false;
   }
-  return i;
+  return true;
 }

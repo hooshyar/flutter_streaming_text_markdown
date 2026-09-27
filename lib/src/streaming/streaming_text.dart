@@ -513,12 +513,6 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _createEngineAndScheduler() {
-    // A brand new `RevealEngine` instance is itself a fresh document context
-    // for `MarkdownFadeMask` (its own `epoch` restarts at 0) - bump this
-    // offset so `_fadeEpoch` below still strictly increases across an
-    // engine swap (e.g. `_handleStreamSwap`), not just within one engine's
-    // own lifetime.
-    _fadeEpochBase += 1;
     _engine = RevealEngine(
       policy: _buildPolicy(),
       atomicSpans: widget.latexEnabled ? const AtomicSpanDetector() : null,
@@ -530,11 +524,24 @@ class _StreamingTextState extends State<StreamingText>
       interval: _schedulerInterval(),
       pacer: _buildPacer(),
     );
+    // A brand new `RevealEngine` instance is itself a fresh document context
+    // for `MarkdownFadeMask` - bump the counter directly (see `_fadeEpoch`'s
+    // doc for why this can't be `_fadeEpochBase + _engine.epoch`) and record
+    // the new engine's starting epoch (always 0) as the last value observed,
+    // so the very next `_fadeEpoch` read doesn't mistake "a brand new engine
+    // whose own epoch happens to read 0" for "no change happened".
+    _fadeEpochCounter += 1;
+    _lastEngineEpochSeen = _engine.epoch;
   }
 
-  /// Bumped by one every time [_createEngineAndScheduler] replaces [_engine]
-  /// with a brand new instance. See [_fadeEpoch].
-  int _fadeEpochBase = 0;
+  /// The strictly-increasing counter `_fadeEpoch` reads. Bumped directly by
+  /// [_createEngineAndScheduler] (a brand new engine) and by [_fadeEpoch]
+  /// itself the moment it observes [RevealEngine.epoch] change since the
+  /// last read (the current engine's own non-prefix `setSource`/`reset`).
+  int _fadeEpochCounter = 0;
+
+  /// The value of [RevealEngine.epoch] last observed by [_fadeEpoch].
+  int _lastEngineEpochSeen = 0;
 
   /// A monotonically-increasing signal `MarkdownFadeMask` watches to know
   /// when it must drop everything it has cached about "the document so
@@ -542,7 +549,34 @@ class _StreamingTextState extends State<StreamingText>
   /// current engine's own non-prefix `setSource` (a `text:` param replaced
   /// with unrelated content). See `RevealEngine.epoch`'s doc for why a
   /// rendered-text-only diff can't safely infer this on its own.
-  int get _fadeEpoch => _fadeEpochBase + _engine.epoch;
+  ///
+  /// This is a genuinely monotonic COUNTER, bumped by exactly one per
+  /// observed change - it is deliberately NOT `_fadeEpochBase +
+  /// _engine.epoch` (an earlier version of this getter): that sum is not
+  /// strictly increasing across an engine swap. `RevealEngine.epoch` resets
+  /// to 0 on every new engine, so e.g. base=1 with the old engine having
+  /// reached its own epoch 2 (`_fadeEpoch == 3`) followed by a swap
+  /// (`_fadeEpochBase` becomes 2, the new engine's own epoch starts at 0,
+  /// `_fadeEpoch == 2`) makes the "epoch" the mask observes go 3 -> 2, i.e.
+  /// DECREASE - `MarkdownFadeMask.epoch`'s setter only clears cached state
+  /// on a value CHANGE, not specifically an increase, so this particular
+  /// decrease happened to still clear correctly, but a same-length replay
+  /// (e.g. swap back to a `RevealEngine` state that reproduces the same sum)
+  /// could silently collide with a prior value and fail to clear at all.
+  /// Reading this getter itself detects a same-engine epoch bump (a
+  /// non-prefix `setSource`/`reset` on the CURRENT engine, which doesn't go
+  /// through [_createEngineAndScheduler]) and bumps the counter by exactly
+  /// one right then, so the sequence "text A -> unrelated text B (same
+  /// engine) -> swap to a stream (new engine)" strictly increases:
+  /// 0 -> 1 -> 2, never repeating or decreasing.
+  int get _fadeEpoch {
+    final engineEpoch = _engine.epoch;
+    if (engineEpoch != _lastEngineEpochSeen) {
+      _fadeEpochCounter += 1;
+      _lastEngineEpochSeen = engineEpoch;
+    }
+    return _fadeEpochCounter;
+  }
 
   void _syncEngineConfig() {
     _engine.policy = _buildPolicy();

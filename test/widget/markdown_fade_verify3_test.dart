@@ -479,18 +479,48 @@ void main() {
           ),
         ),
       );
+      // Strengthened (B1-S6 round 5): the old version of this test only
+      // asserted the FINAL sample was `> 0`, which passes trivially even if
+      // the replacement popped in fully opaque instead of fading, or dipped
+      // and recovered by the time the assertion ran. Sample every frame and
+      // require a genuine fade-in (rises monotonically to its own final
+      // darkness, never pops in already-dark) - the same pattern the
+      // sibling "non-prefix setSource never dims settled text" test above
+      // uses for the non-prefix reset case.
+      final samples = <double>[];
       guard = 0;
       while (t.binding.hasScheduledFrame && guard < 400) {
         await _frame(t);
+        final rects = _rectsOf(t, 'Short');
+        if (rects.isNotEmpty) samples.add(_darkOf(await _snap(t), rects));
         guard++;
       }
       await _frame(t);
-      final last = _darkOf(await _snap(t), _rectsOf(t, 'Short'));
+      final finalRects = _rectsOf(t, 'Short');
+      final finalAlpha = _darkOf(await _snap(t), finalRects);
+      samples.add(finalAlpha);
+
       expect(
-        last,
-        greaterThan(0.0),
-        reason: 'the shorter replacement document must actually render',
+        samples,
+        isNotEmpty,
+        reason: 'the shorter replacement document never rendered',
       );
+      expect(
+        samples.first,
+        lessThan(0.8 * finalAlpha),
+        reason:
+            'the shorter replacement must fade in, not pop in already-dark: '
+            '$samples',
+      );
+      for (var i = 1; i < samples.length; i++) {
+        expect(
+          samples[i],
+          greaterThanOrEqualTo(samples[i - 1] - 0.05 * finalAlpha),
+          reason:
+              'the shorter replacement\'s alpha must never dip frame-to-'
+              'frame: $samples',
+        );
+      }
       unawaited(sc.close());
       await t.pumpWidget(const SizedBox());
     });

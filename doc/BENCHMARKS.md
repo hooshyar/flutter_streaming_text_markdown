@@ -637,3 +637,142 @@ all green (1026 tests each run), after the settle-wait fix above.
 
 Benchmarks re-run after this fix: time ratio 0.31x-0.69x (median-of-medians
 ~0.57x), rebuild ratio 1.61x - still comfortably inside the 1.8x/6x budget.
+
+### B1 final-verify round 5 redesign: per-slot state, no global offset space (advisor-directed)
+
+Round 4's one-global-offset-space design (above) still failed final verify.
+The verifier's evidence (`scratchpad/stm/vb5/`) found four independent
+failure modes, all rooted in tracking growth against ONE flat concatenated
+string rather than each paragraph's own identity:
+
+- **(a) Growing list items.** A global peak plus `peak.contains(slotText)`
+  re-arms a WHOLE list item every time it grows (`'Alpha '` becoming
+  `'Alpha bravo'`), because the peak string itself changes shape underneath
+  already-settled content elsewhere in the same peak.
+- **(b) Artifact frames become the peak.** A transient render like
+  `'\n\n\n-'` gets adopted as the trusted peak, and later real content pops
+  because it no longer looks like growth relative to that artifact.
+- **(c) Repeated content.** Identical text in two places (`'- Yes'` three
+  times, identical table cells) collapses under a single string comparison,
+  so one occurrence gets excluded or mis-tracked.
+- **(d) A non-strictly-increasing fade epoch.** `StreamingText._fadeEpoch`
+  summed a per-engine-swap counter with the current engine's own epoch
+  (`_fadeEpochBase + engine.epoch`) - not monotonic across an engine swap,
+  since the new engine's own epoch restarts at 0. The sequence "text A, a
+  non-prefix `setSource` to text B, then a stream swap" could produce the
+  SAME total twice (e.g. 1 -> 1), so `MarkdownFadeMask.epoch`'s setter
+  (which only clears cached state on a value CHANGE) never cleared for the
+  swap at all.
+
+**The redesign** (advisor-directed, `lib/src/render/markdown_fade_mask.dart`):
+per-slot state, keyed by each `RenderParagraph`'s ordinal index in paint
+order - never a global concatenated string.
+
+1. **Slots.** Each layout walks every `RenderParagraph`, strips every
+   caret/`WidgetSpan` placeholder character from its `toPlainText()` (same
+   as round 3-4), and treats its ordinal position as a "slot". A persisted
+   `_BaselineSlot` per slot ordinal holds the committed text its runs are
+   keyed against, its still-fading runs, and rewrite-hysteresis state.
+2. **Per-layout classification**, entirely local to each slot's own history:
+   - **growth** (new text extends the old): adopt, arm `[old.length,
+     new.length)`.
+   - **identical**: nothing.
+   - **transient shrink** (old text extends the new, shorter, one): keep
+     the baseline untouched, arm nothing - the withheld content simply
+     isn't painted this frame.
+   - **rewrite** (neither): held until the SAME candidate is observed on
+     two CONSECUTIVE layouts before adopting (a single-frame artifact never
+     survives long enough) - see "same-frame ordering" below for what
+     paints during that pending window.
+   - **new slot** (beyond the current baseline count): adopted outright,
+     armed via the de-duplication described next.
+   - **slot count drop**: extra baseline slots beyond a lower current count
+     are retained INDEFINITELY, never proactively discarded by a count
+     change alone (only an `epoch` change clears them) - a real
+     `gpt_markdown` table collapsing to just its header while the next row
+     is incomplete was measured to outlast a short "N consecutive layouts"
+     hysteresis, so a fixed timeout was rejected in favor of "never drop,
+     it costs nothing bounded content can't afford".
+3. **De-duplication without a global string (fixes (a)/(b)).** A brand new
+   slot, or a rewrite candidate's first sighting, doesn't automatically get
+   a full fresh fade: `_overlapWithHistory` finds how much of its text was
+   already shown before -
+   - a persistent, PAINT-TIME-committed `_orphanPool` (texts some slot used
+     to display and has since genuinely stopped displaying - populated in
+     `_commitPaintedTexts`, called from `paint`, never from `_refresh`/
+     layout, so a duplicate that never actually reaches the screen within
+     one frame can't poison a later, genuinely-first-ever paint that
+     happens to share a prefix);
+   - `frameDepartures`, this SAME `_refresh` call's own local departures -
+     needed because the dependency between two slots changing in the same
+     layout can point either way (a lower-indexed slot reclaiming text a
+     higher-indexed one is vacating, or the reverse), so `_refresh` runs in
+     two passes: pass 1 classifies every slot and collects every departure;
+     pass 2 (now that departures are complete regardless of index order)
+     resolves every new-slot/first-sighting overlap;
+   - a LIVE check against the immediately PRECEDING slot's current text,
+     for the case where nothing has departed yet at all (a nested list's
+     parent item still growing at its own slot while `gpt_markdown`
+     transiently duplicates its already-shown prefix one slot later) -
+     deliberately scoped to only the adjacent slot (not the whole
+     baseline) and required to be a STRICT, shorter prefix (never an
+     exact-length match), which is exactly what distinguishes a mid-growth
+     duplicate from two independent, equal-length, coincidentally-identical
+     table cells sitting side by side (bug (c)).
+   Every match is CONSUMED (removed) so a later, genuinely different
+   occurrence of the same text can't also claim it (fixes (c) directly).
+4. **Paint-time validity.** A run only ever paints against the slot's
+   CURRENT rendered text; if that text doesn't contain the exact characters
+   the run covers at the exact positions, the run is dropped - painting
+   nothing snaps that range to fully opaque, never to alpha 0. While a
+   rewrite candidate is pending, paint uses the candidate's own provisional
+   `pendingRuns` (armed via the same de-duplication, at first-sighting
+   time) rather than the frozen `bs.text`/`bs.runs`, so the pending window
+   itself never renders as "everything is invalid, snap opaque" for
+   content that should be fading.
+5. **The fade epoch (fixes (d)).** `StreamingText._fadeEpoch` is now a
+   genuinely monotonic counter, bumped by exactly one whenever a brand new
+   `RevealEngine` is created OR the current engine's own epoch is observed
+   to have changed since the last read - never a sum of two independently-
+   resettable values.
+
+**Known, documented gap (not silently dropped):** `caret: true` combined
+with LITERALLY repeated bullet/table text can still show a brief dip.
+Enabling the caret adds an extra transient paragraph shuffle on top of
+already-repeated content, and the de-duplication above can occasionally
+attribute a consumed orphan/live-match to the wrong occurrence in that
+narrower combination. `caret: false` (the more common non-chat-cursor
+markdown path) is unaffected and covered at full strength in
+`test/widget/markdown_fade_verify5_test.dart`.
+
+**New tests** (`test/widget/markdown_fade_verify5_test.dart`): repeated
+content (`'- Yes'` x3, `'- Run the tests'` x2, identical table cells,
+`caret: false`, both `Stream` and growing `text:` paths); a `**bold**`
+closing rewrite mid-paragraph; and the epoch sequence (text A, a non-prefix
+`setSource` to text B, then a stream swap whose first chunk is a strict,
+shorter prefix of text B - chosen so the OLD epoch bug's failure mode, an
+uncleared stale cache treating the new stream as a "temporary regression"
+of the old peak, pops the new content in fully opaque instead of fading).
+Confirmed to FAIL against integration HEAD `6169f95` (checked out into a
+scratch `git worktree add`, then removed) and PASS after the redesign.
+`markdown_fade_verify3_test.dart`'s "shorter than old peak" test was also
+strengthened from a bare `> 0` final-value check to sampling every frame
+and asserting a genuine monotonic fade-in.
+
+The full suite (1035 tests) was run three consecutive times, all green.
+
+Benchmarks re-run after the redesign (`flutter test --no-dds --tags
+benchmark --run-skipped`): the default-caret-on 20k-char stream benchmark
+measured a pooled time ratio of 0.577x (median-of-medians 0.600x across 12
+rounds) and a rebuild ratio of 1.630x - both comfortably inside the 1.8x/6x
+budget, in the same range as every prior round's numbers (this design
+change is paint/layout-classification logic only, no new `Element`s or
+layers). A dedicated isolated microbenchmark of `_refresh`'s own per-layout
+cost (as opposed to the whole frame, which the numbers above already
+include) was not separated out in the time available for this slice; given
+the rebuild-ratio budget held with a 3.7x margin and `_refresh` does a
+single linear walk over the paragraph list plus small, bounded per-slot
+diffs (never anything approaching quadratic in normal documents - the one
+`O(paragraphs)` scan is `_overlapWithHistory`'s orphan-pool search, and the
+pool is capped at `_maxOrphanPool` = 2048 entries), it is not expected to
+be the bottleneck at either 20k or 50k characters.

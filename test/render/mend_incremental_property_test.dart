@@ -257,6 +257,67 @@ Let me know if you'd like a formal quote.
 ''',
 ];
 
+// Round-10 verify blocking item: `_LinkHoldScan`'s "no match"/"trailing `!`"
+// branches used to resume from `s.length`/`s.length - 1` - PAST an earlier,
+// still-open `[`/`![` that has no closing `]` yet. Since neither pattern can
+// match until that `]` arrives, every call while it's still open falls into
+// one of those two branches and keeps bumping the resume point forward with
+// the string, so by the time the closing `]` finally lands, the resume point
+// sits AFTER the `[` that must anchor the match - the incremental scan misses
+// it entirely where a full scan would not. Fixed by resuming from one char
+// before the last `]` already in the string (or 0 with none) instead -
+// see `_LinkHoldScan._lowerBoundBeforeLastClose` in mend.dart.
+const _linkHoldAdversarial = <String>[
+  // The minimal case that actually diverges: a bare (non-`!`) open bracket
+  // whose content spans multiple committed (blank-line-separated) lines
+  // before it closes - long enough, and with committed blank lines inside
+  // the wrongly-unheld span, that a wrong (untruncated) `linkSafeBody` moves
+  // `settledSplitOffset`'s split point and leaks raw `[...]` text into the
+  // "settled" prefix that a correct scan would have held back entirely.
+  'Intro para.\n\n'
+      '[bracket text\n\n'
+      'more stuff\n\n'
+      'final].\n\n'
+      'After paragraph continues typing for a while to move the split '
+      'forward and reveal what happened before it settled down nicely '
+      'here at last so this becomes long enough to matter for the test.',
+  // A lone trailing `!` later followed by both a bare `[x]` and a `![y](`.
+  'Wow! Anyway check out [x] and also ![y](https://a.b/c.png) done with '
+      'this sentence, then a whole extra paragraph follows.\n\n'
+      'Second paragraph keeps going long enough to move the split forward '
+      'and expose anything the first paragraph left unheld.',
+  // Nested brackets: the outer pair's content contains another full
+  // `[...]` pair, which `_closedBracketNoParenYet`'s `[^\[\]]*` cannot see
+  // through, so a naive resume point could sit inside the nesting.
+  'Data [outer [inner] tail] more text after that continues on for a '
+      'while so the paragraph fully commits.\n\n'
+      'Next paragraph long enough to push the split point forward past '
+      'the first one and reveal any leftover raw brackets.',
+  // Brackets that are only ever inside a code span - never real markdown
+  // link syntax at all - interleaved with a real link, exercising the
+  // `_isInsideCodeContext` gate alongside `_LinkHoldScan`.
+  'Use `arr[i][j]` for indexing and later mention [real link](https://'
+      'example.com) for context, then keep writing more sentences here.\n\n'
+      'A second paragraph long enough to commit the first one and check '
+      'nothing about the code span leaked through incorrectly.',
+  // A fence that closes and reopens, with an unresolved bracket sitting in
+  // the plain-text gap between the two fences.
+  '```\ncode one\n```\n\n'
+      'Between fences: [gap bracket still open here for a while) done.\n\n'
+      '```\ncode two\n```\n\n'
+      'Trailing paragraph long enough to move the split forward again.',
+  // `~~~` fences (not just ``` ) around an unresolved bracket.
+  '~~~\ntilde fence content\n~~~\n\n'
+      'After the tilde fence: [another still-open bracket for a while) ok.'
+      '\n\nMore trailing text so the paragraph above fully settles.',
+  // CRLF line endings throughout, including inside the unresolved bracket
+  // span itself.
+  'Line one\r\n\r\n'
+      '[bracket\r\ncontinued\r\n\r\nclosed] tail\r\n\r\n'
+      'More text after crlf blank lines keeps going for a while so this '
+      'becomes long enough to matter for the split point.',
+];
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -291,12 +352,42 @@ void _expectSameForBothModes(
   }
 }
 
+/// Walks [doc] as a realistic single stream would: EVERY prefix call uses
+/// `isComplete: false` (matching real streaming - a caller only ever flips
+/// `isComplete` once, at the very end, not on every chunk) against the SAME
+/// [state], comparing each step against the full-scan `mend()` with no
+/// state at all.
+///
+/// Deliberately NOT built on [_expectSameForBothModes]: that helper probes
+/// `isComplete: true` on the SAME shared `state` at every single step, and
+/// `mend` unconditionally calls `state?.reset()` whenever `isComplete` is
+/// true - so a walk built on it resets `state`'s checkpoints back to empty
+/// after every single prefix, before the next prefix's call ever runs. That
+/// makes every step an effective full re-scan and structurally CANNOT
+/// exercise (or catch a bug in) multi-step resumption - exactly the bug
+/// class `_LinkHoldScan`'s round-10 resume bug belongs to. This helper is
+/// the actual reproduction shape for that class of bug.
+void _expectRealisticAppendOnlyStream(String doc, {required String context}) {
+  final state = MendState();
+  for (var i = 1; i <= doc.length; i++) {
+    final prefix = doc.substring(0, i);
+    final full = mend(prefix, isComplete: false);
+    final incremental = mend(prefix, isComplete: false, state: state);
+    expect(
+      incremental,
+      full,
+      reason: '$context: mismatch at prefix length $i: "$prefix"',
+    );
+  }
+}
+
 void main() {
   final corpus = [
     ..._probe12,
     ..._identityMatrixExtras,
     ..._mendSweep,
     ..._longRealisticAnswers,
+    ..._linkHoldAdversarial,
   ];
 
   group('MendState: in-order prefix walk matches full-scan mend()', () {
@@ -378,5 +469,80 @@ void main() {
     }
     state.reset();
     _expectSameForBothModes(doc, state: state, context: 'post-reset');
+  });
+
+  test('MendState: _LinkHoldScan resume bug - a bare open bracket spanning '
+      'committed blank lines is not missed once it closes (round 10 '
+      'regression)', () {
+    // Minimal reproduction: walking this document char-by-char through a
+    // fresh MendState, using ONLY isComplete:false (the realistic
+    // streaming shape - see `_expectRealisticAppendOnlyStream`'s doc
+    // comment for why this must NOT go through `_expectSameForBothModes`),
+    // used to diverge from the full-scan mend() the instant the closing
+    // `]` landed, because `_LinkHoldScan`'s resume point had already been
+    // bumped past the opening `[` by the intervening no-match calls.
+    const doc = 'Intro para.\n\n[bracket text\n\nmore stuff\n\nfinal].';
+    _expectRealisticAppendOnlyStream(doc, context: 'linkhold-resume-bug');
+  });
+
+  group('MendState: realistic append-only single stream (isComplete:false '
+      'throughout) matches full-scan mend() - the actual reproduction shape '
+      'for multi-step resumption bugs', () {
+    for (var docIndex = 0; docIndex < corpus.length; docIndex++) {
+      final doc = corpus[docIndex];
+      test('document #$docIndex (length ${doc.length})', () {
+        _expectRealisticAppendOnlyStream(
+          doc,
+          context: 'doc #$docIndex realistic-stream',
+        );
+      });
+    }
+  });
+
+  test('MendState: a non-prefix edit specifically inside an unresolved link '
+      'hold falls back correctly', () {
+    final state = MendState();
+    const a = 'See [first draft link text here for a while longer.';
+    const b = 'See [totally different draft text instead for a while.';
+    for (var i = 1; i <= a.length && i <= b.length; i++) {
+      final prefixA = a.substring(0, i);
+      expect(
+        mend(prefixA, isComplete: false, state: state),
+        mend(prefixA, isComplete: false),
+        reason: 'linkhold-edit-fallback a@$i',
+      );
+      final prefixB = b.substring(0, i);
+      expect(
+        mend(prefixB, isComplete: false, state: state),
+        mend(prefixB, isComplete: false),
+        reason: 'linkhold-edit-fallback b@$i',
+      );
+    }
+  });
+
+  test('MendState: reused across two different documents falls back instead '
+      'of leaking link-hold state from one into the other', () {
+    final state = MendState();
+    const docA = 'First document.\n\n[a bracket left open here for a while).';
+    const docB =
+        'Completely different second document.\n\n'
+        '![an image alt left open here](https://example.com/pic.png) '
+        'with more text following it for good measure.';
+    for (var i = 1; i <= docA.length; i++) {
+      mend(docA.substring(0, i), isComplete: false, state: state);
+    }
+    // Switching documents on the SAME state instance without calling
+    // reset() is exactly the "never share across unrelated documents"
+    // misuse MendState's own doc comment warns against - `mend` itself
+    // must still fall back safely (via the shorter-body/non-prefix
+    // check) rather than silently reusing docA's stale checkpoints.
+    for (var i = 1; i <= docB.length; i++) {
+      final prefix = docB.substring(0, i);
+      expect(
+        mend(prefix, isComplete: false, state: state),
+        mend(prefix, isComplete: false),
+        reason: 'cross-doc-reuse-no-reset@$i',
+      );
+    }
   });
 }

@@ -185,11 +185,25 @@ class _LinkHoldScan {
       return s.substring(0, closedPair.start);
     }
     if (s.isNotEmpty && s[s.length - 1] == '!') {
-      _resumeFrom = s.length - 1;
+      _resumeFrom = _lowerBoundBeforeLastClose(s);
       return s.substring(0, s.length - 1);
     }
-    _resumeFrom = s.length;
+    // No match: a future match's `[`/`![` can never sit AFTER the last `]`
+    // already in the string (a `]` can only ever be the final char of either
+    // pattern, and its content class excludes further `[`/`]`), but it CAN
+    // sit before one - e.g. a bare, still-open `[bracket text` that hasn't
+    // hit its closing `]` yet is invisible to every pattern above until that
+    // `]` arrives, so naively resuming from `s.length` would skip straight
+    // over the `[` that later becomes the real match start. Resume from one
+    // char before the last `]` (or 0 if there's none at all) instead - a
+    // safe, never-too-late lower bound either way.
+    _resumeFrom = _lowerBoundBeforeLastClose(s);
     return s;
+  }
+
+  int _lowerBoundBeforeLastClose(String s) {
+    final lastClose = s.lastIndexOf(']');
+    return lastClose <= 0 ? 0 : lastClose - 1;
   }
 
   RegExpMatch? _firstMatchFrom(RegExp re, String s, int start) {

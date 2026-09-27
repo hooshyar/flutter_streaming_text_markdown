@@ -114,4 +114,27 @@ void main() {
       flashDocs['headings']!,
     ),
   );
+
+  // Round-10 regression: a blockquote, chunked (3-raw-chars-per-frame)
+  // stream, caret on. `go()` itself asserts the caret is never left
+  // painted after completion (the final render must pixel-match a bare
+  // `RevealMode.instant` render - see `go()`'s `pixDiff`/`diff` check) -
+  // this pins that specific doc/mode/caret combination in the DEFAULT
+  // suite (not gated behind `fade_matrix`) since it's exactly the shape
+  // that exposed `markdown_fade_invariant_lib.dart`'s `go()` harness race
+  // (a fixed `guard>90` early-stop for `caret==true` could capture a
+  // still-mid-reveal frame - with the caret still legitimately visible -
+  // as "final" under real machine load, instead of waiting
+  // deterministically for `!hasScheduledFrame`). See `go()`'s guard-loop
+  // comment for the full mechanism.
+  testWidgets(
+    'chunk quote c=true (caret never painted after completion)',
+    (t) => go(
+      t,
+      'smoke.flash.quote.chunk.caret=true',
+      flashDocs['quote']!,
+      caret: true,
+      mode: 'chunk',
+    ),
+  );
 }

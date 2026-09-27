@@ -319,14 +319,76 @@ Future<Result> go(
     }
   }
   if (mode != 'chat') unawaited(sc.close());
-  var guard = 0;
-  while (guard < 400) {
+  // Wait for the ACTUAL completion frame deterministically, rather than
+  // assuming any FIXED iteration count is "long enough" in real time.
+  //
+  // Two things this used to get wrong (both found via round-10 verify,
+  // both only reproducing under real concurrent machine load - `frame()`
+  // is real-Stopwatch-paced and `snap()` does real `toImage()` work, see
+  // `frame()`'s own doc, so this whole loop's real-time budget shrinks
+  // relative to wall-clock delay under contention):
+  //
+  // 1. A `caret == true` special case force-stopped at a fixed guard>90,
+  //    on the theory that a pulsing caret keeps `hasScheduledFrame` true
+  //    forever. It doesn't - `_caretVisible` (and `_needsTicking`'s caret
+  //    clause) turns false the instant `_isComplete` flips - but under
+  //    load 90 real-paced iterations was not always enough real time for
+  //    the stream to actually finish revealing first, so the loop could
+  //    stop on a frame where the widget was still genuinely mid-reveal
+  //    with its caret still legitimately visible.
+  // 2. Even without that cap, a SINGLE instantaneous `!hasScheduledFrame`
+  //    reading is not itself a safe "truly done" signal: the reveal is
+  //    driven by `RevealScheduler`'s own real `Timer.periodic` (see
+  //    `lib/src/engine/reveal_scheduler.dart`), entirely independent of
+  //    Flutter's frame scheduling - between two of its ticks,
+  //    `hasScheduledFrame` is legitimately false for a moment even though
+  //    more content/fade-in is still coming once the next tick fires.
+  //    Under light load that gap is short enough that the next `cap()`
+  //    call reliably lands after the next tick; under heavy contention
+  //    (competing processes stealing CPU from this same isolate, which is
+  //    single-threaded - the very `toImage()` calls in `cap()` itself
+  //    delay the scheduler's own timer from firing) that gap can outlast
+  //    a single check, so the guard loop could sample its lone quiet
+  //    instant and wrongly call it final - reproduced under concurrent
+  //    load as a MUCH larger divergence than the caret alone (a genuinely
+  //    still-settling block, not just a leftover caret glyph).
+  //
+  // The fix for both: require `!hasScheduledFrame` to hold continuously
+  // for a minimum stretch of REAL wall-clock time - comfortably wider
+  // than both the scheduler's own 30ms default tick interval and
+  // `fadeInDuration`'s 300ms default - before treating the stream as
+  // settled, instead of trusting one instantaneous sample.
+  //
+  // Measured in real elapsed time (a `Stopwatch`), NOT a fixed iteration
+  // count: a first attempt at this used "N consecutive idle guard-loop
+  // iterations" instead, which measurably helped but was still an
+  // iteration count wearing a debounce's clothes - under genuinely severe
+  // contention a single `cap()` iteration's real wall time can itself
+  // exceed the whole intended debounce window, so counting iterations
+  // still under-waits precisely when contention is worst (confirmed: it
+  // cut this failure's rate but did not eliminate it under concurrent
+  // full-suite load). Requiring a real elapsed DURATION of continuous
+  // idleness is correct regardless of how long any individual iteration
+  // takes. The outer wall-clock ceiling (generous - this file's own
+  // `@Timeout` is 900s) stays as the safety valve against a genuinely
+  // stuck ticker, replacing the old fixed `guard < 400` iteration cap for
+  // the same reason.
+  const requiredIdleDuration = Duration(milliseconds: 600);
+  // Generous - this file's own `@Timeout` is 900s, and every call site
+  // wraps a single `go()` per test - real settling under normal (even
+  // moderately loaded) conditions finishes in well under a second of
+  // this budget; the ceiling only matters as a backstop against a
+  // genuinely stuck ticker.
+  const overallCeiling = Duration(seconds: 300);
+  final overall = Stopwatch()..start();
+  Stopwatch? idleFor;
+  while (overall.elapsed < overallCeiling) {
     await cap();
-    guard++;
-    if (guard > 40 && !t.binding.hasScheduledFrame) break;
-    if (guard > 60 && caret == true) {
-      // caret may keep ticking; stop once settled long enough
-      if (guard > 90) break;
+    if (t.binding.hasScheduledFrame) {
+      idleFor = null;
+    } else {
+      idleFor ??= Stopwatch()..start();
+      if (idleFor.elapsed >= requiredIdleDuration) break;
     }
   }
   final last = frames.last;

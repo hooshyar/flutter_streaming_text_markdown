@@ -120,12 +120,19 @@ double _darkOf(_Snap s, List<Rect> rs) {
 /// One real-time-paced 16ms frame - the fade clock is a real `Stopwatch`
 /// (deliberately independent of the fake test clock), so `runAsync` an
 /// actual delay before pumping, exactly like the plain-text
-/// `smooth_fade_test.dart` file's own real-frame pumping.
+/// `smooth_fade_test.dart` file's own real-frame pumping. Pumps by the
+/// ACTUAL measured elapsed real time of the delay, not a fixed nominal
+/// 16ms, so a loaded machine (where the delay can genuinely take much
+/// longer) never desyncs the widget tree's virtual clock from the real
+/// clock the fade math itself uses - see
+/// `markdown_fade_verify3_test.dart`'s `_frame` doc.
 Future<void> _frame(WidgetTester t) async {
+  final sw = Stopwatch()..start();
   await t.runAsync(
     () => Future<void>.delayed(const Duration(milliseconds: 16)),
   );
-  await t.pump(const Duration(milliseconds: 16));
+  sw.stop();
+  await t.pump(sw.elapsed);
 }
 
 const _prose =

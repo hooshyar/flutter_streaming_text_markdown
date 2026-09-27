@@ -63,7 +63,11 @@ abstract class RevealPacer {
   /// Must be `>= 0`.
   int unitsThisTick(int backlogUnits) {
     return decide(
-      PaceContext(backlog: backlogUnits, interval: Duration.zero, inputClosed: false),
+      PaceContext(
+        backlog: backlogUnits,
+        interval: Duration.zero,
+        inputClosed: false,
+      ),
     ).units;
   }
 }
@@ -118,9 +122,10 @@ class CatchUpPacer extends RevealPacer {
     if (backlog <= 0) return const PaceDecision(units: 0, minChars: 0);
 
     final windowMs = window.inMilliseconds <= 0 ? 1 : window.inMilliseconds;
-    final intervalMs = context.interval.inMilliseconds > 0
-        ? context.interval.inMilliseconds
-        : windowMs;
+    final intervalMs =
+        context.interval.inMilliseconds > 0
+            ? context.interval.inMilliseconds
+            : windowMs;
     final scale = intervalMs / windowMs;
     final scaledK = k * scale;
 

@@ -198,7 +198,11 @@ class StreamingMarkdownView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final opts = options;
-    final withheldText = mend(text, isComplete: isComplete);
+    final withheldText = mend(
+      text,
+      isComplete: isComplete,
+      latexEnabled: latexEnabled,
+    );
     // Only forward `useDollarSignsForLatex` to gpt_markdown when the caller
     // set it explicitly - that opts into gpt_markdown's own naive, code-
     // oblivious `$...$` rewrite on purpose. Otherwise, when latexEnabled is

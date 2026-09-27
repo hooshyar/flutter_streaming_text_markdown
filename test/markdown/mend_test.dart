@@ -80,10 +80,7 @@ void main() {
     });
 
     test('closes an unterminated *italic', () {
-      expect(
-        mend('This is *emph', isComplete: false),
-        'This is *emph*',
-      );
+      expect(mend('This is *emph', isComplete: false), 'This is *emph*');
     });
 
     test('closes an unterminated ***bold-italic', () {
@@ -110,10 +107,7 @@ void main() {
     });
 
     test('skips a leading "* " list marker instead of closing it', () {
-      expect(
-        mend('* first item text', isComplete: false),
-        '* first item text',
-      );
+      expect(mend('* first item text', isComplete: false), '* first item text');
     });
 
     test('does not treat an intraword _ as emphasis', () {
@@ -154,10 +148,7 @@ void main() {
     });
 
     test('nested_list_partial holds only the dangling nested marker', () {
-      expect(
-        mend('- a\n  - b\n    -', isComplete: false),
-        '- a\n  - b\n',
-      );
+      expect(mend('- a\n  - b\n    -', isComplete: false), '- a\n  - b\n');
     });
 
     test('heading_marker_only', () {
@@ -165,10 +156,7 @@ void main() {
     });
 
     test('heading_partial is NOT held (has content already)', () {
-      expect(
-        mend('Intro\n\n## Setu', isComplete: false),
-        'Intro\n\n## Setu',
-      );
+      expect(mend('Intro\n\n## Setu', isComplete: false), 'Intro\n\n## Setu');
     });
 
     test('blockquote_marker', () {
@@ -204,6 +192,39 @@ void main() {
     });
   });
 
+  group(
+    'mend: table header held until its separator completes (non-blocking)',
+    () {
+      test('table_header_only has no separator yet - held entirely', () {
+        expect(mend('| Name | Age |', isComplete: false), '');
+      });
+
+      test(
+        'table_sep_partial - a still-typing separator holds the header too',
+        () {
+          expect(mend('| Name | Age |\n|---', isComplete: false), '');
+        },
+      );
+
+      test('a header committed with nothing after it yet is held', () {
+        expect(mend('| Name | Age |\n', isComplete: false), '');
+      });
+
+      test('a completed separator lets the header through', () {
+        const text = '| Name | Age |\n|---|---|\n';
+        expect(mend(text, isComplete: false), text);
+      });
+
+      test(
+        'table_row_partial (separator already complete) is untouched here',
+        () {
+          const text = '| Name | Age |\n|---|---|\n| Bob | 4';
+          expect(mend(text, isComplete: false), text);
+        },
+      );
+    },
+  );
+
   group('mend: links and images are rewritten/held (probe12)', () {
     test('link_text_open drops the bracket', () {
       expect(mend('See [the docs', isComplete: false), 'See the docs');
@@ -226,23 +247,51 @@ void main() {
   });
 
   group('mend: math (AC4 - see also latex_delegation_test.dart for S3)', () {
-    test(
-      r'an open $$ block becomes a math-pending fence with no literal $$',
-      () {
-        final result = mend(r'Formula:$$\frac{a}{', isComplete: false);
-        expect(result, 'Formula:```math-pending\n\\frac{a}{');
-        expect(result.contains(r'$$'), isFalse);
-      },
-    );
+    test(r'an open $$ block becomes a math-pending fence with no literal $$ '
+        'when latex is enabled', () {
+      final result = mend(
+        r'Formula:$$\frac{a}{',
+        isComplete: false,
+        latexEnabled: true,
+      );
+      expect(result, 'Formula:```math-pending\n\\frac{a}{');
+      expect(result.contains(r'$$'), isFalse);
+    });
 
-    test(r'an open inline $x becomes inline code without the $', () {
-      final result = mend(r'Energy $E = mc^', isComplete: false);
+    test(r'an open inline $x becomes inline code without the $ when latex is '
+        'enabled', () {
+      final result = mend(
+        r'Energy $E = mc^',
+        isComplete: false,
+        latexEnabled: true,
+      );
       expect(result, 'Energy `E = mc^`');
       expect(result.contains(r'$'), isFalse);
     });
 
     test('currency-shaped \$ is left untouched', () {
-      expect(mend(r'That costs $5 today', isComplete: false), r'That costs $5 today');
+      expect(
+        mend(r'That costs $5 today', isComplete: false, latexEnabled: true),
+        r'That costs $5 today',
+      );
+    });
+
+    // B1F1 bug #2: latexEnabled defaults to false, and mend must not rewrite
+    // an open `$var` at all in that case - the `$` must survive, matching
+    // base 627e72d (which showed a literal `$count` all along) instead of
+    // swallowing it into inline code.
+    test(r'latexEnabled defaults to false: an open $x is left untouched', () {
+      final result = mend(r'Energy $E = mc^', isComplete: false);
+      expect(result, r'Energy $E = mc^');
+    });
+
+    test(r'latexEnabled: false leaves an open $$ block untouched too', () {
+      final result = mend(
+        r'Formula:$$\frac{a}{',
+        isComplete: false,
+        latexEnabled: false,
+      );
+      expect(result, r'Formula:$$\frac{a}{');
     });
   });
 }

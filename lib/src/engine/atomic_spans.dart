@@ -158,14 +158,15 @@ class AtomicSpanDetector {
   /// currency heuristic above, so it is safe to run over the full, mixed
   /// markdown+code source.
   String rewriteDollarDelimiters(String source) {
-    final dollarSpans = spans(source)
-        .where(
-          (s) =>
-              s.closed &&
-              (source.startsWith(_dollarDollar, s.start) ||
-                  source.startsWith(_dollar, s.start)),
-        )
-        .toList();
+    final dollarSpans =
+        spans(source)
+            .where(
+              (s) =>
+                  s.closed &&
+                  (source.startsWith(_dollarDollar, s.start) ||
+                      source.startsWith(_dollar, s.start)),
+            )
+            .toList();
     if (dollarSpans.isEmpty) return source;
 
     final buffer = StringBuffer();

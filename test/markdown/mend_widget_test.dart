@@ -58,65 +58,73 @@ final RegExp _emptyBulletOrHeadingOrQuote = RegExp(
   r'(^|\n)[ \t]*(?:[-*+]|\d+\.|#{1,6}|>)[ \t]*($|\n)',
 );
 
+// B1F1 bug #2: with latexEnabled: false (the default), mend no longer
+// rewrites an open `$`/`$$` at all - so `latex_inline_open` and
+// `latex_block_open` legitimately keep their literal `$`/`$$` in that mode
+// now (see mend_test.dart's dedicated "latexEnabled defaults to false"
+// tests for the exact expected text). Skip just those two keys' `$$`
+// assertion when latex is off; every other artifact check still applies.
+const _mathKeys = {'latex_inline_open', 'latex_block_open'};
+
 void main() {
   for (final latex in [false, true]) {
     for (final entry in _probe12Cases.entries) {
-      testWidgets(
-        'mid-stream ${entry.key} (latex=$latex) has no raw markdown '
-        'artifact',
-        (tester) async {
-          await tester.pumpWidget(
-            MaterialApp(
-              home: Scaffold(
-                body: SingleChildScrollView(
-                  child: StreamingMarkdownView(
-                    text: entry.value,
-                    isComplete: false,
-                    latexEnabled: latex,
-                  ),
+      testWidgets('mid-stream ${entry.key} (latex=$latex) has no raw markdown '
+          'artifact', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: StreamingMarkdownView(
+                  text: entry.value,
+                  isComplete: false,
+                  latexEnabled: latex,
                 ),
               ),
             ),
-          );
-          await tester.pump();
+          ),
+        );
+        await tester.pump();
 
-          expect(tester.takeException(), isNull);
+        expect(tester.takeException(), isNull);
 
-          final visible = _visiblePlainText(tester);
-          expect(
-            visible.contains('**'),
-            isFalse,
-            reason: 'raw ** leaked for ${entry.key}: "$visible"',
-          );
-          expect(
-            visible.contains('`'),
-            isFalse,
-            reason: 'a lone backtick leaked for ${entry.key}: "$visible"',
-          );
+        final visible = _visiblePlainText(tester);
+        expect(
+          visible.contains('**'),
+          isFalse,
+          reason: 'raw ** leaked for ${entry.key}: "$visible"',
+        );
+        expect(
+          visible.contains('`'),
+          isFalse,
+          reason: 'a lone backtick leaked for ${entry.key}: "$visible"',
+        );
+        final skipDollarCheck = !latex && _mathKeys.contains(entry.key);
+        if (!skipDollarCheck) {
           expect(
             visible.contains(r'$$'),
             isFalse,
             reason: 'raw \$\$ leaked for ${entry.key}: "$visible"',
           );
-          expect(
-            visible.contains('|---'),
-            isFalse,
-            reason: 'raw |--- leaked for ${entry.key}: "$visible"',
-          );
-          expect(
-            visible.contains(']('),
-            isFalse,
-            reason: 'raw ]( leaked for ${entry.key}: "$visible"',
-          );
-          expect(
-            _emptyBulletOrHeadingOrQuote.hasMatch(visible),
-            isFalse,
-            reason:
-                'an empty bullet/heading/quote marker leaked for '
-                '${entry.key}: "$visible"',
-          );
-        },
-      );
+        }
+        expect(
+          visible.contains('|---'),
+          isFalse,
+          reason: 'raw |--- leaked for ${entry.key}: "$visible"',
+        );
+        expect(
+          visible.contains(']('),
+          isFalse,
+          reason: 'raw ]( leaked for ${entry.key}: "$visible"',
+        );
+        expect(
+          _emptyBulletOrHeadingOrQuote.hasMatch(visible),
+          isFalse,
+          reason:
+              'an empty bullet/heading/quote marker leaked for '
+              '${entry.key}: "$visible"',
+        );
+      });
     }
   }
 }

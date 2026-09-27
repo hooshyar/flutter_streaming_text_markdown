@@ -40,21 +40,15 @@ void main() {
       },
     );
 
-    test(
-      'passes prior complete fenced blocks through unchanged alongside a '
-      'later open one',
-      () {
-        const text = 'A:\n```dart\nfoo();\n```\nB:\n```dart\nbar();';
-        expect(mend(text, isComplete: false), text);
-      },
-    );
+    test('passes prior complete fenced blocks through unchanged alongside a '
+        'later open one', () {
+      const text = 'A:\n```dart\nfoo();\n```\nB:\n```dart\nbar();';
+      expect(mend(text, isComplete: false), text);
+    });
 
-    test(
-      'holds back a fence-opener line that has no trailing newline yet',
-      () {
-        const text = 'Here you go:\n``';
-        expect(mend(text, isComplete: false), 'Here you go:\n');
-      },
-    );
+    test('holds back a fence-opener line that has no trailing newline yet', () {
+      const text = 'Here you go:\n``';
+      expect(mend(text, isComplete: false), 'Here you go:\n');
+    });
   });
 }

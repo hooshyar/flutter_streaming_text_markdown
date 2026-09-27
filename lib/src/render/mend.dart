@@ -38,18 +38,24 @@ import 'caret_inline.dart' show caretSentinel;
 /// any of the above runs, then re-appended only when the mended tail does
 /// not end inside an open fence/math block - so the sentinel never reaches
 /// a `codeBuilder`'s `code` string.
-String mend(String text, {required bool isComplete}) {
+String mend(
+  String text, {
+  required bool isComplete,
+  bool latexEnabled = false,
+}) {
   if (isComplete || text.isEmpty) return text;
 
   final hasSentinel = text.endsWith(caretSentinel);
   final body =
-      hasSentinel ? text.substring(0, text.length - caretSentinel.length) : text;
+      hasSentinel
+          ? text.substring(0, text.length - caretSentinel.length)
+          : text;
 
   final split = settledSplitOffset(body);
   final settled = body.substring(0, split);
   final tail = body.substring(split);
 
-  final mended = _mendTail(tail);
+  final mended = _mendTail(tail, latexEnabled: latexEnabled);
   final out = settled + mended.text;
   return hasSentinel && !mended.insideOpenBlock ? '$out$caretSentinel' : out;
 }
@@ -61,8 +67,13 @@ class _TailMend {
   final bool insideOpenBlock;
 }
 
-_TailMend _mendTail(String tail) {
+_TailMend _mendTail(String tail, {required bool latexEnabled}) {
   if (tail.isEmpty) return _TailMend(tail, insideOpenBlock: false);
+
+  final table = _holdIncompleteTableHeader(tail);
+  if (table != null) {
+    return _TailMend(table, insideOpenBlock: false);
+  }
 
   final fence = _mendFence(tail);
   if (fence.handled) {
@@ -79,11 +90,17 @@ _TailMend _mendTail(String tail) {
   s = _holdOpenImage(s);
   s = _rewriteOpenLink(s);
 
-  final math = _rewriteOpenMath(s);
-  if (math.isFence) {
-    return _TailMend(math.text, insideOpenBlock: true);
+  // Only ours to rewrite when the caller has LaTeX recognition on - with it
+  // off (the default), a `$` is never touched here, so a plain variable
+  // like `$count` keeps its `$` instead of losing it to a bogus inline-code
+  // rewrite (B1F1 bug #2).
+  if (latexEnabled) {
+    final math = _rewriteOpenMath(s);
+    if (math.isFence) {
+      return _TailMend(math.text, insideOpenBlock: true);
+    }
+    s = math.text;
   }
-  s = math.text;
 
   s = _closeOrHoldInlineMarkers(s);
   return _TailMend(s, insideOpenBlock: false);
@@ -111,9 +128,7 @@ _FenceCheck _mendFence(String tail) {
   final hasTrailingNewline = tail.endsWith('\n');
   final lines = tail.split('\n');
   final partialLine =
-      hasTrailingNewline
-          ? ''
-          : (lines.isEmpty ? '' : lines.removeLast());
+      hasTrailingNewline ? '' : (lines.isEmpty ? '' : lines.removeLast());
 
   var inFence = false;
   for (final line in lines) {
@@ -140,6 +155,57 @@ _FenceCheck _mendFence(String tail) {
   }
 
   return const _FenceCheck(text: '', insideOpenBlock: false, handled: false);
+}
+
+final RegExp _tableRowLike = RegExp(r'^\|.*\|\s*$');
+final RegExp _tableSepComplete = RegExp(
+  r'^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$',
+);
+final RegExp _tableSepChars = RegExp(r'^[|:\- \t]*$');
+
+/// Holds back a table header row until its separator row is fully typed -
+/// GFM only recognizes a table once the separator line commits, so without
+/// this a bare header (or one with a still-typing separator) would render
+/// for a frame or two as a raw pipe-delimited line instead. Returns `null`
+/// when the trailing shape isn't a header/partial-separator pair at all.
+String? _holdIncompleteTableHeader(String tail) {
+  final hasTrailingNewline = tail.endsWith('\n');
+  final body = hasTrailingNewline ? tail.substring(0, tail.length - 1) : tail;
+  final lines = body.split('\n');
+  if (lines.isEmpty) return null;
+
+  if (!hasTrailingNewline) {
+    // The very last line is still being typed.
+    final partial = lines.removeLast();
+    if (lines.isEmpty) {
+      // "| Name | Age |" with no newline at all yet.
+      if (_tableRowLike.hasMatch(partial.trimRight())) {
+        return tail.substring(0, tail.length - partial.length);
+      }
+      return null;
+    }
+    final header = lines.last;
+    if (_tableRowLike.hasMatch(header.trimRight()) &&
+        _tableSepChars.hasMatch(partial) &&
+        !_tableSepComplete.hasMatch(partial.trim())) {
+      final cut = tail.length - partial.length - 1 - header.length;
+      return tail.substring(0, cut < 0 ? 0 : cut);
+    }
+    return null;
+  }
+
+  // Trailing newline: the last committed line might be a bare header with
+  // nothing after it yet at all. A separator line (only `|`/`:`/`-`/space)
+  // also happens to match the generic row shape, so exclude it explicitly -
+  // once a real separator has landed, the header is free to render.
+  final header = lines.last;
+  if (header.isNotEmpty &&
+      _tableRowLike.hasMatch(header.trimRight()) &&
+      !_tableSepChars.hasMatch(header)) {
+    final cut = tail.length - 1 - header.length;
+    return tail.substring(0, cut < 0 ? 0 : cut);
+  }
+  return null;
 }
 
 final RegExp _headingMarkerOnly = RegExp(r'^#{1,6}$');
@@ -224,7 +290,9 @@ _MathRewrite _rewriteOpenMath(String s) {
   if (spans.isEmpty) return _MathRewrite(s, isFence: false);
 
   final last = spans.last;
-  if (last.closed || last.end != s.length) return _MathRewrite(s, isFence: false);
+  if (last.closed || last.end != s.length) {
+    return _MathRewrite(s, isFence: false);
+  }
   // Only a `$`/`$$` delimiter is ours to rewrite here - a native `\(`/`\[`
   // span is left for `gpt_markdown`'s own (literal-text) fallback.
   if (!s.startsWith(r'$', last.start)) return _MathRewrite(s, isFence: false);
@@ -249,22 +317,30 @@ bool _isWordChar(String c) {
       unit == 0x5F; // _
 }
 
-/// Closes an unterminated `**`, `__`, `*`/`_`, `~~`, inline code or `***`
-/// that already has content after it, by appending the matching closer.
-/// A *lone* trailing delimiter with nothing after it yet - the marker
-/// itself is the last thing in [s] - is held back instead: one more of the
-/// same character could still turn it into a different marker entirely.
+/// Closes an unterminated `**`, `__`, `*`, `~~`, inline code or `***` that
+/// already has content after it, by appending the matching closer(s). A
+/// *lone* trailing delimiter with nothing after it yet is held back instead
+/// (dropped from the returned text): one more of the same character could
+/// still turn it into a different marker entirely. Holding one trailing
+/// token never suppresses closers still owed to other, earlier-opened
+/// markers - those are appended regardless (see the "Hello **bold*" case in
+/// PHASE-B1-PLAN.md's B1F1 bug #3).
 ///
 /// Skips a `*`/`-`/`+` or `N.` list marker at the start of a line (followed
-/// by a space/tab) and an intraword `_` (flanked by word characters on both
-/// sides) - neither ever opens emphasis.
+/// by a space/tab). A single `*` only opens/closes emphasis when it is
+/// left-/right-flanking per CommonMark and not part of an intraword run
+/// (`a*b` never opens) - except for the very last character of [s], which
+/// is always ambiguous (more of the run may still arrive) and is handled by
+/// the trailing-hold step below instead. A single `_` is never treated as
+/// an emphasis delimiter at all here: it is far too common in ordinary
+/// prose and identifiers (`snake_case`, `_private`, `dunder__`) to safely
+/// guess whether an unclosed one will ever close.
 String _closeOrHoldInlineMarkers(String s) {
   var boldItalicOpen = false;
   var boldOpen = false;
   var underBoldOpen = false;
   var strikeOpen = false;
   var emOpen = false;
-  var underEmOpen = false;
   var codeOpen = false;
 
   var i = 0;
@@ -345,19 +421,33 @@ String _closeOrHoldInlineMarkers(String s) {
       continue;
     }
     if (c == '*') {
-      emOpen = !emOpen;
-      i++;
-      continue;
-    }
-    if (c == '_') {
-      final prev = i > 0 ? s[i - 1] : '';
-      final next = i + 1 < n ? s[i + 1] : '';
-      if (!(_isWordChar(prev) && _isWordChar(next))) {
-        underEmOpen = !underEmOpen;
+      final atEnd = i == n - 1;
+      if (atEnd) {
+        // The very last character seen so far - inherently ambiguous (one
+        // more '*' could still arrive and turn this into '**'/'***'), so
+        // always flip like a plain toggle; the trailing-hold step below
+        // decides whether to show or withhold it.
+        emOpen = !emOpen;
+      } else {
+        final prev = i > 0 ? s[i - 1] : '';
+        final next = s[i + 1];
+        final intraword = _isWordChar(prev) && _isWordChar(next);
+        if (!intraword) {
+          if (!emOpen) {
+            final leftFlanking = next != ' ' && next != '\t' && next != '\n';
+            if (leftFlanking) emOpen = true;
+          } else {
+            final rightFlanking =
+                prev.isNotEmpty && prev != ' ' && prev != '\t' && prev != '\n';
+            if (rightFlanking) emOpen = false;
+          }
+        }
       }
       i++;
       continue;
     }
+    // A lone '_' is never tracked as an emphasis delimiter - see the doc
+    // comment above.
     i++;
   }
 
@@ -368,14 +458,27 @@ String _closeOrHoldInlineMarkers(String s) {
     if (underBoldOpen) '__',
     if (strikeOpen) '~~',
     if (emOpen) '*',
-    if (underEmOpen) '_',
   ];
-  if (candidates.isEmpty) return s;
 
+  // A lone trailing '~' is ambiguous only while a strike span is already
+  // open (one more '~' would complete its closer) - held back regardless of
+  // whether it ends up matching a candidate token below. A trailing '~'
+  // with no strike open at all is just literal text (there is nothing for
+  // it to become on its own - strike needs a full '~~').
+  var result = s;
+  if (strikeOpen && result.endsWith('~') && !result.endsWith('~~')) {
+    result = result.substring(0, result.length - 1);
+  }
+
+  if (candidates.isEmpty) return result;
+
+  final remaining = List<String>.from(candidates);
   for (final token in candidates) {
-    if (s.endsWith(token)) {
-      return s.substring(0, s.length - token.length);
+    if (result.endsWith(token)) {
+      result = result.substring(0, result.length - token.length);
+      remaining.remove(token);
+      break;
     }
   }
-  return s + candidates.join();
+  return result + remaining.join();
 }

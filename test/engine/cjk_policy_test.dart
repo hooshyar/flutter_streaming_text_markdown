@@ -48,33 +48,30 @@ void main() {
       expect(steps, [2, 1]);
     });
 
-    test(
-      'through a live RevealEngine: unspaced CJK reveals progressively '
-      'while streamed, with no stall and final == source',
-      () {
-        const full = '你好世界，欢迎来到这个应用程序。';
-        final engine = RevealEngine(policy: const WordPolicy());
+    test('through a live RevealEngine: unspaced CJK reveals progressively '
+        'while streamed, with no stall and final == source', () {
+      const full = '你好世界，欢迎来到这个应用程序。';
+      final engine = RevealEngine(policy: const WordPolicy());
 
-        // Simulate a stream arriving one grapheme at a time.
-        var appended = '';
-        for (final grapheme in full.characters) {
-          appended += grapheme;
-          engine.setSource(appended);
-          var progressedThisChunk = true;
-          while (progressedThisChunk) {
-            progressedThisChunk = engine.step();
-          }
+      // Simulate a stream arriving one grapheme at a time.
+      var appended = '';
+      for (final grapheme in full.characters) {
+        appended += grapheme;
+        engine.setSource(appended);
+        var progressedThisChunk = true;
+        while (progressedThisChunk) {
+          progressedThisChunk = engine.step();
         }
-        engine.close();
-        var progressed = true;
-        while (progressed) {
-          progressed = engine.step();
-        }
+      }
+      engine.close();
+      var progressed = true;
+      while (progressed) {
+        progressed = engine.step();
+      }
 
-        expect(engine.revealed, full);
-        expect(engine.isComplete, isTrue);
-      },
-    );
+      expect(engine.revealed, full);
+      expect(engine.isComplete, isTrue);
+    });
 
     test('mixed Kana + Han unspaced run reveals in 2-grapheme steps too', () {
       const source = 'ひらがなカタカナ漢字テスト'; // no whitespace

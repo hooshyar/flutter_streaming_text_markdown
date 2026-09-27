@@ -37,11 +37,13 @@ class AtomicSpan {
 /// must be immediately followed by a non-space character, a closing `$`
 /// must be immediately preceded by a non-space character and NOT followed
 /// by a digit, and a `$` matching the currency grammar
-/// `$N[kKmMbB]?(-($N|N)[kKmMbB]?)?` - `N` is a run of digits with `.`/`,`
-/// allowed between digits (`5.99`, `1,000`), an optional one-char magnitude
-/// suffix (`$10k`, `$5M`, `$2B`), and an optional `-`-joined range
-/// (`$5-10`, `$10-$20`, `$10k-$20k`, `$20-30/month`) - followed by
-/// whitespace or punctuation is currency, never an opening delimiter.
+/// `$N([kKmMbB]|bn|mn|tn)?((-|–|—)($N|N)([kKmMbB]|bn|mn|tn)?)?` - `N` is a
+/// run of digits with `.`/`,` allowed between digits (`5.99`, `1,000`),
+/// an optional magnitude suffix (`$10k`, `$5M`, `$2B`, `$5bn`, `$2.5tn`),
+/// and an optional `-`/`–`/`—`-joined range (`$5-10`, `$5–10`, `$10-$20`,
+/// `$5—$10`, `$10k-$20k`, `$20-30/month`) - followed by whitespace or
+/// punctuation (including the markdown markers `*`, `_`, `~`) is
+/// currency, never an opening delimiter.
 /// Running out of input mid-match while the source is still streaming is
 /// ambiguous, not currency; and `-` heading into real math (`$1-p$`,
 /// `$2k-1$`, `$1-\alpha$`) is not a range either, so those fall through to
@@ -156,15 +158,14 @@ class AtomicSpanDetector {
   /// currency heuristic above, so it is safe to run over the full, mixed
   /// markdown+code source.
   String rewriteDollarDelimiters(String source) {
-    final dollarSpans =
-        spans(source)
-            .where(
-              (s) =>
-                  s.closed &&
-                  (source.startsWith(_dollarDollar, s.start) ||
-                      source.startsWith(_dollar, s.start)),
-            )
-            .toList();
+    final dollarSpans = spans(source)
+        .where(
+          (s) =>
+              s.closed &&
+              (source.startsWith(_dollarDollar, s.start) ||
+                  source.startsWith(_dollar, s.start)),
+        )
+        .toList();
     if (dollarSpans.isEmpty) return source;
 
     final buffer = StringBuffer();
@@ -210,10 +211,30 @@ class AtomicSpanDetector {
     return count.isOdd;
   }
 
-  /// Whether [c] is a currency magnitude suffix (`$10k`, `$5M`, `$2B`):
-  /// still currency, never the start of a LaTeX span.
+  /// Whether [c] is a single-char currency magnitude suffix (`$10k`,
+  /// `$5M`, `$2B`): still currency, never the start of a LaTeX span.
   static bool _isMagnitudeSuffix(String c) =>
       c == 'k' || c == 'K' || c == 'm' || c == 'M' || c == 'b' || c == 'B';
+
+  /// Whether [c] joins a currency range (`$5-10`, `$5–10`, `$5—$10`).
+  static bool _isRangeJoiner(String c) => c == '-' || c == '–' || c == '—';
+
+  /// Consumes an optional currency magnitude suffix at [i]: a single
+  /// `kKmMbB` char or a two-char `bn`, `mn` or `tn` (`$5bn`, `$2.5tn`,
+  /// `$300mn`). The two-char forms must be tried first - `b` and `m` are
+  /// also valid single-char suffixes, so `$5bn` would otherwise stop at
+  /// the `b` and see the `n` as a non-currency follower. Returns the
+  /// index just past the suffix, or [i] itself when there is none.
+  static int _consumeMagnitudeSuffix(String source, int i) {
+    if (i + 1 < source.length) {
+      final c = source[i];
+      if ((c == 'b' || c == 'm' || c == 't') && source[i + 1] == 'n') {
+        return i + 2;
+      }
+    }
+    if (i < source.length && _isMagnitudeSuffix(source[i])) return i + 1;
+    return i;
+  }
 
   /// Whether a `$` at [index] can open a LaTeX span at all, per the
   /// pandoc-style currency rules on the class doc.
@@ -224,12 +245,14 @@ class AtomicSpanDetector {
     final nextChar = source[next];
     if (_isSpace(nextChar)) return false;
     if (_isDigit(nextChar)) {
-      // One currency grammar: `$N[kKmMbB]?(-($N|N)[kKmMbB]?)?` followed by
-      // whitespace or punctuation is currency (`$5 `, `$2B,`, `$5-10 per
-      // month`, `$10-$20`, `$20-30/month`). Running out of input mid-match
-      // is ambiguous while still streaming. Anything else (`$1-p$`,
-      // `$10x$`) is not a currency match at all and falls through to the
-      // pandoc opening rule.
+      // One currency grammar:
+      // `$N([kKmMbB]|bn|mn|tn)?((-|–|—)($N|N)([kKmMbB]|bn|mn|tn)?)?`
+      // followed by whitespace or punctuation is currency (`$5 `, `$2B,`,
+      // `**$20**`, `_$5_`, `~~$5~~`, `$5bn`, `$5-10 per month`, `$5–10`,
+      // `$5—$10`, `$10-$20`, `$20-30/month`). Running out of input
+      // mid-match is ambiguous while still streaming. Anything else
+      // (`$1-p$`, `$10x$`) is not a currency match at all and falls
+      // through to the pandoc opening rule.
       final currencyEnd = _matchCurrencyEnd(source, next);
       if (currencyEnd == -1) return false;
       final after = source[currencyEnd];
@@ -241,7 +264,8 @@ class AtomicSpanDetector {
   /// Matches the currency grammar at [i], where `source[i - 1]` is the
   /// `$` and `source[i]` is a digit:
   ///
-  ///   `N[kKmMbB]?('-' ('$' N | N) [kKmMbB]?)?`
+  ///   `N ([kKmMbB]|bn|mn|tn)? (('-'|'–'|'—') ('$' N | N)
+  ///   ([kKmMbB]|bn|mn|tn)?)?`
   ///
   /// Returns the index just past the whole match, or -1 when the input
   /// ends before the match can be resolved: a mid-match end while the
@@ -250,18 +274,16 @@ class AtomicSpanDetector {
   static int _matchCurrencyEnd(String source, int i) {
     var j = _consumeNumber(source, i);
     if (j >= source.length) return -1;
-    if (_isMagnitudeSuffix(source[j])) {
-      j++;
-      if (j >= source.length) return -1;
-    }
-    if (source[j] != '-') return j;
+    j = _consumeMagnitudeSuffix(source, j);
+    if (j >= source.length) return -1;
+    if (!_isRangeJoiner(source[j])) return j;
 
-    // Optional `-`-joined range: `-` then either `$N` (`$10-$20`,
-    // `$10k-$20k`) or plain `N` (`$5-10`, `$10-20k`), each with its own
-    // optional magnitude suffix.
+    // Optional dash-joined range: `-`/`–`/`—` then either `$N`
+    // (`$10-$20`, `$5—$10`, `$10k-$20k`) or plain `N` (`$5-10`, `$5–10`,
+    // `$10-20k`), each with its own optional magnitude suffix.
     var k = j + 1;
     if (k >= source.length) {
-      // A lone trailing `-` with nothing after it yet is still ambiguous
+      // A lone trailing dash with nothing after it yet is still ambiguous
       // while streaming: don't hold.
       return -1;
     }
@@ -273,15 +295,14 @@ class AtomicSpanDetector {
     } else if (_isDigit(source[k])) {
       k = _consumeNumber(source, k);
     } else {
-      // `-` followed by neither `$` nor a digit (`$1-p$`, `$1-\alpha$`):
-      // no range ever started, so the currency match ends before the `-`.
+      // A dash followed by neither `$` nor a digit (`$1-p$`,
+      // `$1-\alpha$`): no range ever started, so the currency match ends
+      // before the dash.
       return j;
     }
     if (k >= source.length) return -1;
-    if (_isMagnitudeSuffix(source[k])) {
-      k++;
-      if (k >= source.length) return -1;
-    }
+    k = _consumeMagnitudeSuffix(source, k);
+    if (k >= source.length) return -1;
     return k;
   }
 
@@ -327,7 +348,11 @@ class AtomicSpanDetector {
 
   static bool _isPunctuation(String c) => _punctuation.contains(c);
 
-  static const _punctuation = '.,;:!?)]}%/"\'';
+  // `*`, `_` and `~` count so markdown markers keep an adjacent amount
+  // currency (`**$20**`, `_$5_`, `~~$5~~`); en/em dashes count so a
+  // range's joiner never reads as a math follower. `-` deliberately does
+  // NOT count: `$1-p$` and `$2k-1$` are real math.
+  static const _punctuation = '.,;:!?)]}%/"\'*_~–—';
 
   int _consumeDollarSpan(String source, List<AtomicSpan> result, int start) {
     final len = source.length;

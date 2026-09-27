@@ -419,3 +419,126 @@ Re-run `test/perf/stream_benchmark_test.dart` after the fix: 0.48x-0.69x
 time (shared-machine noise, still comfortably "faster than bare" on this
 metric), 1.71x-1.82x rebuilds - unchanged from the original B1-S6 numbers
 above and still well inside the 1.8x/6x budget.
+
+### B1 final-verify round 3 redesign: one global offset space (advisor-directed)
+
+Round 2's per-LAST-paragraph tracking (above) still failed final verify.
+The verifier's pixel probes (`scratchpad/stm/vb3/probes/pop_test.dart`,
+`chatui2_test.dart`, `caret_test.dart`, `gapid_test.dart`) found:
+
+- **(a) Pop-in.** `gpt_markdown` creates a NEW `RenderParagraph` for every
+  list item, table cell, code line, and quote, AND for every rebuild of a
+  plain, continuously-growing top-level paragraph reached via a growing
+  `text:` param instead of a `Stream` - i.e. paragraph object identity is
+  not a stable "is this new content" signal even for the simplest case.
+  Round 2 reset all tracking to empty on every identity change, so 50-85%
+  of words popped in fully opaque instead of fading. The round-2 pixel test
+  had only exercised `showCursor: true`, `Stream` input, one paragraph -
+  the one combination where round 2 happened to hold up.
+- **(b) Caret.** A run's range still ran up to the paragraph's raw
+  `toPlainText().length`, which includes the caret's own trailing
+  placeholder character - so every newly-revealed word's run also dimmed
+  the caret.
+- **(c) Overshoot.** Text immediately after a table or code block rendered
+  15-21% darker than its final value (the dim silently failing to apply at
+  all - see the compositing fix below).
+
+**The redesign** (advisor-directed, `lib/src/render/markdown_fade_mask.dart`):
+one global offset space, not per-paragraph state.
+
+1. **One global offset space.** `performLayout` walks every
+   `RenderParagraph` in the subtree, in paint order, and concatenates each
+   one's own rendered text into a single flat string (a
+   `toPlainText()`-identity cache per paragraph avoids recomputing it for
+   spans that didn't change). Growth/rewrite is tracked against THIS
+   concatenation, never against any one paragraph's object identity - a
+   brand new paragraph's content simply extends the tail exactly like plain
+   prose would, so it fades with no special-casing at all.
+2. **Runs**, tracked against the highest-water-mark text ever observed
+   (not merely the previous layout's - see below for why that distinction
+   turned out to matter):
+   - if the new text is SHORTER than the peak: a transient regression
+     (`gpt_markdown`/`mend()` can withhold already-shown content again -
+     e.g. a table's body rows disappearing for a frame while its next row
+     is still incomplete, sometimes replaced by unrelated filler content
+     rather than a clean truncation). Nothing changes; the content simply
+     isn't in this frame's paragraph list to paint, and resumes as ordinary
+     growth once it reappears. Judged on LENGTH alone, not "and it's still
+     a literal prefix of the peak" - the filler shown during a real hiccup
+     often isn't a clean prefix cut, so requiring an exact prefix match
+     missed real cases (see the "two-hump" bug below).
+   - if the new text is at least as long and starts with the peak: pure
+     growth, one new run `[peakLength, newLength)`.
+   - otherwise: a genuine rewrite (a `**` closing, a link resolving, a list
+     marker paragraph replaced outright by its first word instead of
+     growing into it, or a non-append source reset). Every live run is
+     clipped to end at or before the divergence point - safe because
+     `_runs` only ever holds runs still within `fadeDuration` (settled ones
+     are pruned every refresh), so nothing clipped here could already have
+     reached full opacity. The diverging tail IS re-armed as a fresh run
+     (in this same global space, never re-derived from source text or
+     another paragraph's space) - an earlier draft of this fix left it
+     un-armed ("a few characters may pop"), but that made every new list
+     item's first word pop outright (a `-` marker paragraph gets REPLACED
+     by its first word, not grown into "- word"), so the tail is faded too.
+3. **Caret exclusion, generalized.** The caret's placeholder character
+   (`U+FFFC`) turned out to appear TRANSIENTLY mid-paragraph, not merely
+   trailing the last paragraph, while a block is still resolving (the same
+   table-hiccup pattern above). Every occurrence, in every paragraph, is
+   stripped from the growth-tracking text (building a small local index map
+   back to the paragraph's real offsets only for paragraphs that actually
+   contain one) - not just a trailing check on the last paragraph.
+4. **The two-hump bug this surfaced.** With ONLY a strict-prefix check for
+   "is this a transient regression", the table-hiccup filler content (step
+   2) sometimes wasn't a clean prefix of the peak (it could be unrelated
+   placeholder text), so it fell through to the "genuine rewrite" branch,
+   re-arming a fresh run for content that had ALREADY settled once
+   (observed directly: a cell's darkness went 0.04→0.98→**0.04**→1.00,
+   fully re-fading from scratch). Judging the regression purely on length
+   (any shorter text is transient, full stop) fixed it outright.
+5. **Compositing (verify's overshoot root cause).** `paint`'s
+   `canvas.saveLayer` → `paintChild` → `drawRect(dstIn)` → `restore`
+   bracket (round 2) is invalid the moment `child` pushes ANY layer of its
+   own - a code block's `RepaintBoundary`, a table's internal
+   scrollable/clip, an image. `PaintingContext.paintChild` calls
+   `stopRecordingIfNeeded()` before compositing such a child, finalizing
+   whatever Picture the raw `saveLayer` was recorded into WITH THE
+   `saveLayer` LEFT UNBALANCED, then starts a brand new, empty canvas for
+   anything painted afterward - so the `dstIn` rects landed on that empty
+   canvas instead of over the child's real content and silently did
+   nothing. Fixed by going through `context.pushLayer` with a retained
+   `ColorFilterLayer` (identity/no-op filter, held in a `LayerHandle`, only
+   pushed while a fade is actually active): everything painted while it's
+   active - `child`'s own nested layers included - shares one retained
+   engine-side layer subtree, so a `dstIn` draw issued after `paintChild`
+   still composites correctly regardless of how many sub-layers `child`
+   pushed internally.
+6. **Known gap, documented not fixed.** If a `codeBuilder` renders through
+   a `RenderEditable` (e.g. wrapping code in a `SelectableText`) instead of
+   a `RenderParagraph`, this mask can't see it and it pops in uncontested.
+   This package's own default code path renders through `gpt_markdown`'s
+   built-in `Text.rich`-based renderer (a real `RenderParagraph`), so the
+   default is unaffected - only a custom `codeBuilder` choosing
+   `SelectableText` internally would hit this.
+
+**New tests** (`test/widget/markdown_fade_verify3_test.dart`, adapted from
+the verifier's probes): pixel-level pop-in/settle-never-dips checks across
+every block type (paragraph, new list item, quote, table cell, text after a
+table, code line, text after a code block, a new paragraph after an idle
+gap) at `showCursor` true AND false, over BOTH `Stream` input and a growing
+`text:` param; a mid-stream bold/link/inline-code settle-never-dips check;
+a non-prefix `setSource`-equivalent reset check; and a caret-darkness-
+stays-stable check (the caret pulses on its own clock, but must never dip
+in lockstep with a new word arriving). Confirmed to FAIL against the
+pre-redesign code (checked out from integration HEAD `b918c7e`, e.g. 3-4
+list-item words popped in) and PASS after the redesign, all 18 cases. The
+existing round-1/round-2 regression tests (`markdown_fade_mask_test.dart`,
+`markdown_fade_pixel_test.dart`, `smooth_fade_test.dart`) still pass
+unmodified.
+
+Benchmarks re-run after the redesign
+(`flutter test --no-dds --tags benchmark --run-skipped`): time ratio
+0.46x-0.74x (median-of-medians ~0.56x-0.58x), rebuild ratio 1.58x-1.71x -
+both comfortably inside the 1.8x/6x budget, and the rebuild ratio is
+actually LOWER than round 2's (the per-paragraph `toPlainText()`-identity
+cache pays off more than the earlier single-paragraph tracking did).

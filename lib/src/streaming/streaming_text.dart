@@ -16,6 +16,7 @@ import '../render/fade_span.dart';
 import '../render/markdown_fade_mask.dart';
 import '../render/markdown_options.dart';
 import '../render/markdown_renderer.dart';
+import '../render/mend.dart' show MendState;
 import '../render/render_scope.dart';
 import '../render/streaming_caret.dart';
 import '../theme/streaming_tokens.dart';
@@ -343,6 +344,17 @@ class _StreamingTextState extends State<StreamingText>
 
   bool _isComplete = false;
   Object? _error;
+
+  /// Incremental `mend()` scan cache for this widget's stream (B1-S6 round
+  /// 10 PERF slice - see [MendState]'s own doc comment). Created once and
+  /// reused for the whole life of this `State`, so `mend()` only ever
+  /// re-scans the NEW text on each markdown reveal tick instead of the
+  /// whole revealed-so-far body. Lazy because plain-text (`markdownEnabled:
+  /// false`) streams never call `mend()` at all and shouldn't pay even the
+  /// allocation.
+  MendState? _mendState;
+
+  MendState get _ensureMendState => _mendState ??= MendState();
 
   /// Mirrors `MediaQuery.maybeDisableAnimationsOf(context)`, kept in sync in
   /// [didChangeDependencies]. Reduced motion behaves like
@@ -1442,6 +1454,7 @@ class _StreamingTextState extends State<StreamingText>
               components: widget.components,
               // ignore: deprecated_member_use_from_same_package
               inlineComponents: widget.inlineComponents,
+              mendState: _ensureMendState,
             );
             if (!constraints.hasBoundedWidth) {
               return Align(alignment: blockAlignment, child: child);

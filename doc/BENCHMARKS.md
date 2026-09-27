@@ -1503,3 +1503,154 @@ tests) was run three consecutive times, all green, and the exhaustive
 change this round is the `_markdownFadeRepaint` gating fix in
 `streaming_text.dart`, which is paint-scheduling-only and provably cannot
 change what any frame paints (see item 4 above).
+
+## B1-S6 round 10 follow-up: PERF slice on `mend()` itself
+
+Round 10 above named `mend()` as the dominant per-frame cost, root-caused it
+to a full re-scan of the entire revealed body on every call, and reported
+the `mend.dart` restriction as blocking a real fix. This slice's brief lifts
+that restriction and asks for exactly that fix: make `mend()`'s per-call
+cost roughly independent of the revealed body's length, with output
+byte-identical to before for every input.
+
+**1. Design: an optional, caller-owned incremental scan cache
+(`MendState`), never a global.** `mend()` gained one new optional parameter,
+`MendState? state` (`lib/src/render/mend.dart`). Passing nothing (every
+existing call site outside this slice) runs the exact same code as before -
+zero behaviour change, zero perf change, for any caller that doesn't opt
+in. Passing a `MendState` lets `mend()` resume its internal scans from a
+checkpoint instead of re-walking the whole body, as long as the new call is
+an append-only continuation of the last one THIS STATE saw. Any other shape
+of call - a shorter/edited/different document, `isComplete: true`, or a
+`latexEnabled` flip - safely falls back to a full scan and reseeds the
+checkpoint from it, so the next append-only call can resume again.
+`StreamingText`/`StreamingMarkdownView` own one `MendState` per stream
+(`_StreamingTextState._mendState`, created lazily, forwarded through
+`StreamingMarkdownView.mendState`) - never a static/global cache, so two
+widgets streaming different documents concurrently never share or corrupt
+each other's state.
+
+**2. What got made incremental, and why each one is safe:**
+
+- **`_isInsideCodeContext`** (fence/inline-code parity) - a genuine
+  cumulative left-to-right accumulator; reimplemented as `_CodeContextScan`,
+  which commits each FULLY TERMINATED line's effect on fence/`codeOpen`
+  state permanently, and re-derives only the current (possibly still
+  growing) last line's effect transiently on every call, matching the
+  original's own per-line, include-the-partial-last-line behaviour exactly.
+- **`_holdImageOrLinkStart`** (the bracket/image/`!` holds) - reimplemented
+  as `_LinkHoldScan`, which searches for a match starting only from a cached
+  `_resumeFrom` position instead of position 0. Safe because every pattern
+  is `$`-anchored: if the old (shorter) string had no match at all, every
+  position before its length has been conclusively tried and failed, and
+  appending text can never un-break what broke it (the character that broke
+  the match, e.g. a `]`, is still there); if the old string DID match
+  starting at some position, that is the only position a longer string's
+  match can also start at, until new text breaks it - at which point the
+  next call simply finds no match and re-anchors at the new length. So the
+  cached position is always a safe, never-too-late lower bound to resume
+  searching from.
+- **`settledSplitOffset`** (`gpt_markdown`'s own "safe place to split"
+  judgment, `package:gpt_markdown/streaming/stream_split.dart`) - the one
+  remaining full-body scan that isn't `mend.dart`'s own code, called
+  unconditionally on every `mend()` invocation. Reimplemented as a faithful,
+  line-for-line ported, resumable `_SplitScan` (only the last two "safe
+  blank line" candidates are ever needed, so it tracks two ints, not a
+  growing list, instead of the external function's own full array). This
+  duplicates a small, stable, public algorithm rather than calling into the
+  dependency incrementally (which its own API doesn't support - it takes a
+  string and returns an int, with no way to inject or extract mid-scan
+  state) - the explicit risk round 10 flagged for exactly this kind of
+  reimplementation. Mitigated the way that round's own note said it would
+  need to be: an extensive property test (below) checks the reimplementation
+  against the REAL `settledSplitOffset` indirectly (via `mend()`'s full
+  output) across the whole corpus, not just a hand-picked few cases, so a
+  future `gpt_markdown` upgrade that changes this algorithm would fail
+  loudly here.
+- **`_holdIncompleteTableHeader`** deliberately left untouched (still a
+  cheap, already-bounded last-1-2-lines check, not a full-body scan) and
+  **`_mendTail`**'s own scan of `tail` deliberately left untouched (`tail`
+  is, by construction, only ever the trailing unsettled block - already
+  bounded, and not what round 10's ablation/microbenchmark blamed).
+
+**3. Safety net: a property test, not a runtime cross-check.**
+`test/render/mend_incremental_property_test.dart` checks
+`mend(prefix, state: sharedState) == mend(prefix)` (the untouched, original
+full-scan code path - ground truth) BYTE FOR BYTE, for every `isComplete` x
+`latexEnabled` combination, across a corpus of all 26 probe12 cases, the
+full B1F1 identity matrix's extra shapes, a 27-entry sweep of every
+construct an earlier B1F1 round fixed a bug in (lists, tables, links,
+images, thematic breaks, fences, currency, math), and 3 long (900-1,500
+char), realistic multi-construct LLM-style answers (prose, headings, lists,
+a table, fenced code, inline code, a link, an image, `$`-shaped
+math/currency) - walked prefix-by-prefix in increasing order (the real
+streaming shape), in random order (exercises the non-append fallback), and
+jumping between different documents on one shared state (exercises "a
+completely different document never leaks stale state"), plus a same-length
+non-prefix edit and an explicit `reset()` check. **141 assertions, all
+passing.** This is the actual safety net - deliberately not a runtime
+cross-check against the real `settledSplitOffset` on every call, since that
+would silently reintroduce the exact O(n) cost this slice exists to remove.
+
+**4. Evidence - `mend()` no longer scales with body length.** Standalone
+microbenchmark (`test/perf/mend_microbenchmark_test.dart`, tagged
+`benchmark`), comparing "no `MendState`" (the pre-existing, still-default,
+full-scan cost) against "incremental" (a `MendState` primed with every
+prefix up to length-1, then timing the one call at the target length - the
+realistic "one more character arrived" marginal cost during a real
+stream), on a synthetic realistic document (prose, headings, list, table,
+fenced code, inline code, link, image, `$`):
+
+```
+run 1: length=500    no-state=36us    incremental=3us     speedup=12.0x
+       length=5000   no-state=208us   incremental=31us    speedup=6.7x
+       length=20000  no-state=734us   incremental=69us    speedup=10.6x
+       length=50000  no-state=1844us  incremental=117us   speedup=15.8x
+run 2: length=500    no-state=32us    incremental=3us     speedup=10.7x
+       length=5000   no-state=214us   incremental=33us    speedup=6.5x
+       length=20000  no-state=775us   incremental=69us    speedup=11.2x
+       length=50000  no-state=1825us  incremental=128us   speedup=14.3x
+```
+
+"no-state" scales linearly with length exactly as round 10 measured
+(63-815us at 500-20k there; 32-1844us at 500-50k here, same order of
+magnitude and the same shape); "incremental" stays roughly flat
+(3-130us) regardless of length - the O(n^2)-over-a-stream problem is fixed
+for any caller that opts into a `MendState`, which `StreamingText` now
+always does for markdown streams.
+
+**5. Evidence - the real stream benchmark is back well within budget.**
+`flutter test --no-dds --tags benchmark --run-skipped
+test/perf/stream_benchmark_test.dart`, 3 consecutive runs, same 20k-char
+doc, default caret on:
+
+```
+run 1: 1343 ours / 1728 bare frames, ours median 1999us, bare median 1353us,
+       median-of-medians ratio 1.559x - PASS (budget <= 1.8x)
+       rebuild ratio 1.645x - PASS (budget <= 6x)
+run 2: 1295 ours / 1728 bare frames, ours median 2189us, bare median 1508us,
+       median-of-medians ratio 1.651x - PASS
+       rebuild ratio 1.595x - PASS
+run 3: 1470 ours / 1728 bare frames, ours median 1290us, bare median 991us,
+       median-of-medians ratio 1.251x - PASS
+       rebuild ratio 1.778x - PASS
+```
+
+All 3 runs comfortably pass, a clear improvement over round 10's own
+1.668x-2.367x (2 of 3 runs FAILING) on the same machine, same benchmark,
+same load conditions - closing the exact gap round 10 reported as
+unresolvable without touching `mend.dart`.
+
+**6. No correctness surface moved.** The default suite (1,202 tests, up
+from round 10's 1,061 - this slice's own tests included) was run 3
+consecutive times, all green. The exhaustive `fade_matrix` suite (447
+tests) was re-run once, green. `flutter analyze lib test` and
+`dart format --output=none --set-exit-if-changed lib test` are both clean.
+`markdown_fade_mask.dart` was not touched. One pre-existing, unrelated
+wall-clock benchmark (`test/perf/delegation_benchmark_test.dart`, from the
+old B1-S4 reveal-delegation decision, itself has no dependency on `mend()`)
+failed once when run back-to-back with every other `benchmark`-tagged test
+on this shared, loaded machine, and passed cleanly on an immediate retry -
+consistent with this doc's own repeated observations elsewhere that
+wall-clock benchmarks are noisy under concurrent agent load on this
+machine, not a regression from this slice.

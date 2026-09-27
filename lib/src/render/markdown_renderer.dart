@@ -43,11 +43,23 @@ class StreamingMarkdownView extends StatelessWidget {
     this.inlineComponents,
     this.revealFadeEnabled = false,
     this.revealFadeSeconds = 0.18,
+    this.mendState,
   });
 
   /// The full (unmended) source text. [mend] is applied internally before
   /// this reaches `GptMarkdown`.
   final String text;
+
+  /// An optional incremental scan cache forwarded to [mend] (B1-S6 round 10
+  /// PERF slice - see [MendState]'s own doc comment). This widget is
+  /// rebuilt on every reveal tick, so it cannot own the cache itself
+  /// (`StreamingMarkdownView` has no persistent identity across builds
+  /// beyond its constructor args) - the caller's `State` (typically
+  /// `_StreamingTextState`) creates and holds ONE instance for the whole
+  /// life of its stream and passes the same instance here on every build.
+  /// `null` (the default) means every call does a full scan, exactly as
+  /// before this parameter existed - always correct, just not sped up.
+  final MendState? mendState;
 
   /// Whether the reveal is finished. Forwarded to [mend] and to
   /// `GptMarkdown.isStreaming` (inverted).
@@ -202,6 +214,7 @@ class StreamingMarkdownView extends StatelessWidget {
       text,
       isComplete: isComplete,
       latexEnabled: latexEnabled,
+      state: mendState,
     );
     // Only forward `useDollarSignsForLatex` to gpt_markdown when the caller
     // set it explicitly - that opts into gpt_markdown's own naive, code-

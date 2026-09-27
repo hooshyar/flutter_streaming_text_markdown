@@ -3,6 +3,268 @@ import 'package:gpt_markdown/gpt_markdown.dart' show settledSplitOffset;
 import '../engine/atomic_spans.dart';
 import 'caret_inline.dart' show caretSentinel;
 
+/// Opaque, per-call-site incremental scan cache for [mend] (B1-S6 round 10
+/// PERF slice - see doc/BENCHMARKS.md's "the real cost is mend()" section).
+///
+/// Without a [MendState], `mend()` re-scans the entire revealed body on
+/// every call - correct, but O(body length) per call, which sums to
+/// O(n^2) total cost across one growing stream. Passing the SAME
+/// [MendState] instance across consecutive calls for the SAME logical
+/// stream lets `mend()` resume its internal scans from where the previous
+/// call left off instead of re-walking already-seen text, as long as the
+/// new call's `text` is a superset (append-only continuation) of the
+/// previous one. Any other shape of call - a shorter/edited/different
+/// document, a flip of `isComplete` or `latexEnabled`, or simply never
+/// having seen this state before - safely falls back to a full scan (the
+/// exact same computation `mend` always did) and reseeds the cache from
+/// that scan's own final state, so the next append-only call can resume
+/// again.
+///
+/// **Own one [MendState] per active stream, never share or reuse one
+/// across unrelated documents or widgets** - it is mutable, stream-scoped
+/// state, deliberately NOT a global/static cache (a global cache keyed on
+/// "the last call, whoever made it" would corrupt output the moment two
+/// `StreamingText`/`StreamingMarkdownView` instances stream different
+/// documents at the same time - e.g. a chat view with two concurrent
+/// in-flight responses). [StreamingMarkdownView] callers should hold their
+/// instance in the parent `State` (see `_StreamingTextState._mendState`)
+/// and pass the same instance on every build for the same logical stream.
+///
+/// Every code path this enables (never just the "happy path") is checked
+/// byte-for-byte against `mend()` with no [MendState] at all - the ground
+/// truth - by `test/render/mend_incremental_property_test.dart`, across
+/// every corpus this package's test suite has for `mend()`, prefix-by-
+/// prefix in streaming order, in random order, and with non-prefix jumps.
+/// That property test is the actual safety net for this optimization, not
+/// a runtime cross-check (adding one back would reintroduce the exact
+/// O(n) cost this class exists to remove).
+class MendState {
+  /// Creates an empty incremental cache. Pass the SAME instance into every
+  /// [mend] call for one logical stream.
+  MendState();
+
+  String _prevBody = '';
+  bool _prevLatexEnabled = false;
+  bool _hasCheckpoint = false;
+
+  final _CodeContextScan _codeContext = _CodeContextScan();
+  final _LinkHoldScan _linkHold = _LinkHoldScan();
+
+  String _prevSafeBody = '';
+  final _SplitScan _split = _SplitScan();
+
+  /// Drops all cached state, forcing the next [mend] call using this
+  /// [MendState] to do a full scan. Called automatically whenever `mend`
+  /// sees a call it can't safely resume from (a non-append change,
+  /// `isComplete: true`, or a `latexEnabled` flip) - exposed publicly only
+  /// so a caller can explicitly reset when it knows it is about to hand
+  /// `mend` a wholly different document (e.g. `setSource` with a
+  /// non-prefix replacement), though `mend` itself never requires this to
+  /// stay correct.
+  void reset() {
+    _hasCheckpoint = false;
+    _prevBody = '';
+    _prevSafeBody = '';
+    _codeContext.reset();
+    _linkHold.reset();
+    _split.reset();
+  }
+}
+
+/// Incremental reimplementation of [_isInsideCodeContext]: same algorithm,
+/// resumable from a checkpoint instead of re-walking the whole string every
+/// call. A fully-terminated line's effect on fence/inline-code state is
+/// committed permanently; the current (possibly still-growing) last line is
+/// re-examined on every call but never committed, since more of it may
+/// still arrive - matching `_isInsideCodeContext`'s own single-pass
+/// behaviour of processing every line, including a trailing one with no
+/// newline yet.
+class _CodeContextScan {
+  bool _committedInFence = false;
+  bool _committedCodeOpen = false;
+  int _lineStart = 0;
+
+  void reset() {
+    _committedInFence = false;
+    _committedCodeOpen = false;
+    _lineStart = 0;
+  }
+
+  /// Feeds the FULL current string [s] - which must share [s]'s already-
+  /// committed prefix (everything before [_lineStart]) with whatever this
+  /// scan last saw - and returns whether its end sits inside an open fence
+  /// or inline code span.
+  bool feed(String s) {
+    final n = s.length;
+    var index = _lineStart;
+    while (index < n) {
+      final nl = s.indexOf('\n', index);
+      if (nl == -1) break;
+      _commitLine(s, index, nl);
+      index = nl + 1;
+      _lineStart = index;
+    }
+    return _transientResult(s.substring(_lineStart, n));
+  }
+
+  void _commitLine(String s, int start, int end) {
+    final line = s.substring(start, end);
+    if (line.trimLeft().startsWith('```')) {
+      _committedInFence = !_committedInFence;
+      _committedCodeOpen = false;
+      return;
+    }
+    if (_committedInFence) return;
+    _committedCodeOpen = _scanBackticks(line, _committedCodeOpen);
+  }
+
+  bool _transientResult(String line) {
+    if (line.trimLeft().startsWith('```')) {
+      // Toggles fence state for the purpose of THIS call's answer only -
+      // never committed, since this line has no trailing newline yet.
+      return !_committedInFence;
+    }
+    if (_committedInFence) return true;
+    return _scanBackticks(line, _committedCodeOpen);
+  }
+
+  bool _scanBackticks(String line, bool codeOpen) {
+    var i = 0;
+    final n = line.length;
+    while (i < n) {
+      final c = line[i];
+      if (c == '\\' && i + 1 < n) {
+        i += 2;
+        continue;
+      }
+      if (c == '`') {
+        codeOpen = !codeOpen;
+        i++;
+        continue;
+      }
+      i++;
+    }
+    return codeOpen;
+  }
+}
+
+/// Incremental reimplementation of [_holdImageOrLinkStart]: same three
+/// checks, same priority order, but searches for a match starting only
+/// from [_resumeFrom] instead of from position 0.
+///
+/// Safe because every one of the three patterns is `$`-anchored: if
+/// scanning the OLD (shorter) string found no match at all, every position
+/// before its length has been conclusively tried and failed, and appending
+/// more text can never make an earlier position match again (the character
+/// that broke it - a `]`, a second `!`, whatever - is still there). If the
+/// old string DID match starting at some position, that position remains
+/// the only possible match start for a longer, appended string too, until
+/// the match's content is broken by newly-appended text - at which point
+/// the next call simply finds no match and re-anchors at the new length.
+/// So position `_resumeFrom` is always a safe (never-too-late) lower bound
+/// to resume searching from.
+class _LinkHoldScan {
+  int _resumeFrom = 0;
+
+  void reset() {
+    _resumeFrom = 0;
+  }
+
+  /// Applies the same rewrite [_holdImageOrLinkStart] would, resuming the
+  /// search from the cached checkpoint.
+  String apply(String s) {
+    final from = _resumeFrom > s.length ? s.length : _resumeFrom;
+    final altInProgress = _firstMatchFrom(_openImageAltInProgress, s, from);
+    if (altInProgress != null) {
+      _resumeFrom = altInProgress.start;
+      return s.substring(0, altInProgress.start);
+    }
+    final closedPair = _firstMatchFrom(_closedBracketNoParenYet, s, from);
+    if (closedPair != null) {
+      _resumeFrom = closedPair.start;
+      return s.substring(0, closedPair.start);
+    }
+    if (s.isNotEmpty && s[s.length - 1] == '!') {
+      _resumeFrom = s.length - 1;
+      return s.substring(0, s.length - 1);
+    }
+    _resumeFrom = s.length;
+    return s;
+  }
+
+  RegExpMatch? _firstMatchFrom(RegExp re, String s, int start) {
+    for (final m in re.allMatches(s, start)) {
+      return m;
+    }
+    return null;
+  }
+}
+
+/// Incremental reimplementation of `gpt_markdown`'s own
+/// `settledSplitOffset` (`package:gpt_markdown/streaming/stream_split.dart`,
+/// gpt_markdown 1.3.0) - same algorithm, resumable from a checkpoint. Kept
+/// as a faithful line-for-line port (not a black-box guess) specifically so
+/// it stays easy to audit against the real function if `gpt_markdown` is
+/// ever upgraded; `test/render/mend_incremental_property_test.dart` checks
+/// every call site this ships with against the real
+/// `settledSplitOffset(safeBody)` directly, not just against `mend`'s own
+/// output, so a future version drift would fail loudly there first.
+///
+/// Only the last TWO "safe blank line" candidate offsets are ever needed
+/// (`settledSplitOffset` returns the second-to-last one), so this tracks
+/// just those two ints instead of a growing list. A fully-terminated line
+/// is committed permanently; the current incomplete last line is never a
+/// candidate anyway (the real function explicitly excludes it - "the next
+/// token may still extend it"), so unlike [_CodeContextScan] there is
+/// nothing transient to compute for it at all.
+class _SplitScan {
+  bool _inFence = false;
+  bool _inLatex = false;
+  int _lineStart = 0;
+  int? _lastCandidate;
+  int? _secondLastCandidate;
+
+  void reset() {
+    _inFence = false;
+    _inLatex = false;
+    _lineStart = 0;
+    _lastCandidate = null;
+    _secondLastCandidate = null;
+  }
+
+  int feed(String source) {
+    final n = source.length;
+    var index = _lineStart;
+    while (index < n) {
+      final nl = source.indexOf('\n', index);
+      if (nl == -1) break;
+      _commitLine(source, index, nl);
+      index = nl + 1;
+      _lineStart = index;
+    }
+    return _secondLastCandidate ?? 0;
+  }
+
+  void _commitLine(String source, int start, int end) {
+    final line = source.substring(start, end);
+    final trimmed = line.trimLeft();
+    if (_inFence) {
+      if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+        _inFence = false;
+      }
+    } else if (_inLatex) {
+      if (trimmed.contains(r'\]')) _inLatex = false;
+    } else if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+      _inFence = true;
+    } else if (trimmed.startsWith(r'\[') && !trimmed.contains(r'\]')) {
+      _inLatex = true;
+    } else if (trimmed.isEmpty && start > 0) {
+      _secondLastCandidate = _lastCandidate;
+      _lastCandidate = end + 1;
+    }
+  }
+}
+
 /// Mends the tail of a still-streaming markdown [text] so it never renders a
 /// raw, half-typed marker while more characters are on the way.
 ///
@@ -41,12 +303,23 @@ import 'caret_inline.dart' show caretSentinel;
 /// any of the above runs, then re-appended only when the mended tail does
 /// not end inside an open fence/math block - so the sentinel never reaches
 /// a `codeBuilder`'s `code` string.
+///
+/// [state], when provided, lets repeated calls for the SAME growing stream
+/// resume their internal scans instead of re-walking the whole body every
+/// time - see [MendState]'s own doc comment for the safety argument and
+/// ownership rules. Omitting it (the default) is always correct and
+/// unchanged from before this parameter existed; it only costs more when
+/// `text` is large and `mend` is called repeatedly for the same stream.
 String mend(
   String text, {
   required bool isComplete,
   bool latexEnabled = false,
+  MendState? state,
 }) {
-  if (isComplete || text.isEmpty) return text;
+  if (isComplete || text.isEmpty) {
+    state?.reset();
+    return text;
+  }
 
   final hasSentinel = text.endsWith(caretSentinel);
   final body =
@@ -66,11 +339,52 @@ String mend(
   // thing in the document (B1F1 round 3): `gpt_markdown` has no notion of
   // "might still become a table" either, so it too must be checked against
   // the whole body, not just the post-split tail.
-  final linkSafeBody =
-      _isInsideCodeContext(body) ? body : _holdImageOrLinkStart(body);
-  final safeBody = _holdIncompleteTableHeader(linkSafeBody) ?? linkSafeBody;
+  String linkSafeBody;
+  String safeBody;
+  int split;
 
-  final split = settledSplitOffset(safeBody);
+  if (state != null) {
+    // Resumable only when this call is an append-only continuation of the
+    // exact call this [state] last saw - anything else (a shorter/edited
+    // body, or a `latexEnabled` flip) falls back to a full scan below,
+    // which also reseeds every checkpoint from scratch so the NEXT call can
+    // resume again.
+    final canResumeBody =
+        state._hasCheckpoint &&
+        state._prevLatexEnabled == latexEnabled &&
+        body.length >= state._prevBody.length &&
+        body.startsWith(state._prevBody);
+    if (!canResumeBody) {
+      state._codeContext.reset();
+      state._linkHold.reset();
+    }
+
+    linkSafeBody =
+        state._codeContext.feed(body) ? body : state._linkHold.apply(body);
+    safeBody = _holdIncompleteTableHeader(linkSafeBody) ?? linkSafeBody;
+
+    // The table-header hold can truncate `safeBody` to a shorter, or
+    // differently-truncated, string than last call even when `body` itself
+    // only grew - so its own append-continuation is checked independently
+    // rather than assumed from `canResumeBody`.
+    final canResumeSplit =
+        canResumeBody &&
+        safeBody.length >= state._prevSafeBody.length &&
+        safeBody.startsWith(state._prevSafeBody);
+    if (!canResumeSplit) state._split.reset();
+    split = state._split.feed(safeBody);
+
+    state._prevBody = body;
+    state._prevSafeBody = safeBody;
+    state._prevLatexEnabled = latexEnabled;
+    state._hasCheckpoint = true;
+  } else {
+    linkSafeBody =
+        _isInsideCodeContext(body) ? body : _holdImageOrLinkStart(body);
+    safeBody = _holdIncompleteTableHeader(linkSafeBody) ?? linkSafeBody;
+    split = settledSplitOffset(safeBody);
+  }
+
   final settled = safeBody.substring(0, split);
   final tail = safeBody.substring(split);
 

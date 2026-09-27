@@ -1,9 +1,8 @@
 // Widget-level reveal invariants for the S5 engine rewire: the rendered
 // text must always be a literal prefix of the source and end up exactly
-// equal to it, across modes, text/stream input, and the audit's trickiest
-// corpus (indentation, Arabic, LaTeX). Each of these fails on main
-// (38bc831) and passes after the rewrite — see AUDIT-2026-09-26.md
-// W1/W2/W4/W5/W6/W24.
+// equal to it, across modes, text/stream input, and a corpus of the
+// trickiest inputs (indentation, Arabic, LaTeX). Each of these fails on
+// main (38bc831) and passes after the rewrite (W1/W2/W4/W5/W6/W24).
 
 import 'dart:async';
 

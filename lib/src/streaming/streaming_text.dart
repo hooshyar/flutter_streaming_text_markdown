@@ -354,6 +354,16 @@ class _StreamingTextState extends State<StreamingText>
   /// `setState`s to show it.
   bool _lastTickWasActive = false;
 
+  /// The engine [RevealEngine.cursor] value as of the last [build]. Compared
+  /// against the *current* cursor in [_onTick] so a tick always rebuilds
+  /// when the reveal has actually moved on, even if [RevealScheduler] itself
+  /// already self-stopped (`isRunning == false`) within that same tick -
+  /// e.g. a short post-completion append that fits in a single scheduler
+  /// tick and both reveals and idles before the widget's own [Ticker] frame
+  /// callback runs. Relying on `_scheduler.isRunning` alone at that point
+  /// would race and silently drop the frame that should have painted it.
+  int _lastBuiltCursor = -1;
+
   /// A monotonic clock shared between [RevealEngine]'s reveal-run
   /// timestamps and this widget's fade rendering, so `now - revealedAt`
   /// stays consistent without needing wall-clock [DateTime] math.
@@ -435,11 +445,36 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   bool get _instantReveal =>
-      !widget.animationsEnabled || _effectiveInterval() == Duration.zero;
+      _reducedMotion ||
+      !widget.animationsEnabled ||
+      _effectiveInterval() == Duration.zero;
+
+  /// Reveals as much as can be shown right now with no animation.
+  ///
+  /// `animationsEnabled: false` / a zero `typingSpeed` keep their pre-W26
+  /// contract: reveal the *entire* current source immediately via
+  /// [RevealEngine.revealAll], bypassing open-input withholding altogether -
+  /// existing callers (W23/W26) rely on a mid-stream chunk showing up in
+  /// full the instant it arrives, with no held-back tail.
+  ///
+  /// Reduced motion is different: it isn't "no animation", it's "no
+  /// ticker" - there is no per-frame driver left to reveal a withheld tail
+  /// once more input closes the gap, so while input is still open it goes
+  /// through [RevealEngine.step] instead, which respects the same
+  /// grapheme/word/atomic-span safety a normal typewriter reveal would (see
+  /// DESIGN.md section 7). [_onStreamDone] re-runs this once input closes,
+  /// which is what releases that tail.
+  void _revealInstantly() {
+    if (_reducedMotion && !_engine.inputClosed) {
+      while (_engine.step()) {}
+    } else {
+      _engine.revealAll();
+    }
+  }
 
   void _applyImmediateRevealIfNeeded() {
     if (_instantReveal) {
-      _engine.revealAll();
+      _revealInstantly();
     }
   }
 
@@ -487,6 +522,12 @@ class _StreamingTextState extends State<StreamingText>
     if (!mounted) return;
     setState(() {
       _engine.close();
+      // Closing releases any reduced-motion/instant-reveal holdback that
+      // was only withheld because more input could still arrive (the final
+      // grapheme, an unterminated word) - without this, reduced motion with
+      // an open-then-closed stream would leave that tail stuck forever with
+      // no ticker running to reveal it later.
+      _applyImmediateRevealIfNeeded();
     });
     _scheduler.wake();
     _syncTicker();
@@ -703,7 +744,15 @@ class _StreamingTextState extends State<StreamingText>
     // rebuild the one tick right after activity stops (`_lastTickWasActive`)
     // so the settled/fully-opaque frame actually gets drawn, rather than
     // freezing on whatever was on screen mid-fade.
-    final isActive = _scheduler.isRunning || _fadeActive;
+    //
+    // `_scheduler.isRunning` alone is racy: a short append can be entirely
+    // revealed and idle the scheduler within a single `Timer` tick, before
+    // this `Ticker` frame callback even runs - so also compare the engine's
+    // cursor against what the last `build` actually rendered, and rebuild
+    // whenever it moved, independent of whether the scheduler still
+    // considers itself "running" at the moment this tick observes it.
+    final cursorMoved = _engine.cursor != _lastBuiltCursor;
+    final isActive = _scheduler.isRunning || _fadeActive || cursorMoved;
     if (isActive || _lastTickWasActive) {
       setState(() {});
       widget.onTextChanged?.call();
@@ -794,7 +843,7 @@ class _StreamingTextState extends State<StreamingText>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         setState(() {
-          _engine.revealAll();
+          _revealInstantly();
         });
         _scheduler.wake();
         _syncTicker();
@@ -916,7 +965,12 @@ class _StreamingTextState extends State<StreamingText>
     // `GestureDetector` wrapping a `SelectionArea` loses the tap to
     // `SelectionArea`'s own gesture recognizers in the arena, silently
     // breaking tap-to-complete whenever `selectable` is on.
-    return _buildContent(context);
+    final content = _buildContent(context);
+    // Recorded post-build so [_onTick] can tell "the engine moved since we
+    // last actually painted it" apart from "the scheduler still thinks it's
+    // running" (see [_lastBuiltCursor]'s doc).
+    _lastBuiltCursor = _engine.cursor;
+    return content;
   }
 
   Widget _buildErrorContent(BuildContext context, Object error) {

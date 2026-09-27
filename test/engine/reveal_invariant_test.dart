@@ -6,7 +6,7 @@
 // must never sit inside a grapheme cluster or an atomic span, progress
 // must be monotonic non-decreasing, and onComplete must fire exactly once.
 //
-// This directly targets AUDIT-2026-09-26.md W1, W2, W4, W5, W6 and W24.
+// This directly targets W1, W2, W4, W5, W6 and W24.
 
 import 'dart:math';
 

@@ -31,9 +31,14 @@ class RevealScheduler {
 
   /// The current tick interval. Assigning applies in place: an active
   /// timer is rescheduled at the new interval without losing the engine's
-  /// cursor position.
+  /// cursor position. A no-op when [value] equals the current interval —
+  /// otherwise a caller that re-syncs config on every notification (e.g. a
+  /// [StreamingTextController] progress update, which fires on every tick)
+  /// would cancel-and-recreate the `Timer.periodic` before it ever gets a
+  /// chance to fire, permanently starving the reveal.
   Duration get interval => _interval;
   set interval(Duration value) {
+    if (value == _interval) return;
     _interval = value;
     if (_timer != null) {
       _timer!.cancel();

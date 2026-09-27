@@ -92,6 +92,14 @@ class AtomicSpanDetector {
       }
 
       if (source.startsWith(_dollarDollar, i)) {
+        if (_isEscaped(source, i)) {
+          // `\$$` (or `\$` immediately before a second, unescaped `$`): the
+          // escaping backslash makes this `$` literal, so it can't open a
+          // `$$...$$` span either - leave it as plain text, one char at a
+          // time, same as a lone escaped `$` below.
+          i++;
+          continue;
+        }
         i = _consumeSpan(source, result, i, _dollarDollar, _dollarDollar);
         continue;
       }
@@ -168,9 +176,31 @@ class AtomicSpanDetector {
     return buffer.toString();
   }
 
+  /// Whether the `$`/`\(`/`\[` etc. delimiter character at [index] is
+  /// escaped: preceded by an ODD run of backslashes. `\$` is a literal `$`
+  /// (the backslash is consumed by markdown's own escaping, same as `\*` or
+  /// `\_`); `\\$` is an escaped backslash followed by a live `$`, which is
+  /// why the run length's parity - not merely "is the previous char a
+  /// backslash" - is what decides it.
+  static bool _isEscaped(String source, int index) {
+    var count = 0;
+    var j = index - 1;
+    while (j >= 0 && source[j] == '\\') {
+      count++;
+      j--;
+    }
+    return count.isOdd;
+  }
+
+  /// Whether [c] is a currency magnitude suffix (`$10k`, `$5M`, `$2B`):
+  /// still currency, never the start of a LaTeX span.
+  static bool _isMagnitudeSuffix(String c) =>
+      c == 'k' || c == 'K' || c == 'm' || c == 'M' || c == 'b' || c == 'B';
+
   /// Whether a `$` at [index] can open a LaTeX span at all, per the
   /// pandoc-style currency rules on the class doc.
   bool _dollarOpensMath(String source, int index) {
+    if (_isEscaped(source, index)) return false;
     final next = index + 1;
     if (next >= source.length) return false;
     final nextChar = source[next];
@@ -185,9 +215,19 @@ class AtomicSpanDetector {
         // streaming): can't tell currency from math, so don't hold on it.
         return false;
       }
-      final after = source[j];
-      if (_isSpace(after) || _isPunctuation(after)) {
-        return false; // `$5 `, `$10-`, ... : currency.
+      var after = source[j];
+      if (_isMagnitudeSuffix(after)) {
+        // `$10k`, `$5M`, `$2B`: a magnitude suffix on a currency number is
+        // still currency, so look past it before checking the boundary.
+        j++;
+        if (j >= source.length) {
+          // Still streaming, ambiguous: don't hold the cursor on it.
+          return false;
+        }
+        after = source[j];
+      }
+      if (_isSpace(after) || _isPunctuation(after) || after == '-') {
+        return false; // `$5 `, `$10-`, `$10k-`, ... : currency.
       }
     }
     return true;
@@ -196,6 +236,7 @@ class AtomicSpanDetector {
   /// Whether a `$` at [index] can close a LaTeX span, per the pandoc-style
   /// rules on the class doc.
   bool _dollarClosesMath(String source, int index) {
+    if (_isEscaped(source, index)) return false;
     if (index == 0) return false;
     if (_isSpace(source[index - 1])) return false;
     final next = index + 1;

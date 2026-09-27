@@ -73,6 +73,56 @@ void main() {
     });
   });
 
+  group('escaped dollars are never treated as LaTeX delimiters (R2 fix)', () {
+    test(r'Literal \$x and \$y here. (fails on 189b826: bogus Math span + '
+        'ParseException)', () {
+      const text = r'Literal \$x and \$y here.';
+      expect(detector.spans(text), isEmpty);
+      expect(detector.rewriteDollarDelimiters(text), text);
+    });
+
+    test(r'a real span still works right after an escaped dollar', () {
+      const text = r'Literal \$x, and $a=1$ is math.';
+      final spans = detector.spans(text);
+      expect(spans, hasLength(1));
+      expect(text.substring(spans.single.start, spans.single.end), r'$a=1$');
+      expect(
+        detector.rewriteDollarDelimiters(text),
+        r'Literal \$x, and \(a=1\) is math.',
+      );
+    });
+
+    test(r'\$$ (escaped dollar immediately before a live one) does not '
+        r'open a $$ block span', () {
+      const text = r'\$$a=1$';
+      // The first `$` is escaped and literal; `_dollarDollar` never
+      // matches here, so the second `$` and the `$` that follows `a=1`
+      // form an ordinary single-dollar span instead.
+      final spans = detector.spans(text);
+      expect(spans, hasLength(1));
+      expect(text.substring(spans.single.start, spans.single.end), r'$a=1$');
+    });
+
+    test('an even run of backslashes leaves the dollar live: '
+        r'\\$x^2$ still opens math', () {
+      const text = r'\\$x^2$ done';
+      final spans = detector.spans(text);
+      expect(spans, hasLength(1));
+      expect(text.substring(spans.single.start, spans.single.end), r'$x^2$');
+    });
+  });
+
+  group('currency magnitude suffixes are still currency (advisory)', () {
+    for (final text in <String>[
+      r'Growth from $10k-$20k happened.',
+      r'Revenue was $5M last year.',
+    ]) {
+      test('"$text" produces no spans', () {
+        expect(detector.spans(text), isEmpty);
+      });
+    }
+  });
+
   group('an unclosed span is bounded to the current paragraph', () {
     test('a stray, never-closed \$ does not hold once its paragraph ends', () {
       const text = 'First \$paragraph never closes.\n\nSecond paragraph.';

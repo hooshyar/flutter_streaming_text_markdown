@@ -11,17 +11,26 @@ import 'reveal_pacer.dart';
 /// [RevealEngine.onSourceGrew]), or when [wake] is called explicitly.
 class RevealScheduler {
   /// Wraps [engine], ticking it every [interval] using [pacer].
+  ///
+  /// [clock] is used only to time how long the engine's input has been
+  /// closed, for pacers (like [CatchUpPacer]) that accelerate a drain
+  /// after close; it's injectable so tests can drive it under
+  /// `package:fake_async`.
   RevealScheduler({
     required RevealEngine engine,
     Duration interval = const Duration(milliseconds: 30),
     this.pacer = const FixedPacer(),
+    DateTime Function() clock = DateTime.now,
   }) : _engine = engine,
-       _interval = interval {
+       _interval = interval,
+       _clock = clock {
     _engine.onSourceGrew = wake;
   }
 
   final RevealEngine _engine;
+  final DateTime Function() _clock;
   Duration _interval;
+  DateTime? _closedAt;
 
   /// The pacer used to compute how many units to reveal per tick.
   RevealPacer pacer;
@@ -125,14 +134,32 @@ class RevealScheduler {
       _timer = null;
       return;
     }
-    final units = pacer.unitsThisTick(_backlog);
+    if (_engine.inputClosed) {
+      _closedAt ??= _clock();
+    } else {
+      _closedAt = null;
+    }
+    final context = PaceContext(
+      backlog: _backlog,
+      interval: _interval,
+      inputClosed: _engine.inputClosed,
+      sinceClosed: _closedAt == null ? null : _clock().difference(_closedAt!),
+    );
+    final decision = pacer.decide(context);
+
+    // Step whole units - never a partial one - until both the minimum
+    // unit count AND the char budget are met. This is what makes a
+    // char-budget-based pacer (e.g. CatchUpPacer) snap up to whole word
+    // boundaries instead of ever fabricating a mid-word reveal.
     var progressed = false;
-    for (var i = 0; i < units; i++) {
-      if (_engine.step()) {
-        progressed = true;
-      } else {
-        break;
-      }
+    var stepsRun = 0;
+    var charsRevealed = 0;
+    while (stepsRun < decision.units || charsRevealed < decision.minChars) {
+      final before = _engine.cursor;
+      if (!_engine.step()) break;
+      charsRevealed += _engine.cursor - before;
+      stepsRun++;
+      progressed = true;
     }
     // Idle once nothing is left to reveal, OR once a tick makes no
     // progress at all - e.g. all that remains is a word/span/grapheme a

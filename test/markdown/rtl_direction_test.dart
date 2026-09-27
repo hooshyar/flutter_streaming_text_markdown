@@ -16,6 +16,7 @@ void main() {
       const MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: 'مرحبا بالعالم، هذا اختبار',
             markdownEnabled: true,
             animationsEnabled: false,
@@ -36,6 +37,7 @@ void main() {
       const MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: 'مرحبا بالعالم',
             markdownEnabled: true,
             animationsEnabled: false,
@@ -55,6 +57,7 @@ void main() {
       const MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: 'Hello world',
             markdownEnabled: true,
             animationsEnabled: false,

@@ -20,6 +20,7 @@ void main() {
   Widget build(String text) => MaterialApp(
     home: Scaffold(
       body: StreamingText(
+        revealMode: null,
         text: text,
         typingSpeed: const Duration(milliseconds: 5),
         wordByWord: false,

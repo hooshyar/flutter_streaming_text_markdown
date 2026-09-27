@@ -45,7 +45,13 @@ void main() {
       final controller = StreamingTextController();
       addTearDown(controller.dispose);
       await t.pumpWidget(
-        _host(StreamingTextMarkdown(text: text, controller: controller)),
+        _host(
+          StreamingTextMarkdown(
+            revealMode: null,
+            text: text,
+            controller: controller,
+          ),
+        ),
       );
       await _frames(t, 60); // ~1s of real 60Hz frames.
       expect(
@@ -64,7 +70,13 @@ void main() {
       final controller = StreamingTextController();
       addTearDown(controller.dispose);
       await t.pumpWidget(
-        _host(StreamingTextMarkdown.claude(text: text, controller: controller)),
+        _host(
+          StreamingTextMarkdown.claude(
+            revealMode: null,
+            text: text,
+            controller: controller,
+          ),
+        ),
       );
       await _frames(t, 300);
       expect(_rich(t), text);
@@ -77,6 +89,7 @@ void main() {
       await t.pumpWidget(
         _host(
           StreamingTextMarkdown(
+            revealMode: null,
             text: text,
             controller: controller,
             typingSpeed: const Duration(milliseconds: 40),
@@ -112,6 +125,7 @@ void main() {
         testWidgets('SMALL APPEND md=$md word=$word', (t) async {
           Widget w(String s) => _host(
             StreamingText(
+              revealMode: null,
               text: s,
               markdownEnabled: md,
               wordByWord: word,
@@ -139,6 +153,7 @@ void main() {
     testWidgets('a longer append after completion is painted too', (t) async {
       Widget w(String s) => _host(
         StreamingText(
+          revealMode: null,
           text: s,
           typingSpeed: const Duration(milliseconds: 10),
           chunkSize: 5,
@@ -167,7 +182,11 @@ void main() {
         final sc = StreamController<String>();
         await t.pumpWidget(
           _host(
-            StreamingTextMarkdown(stream: sc.stream, markdownEnabled: md),
+            StreamingTextMarkdown(
+              revealMode: null,
+              stream: sc.stream,
+              markdownEnabled: md,
+            ),
             reduce: true,
           ),
         );
@@ -211,6 +230,7 @@ void main() {
         await t.pumpWidget(
           _host(
             StreamingText(
+              revealMode: null,
               text: r'Literal \$x and \$y here.',
               markdownEnabled: true,
               latexEnabled: true,

@@ -20,6 +20,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: StreamingTextMarkdown(
+          revealMode: null,
           text: 'hello',
           markdownOptions: options,
           selectable: true,
@@ -47,7 +48,12 @@ void main() {
     addTearDown(controller.close);
 
     await tester.pumpWidget(
-      MaterialApp(home: StreamingTextMarkdown(stream: controller.stream)),
+      MaterialApp(
+        home: StreamingTextMarkdown(
+          revealMode: null,
+          stream: controller.stream,
+        ),
+      ),
     );
     await tester.pump();
     var inner = tester.widget<StreamingText>(find.byType(StreamingText));
@@ -55,7 +61,11 @@ void main() {
 
     await tester.pumpWidget(
       const MaterialApp(
-        home: StreamingTextMarkdown(text: 'hi', animationsEnabled: false),
+        home: StreamingTextMarkdown(
+          revealMode: null,
+          text: 'hi',
+          animationsEnabled: false,
+        ),
       ),
     );
     await tester.pump();

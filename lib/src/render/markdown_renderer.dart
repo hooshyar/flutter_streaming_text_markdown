@@ -41,6 +41,8 @@ class StreamingMarkdownView extends StatelessWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.revealFadeEnabled = false,
+    this.revealFadeSeconds = 0.18,
   });
 
   /// The full (unmended) source text. [mend] is applied internally before
@@ -51,10 +53,24 @@ class StreamingMarkdownView extends StatelessWidget {
   /// `GptMarkdown.isStreaming` (inverted).
   final bool isComplete;
 
-  /// Forwarded to `GptMarkdown.isStreaming`. Unused while `gpt_markdown`'s
-  /// own reveal (`animation`) stays off — kept as a Phase B seam so this
-  /// adapter doesn't need a new parameter to opt in later.
+  /// Forwarded to `GptMarkdown.isStreaming`.
   final bool isStreaming;
+
+  /// The B1-S5 hybrid (PHASE-B1-PLAN.md, acceptance criterion 9/11): when
+  /// `true`, [text] (already the head our own [RevealEngine] has revealed)
+  /// is handed to `GptMarkdown` with `animation: GptMarkdownAnimation.fade`
+  /// and a deliberately huge `charactersPerSecond`, so `gpt_markdown`'s own
+  /// pacing head never lags our cursor — it only softens the paint of
+  /// whatever we already decided is revealed. Our engine still owns
+  /// pacing, lifecycle and the caret either way.
+  ///
+  /// `false` (the default) builds exactly the pre-B1-S5 tree:
+  /// `GptMarkdownAnimation.none`, no fade.
+  final bool revealFadeEnabled;
+
+  /// Forwarded to `GptMarkdown.revealFadeSeconds` when [revealFadeEnabled]
+  /// is `true`. Ignored otherwise.
+  final double revealFadeSeconds;
 
   /// Forwarded to `GptMarkdown.style`.
   final TextStyle? style;
@@ -239,6 +255,15 @@ class StreamingMarkdownView extends StatelessWidget {
       textAlign: textAlign,
       textScaler: textScaler,
       isStreaming: isStreaming,
+      animation:
+          revealFadeEnabled
+              ? GptMarkdownAnimation.fade
+              : GptMarkdownAnimation.none,
+      // Huge on purpose (see [revealFadeEnabled]'s doc): our own engine
+      // already decided what is revealed - gpt_markdown's head must never
+      // lag behind that cursor, it only softens the paint.
+      charactersPerSecond: revealFadeEnabled ? 1000000 : 300,
+      revealFadeSeconds: revealFadeSeconds,
       useDollarSignsForLatex: explicitUseDollarSigns ?? false,
       imageBuilder: effectiveImageBuilder,
       onLinkTap: onLinkTap,

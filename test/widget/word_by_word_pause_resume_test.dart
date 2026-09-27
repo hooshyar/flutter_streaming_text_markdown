@@ -24,6 +24,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: text,
               wordByWord: true,
               typingSpeed: typingSpeed,

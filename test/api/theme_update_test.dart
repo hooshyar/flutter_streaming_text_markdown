@@ -19,6 +19,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: StreamingTextMarkdown(
+          revealMode: null,
           text: 'hello',
           theme: themeA,
           animationsEnabled: false,
@@ -35,6 +36,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: StreamingTextMarkdown(
+          revealMode: null,
           text: 'hello',
           theme: themeB,
           animationsEnabled: false,

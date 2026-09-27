@@ -28,6 +28,7 @@ void main() {
                       child: const Text('Append Text'),
                     ),
                     StreamingTextMarkdown.chatGPT(
+                      revealMode: null,
                       key: const ValueKey(
                         'demo_test',
                       ), // Fixed key - no updateCounter
@@ -97,6 +98,7 @@ void main() {
                         child: const Text('Append Text'),
                       ),
                       StreamingTextMarkdown.chatGPT(
+                        revealMode: null,
                         key: ValueKey(
                           'demo_$updateCounter',
                         ), // BAD: includes updateCounter

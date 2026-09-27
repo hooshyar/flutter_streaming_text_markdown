@@ -31,6 +31,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: StreamingTextMarkdown(
+              revealMode: null,
               text: longText,
               markdownEnabled: false,
               wordByWord: false,
@@ -73,6 +74,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: StreamingTextMarkdown(
+              revealMode: null,
               stream: controller.stream,
               markdownEnabled: false,
               // fadeInEnabled is intentionally left true: per-character fade

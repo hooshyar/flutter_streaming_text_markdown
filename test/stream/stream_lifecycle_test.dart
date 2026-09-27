@@ -38,6 +38,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               animationsEnabled: false,
@@ -98,6 +99,7 @@ void main() {
       return MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: '',
             stream: controller.stream,
             markdownEnabled: markdownEnabled,
@@ -156,6 +158,7 @@ void main() {
       return MaterialApp(
         home: Scaffold(
           body: StreamingTextMarkdown(
+            revealMode: null,
             stream: controller.stream,
             markdownEnabled: markdownEnabled,
             typingSpeed: Duration(milliseconds: typingMs),
@@ -209,6 +212,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,
@@ -281,6 +285,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,
@@ -319,6 +324,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,

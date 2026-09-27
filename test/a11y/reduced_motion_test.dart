@@ -26,6 +26,7 @@ void main() {
           child: MaterialApp(
             home: Scaffold(
               body: StreamingText(
+                revealMode: null,
                 text: source,
                 markdownEnabled: false,
                 showCursor: false,
@@ -54,6 +55,7 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: source,
               markdownEnabled: false,
               showCursor: false,

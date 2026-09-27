@@ -21,6 +21,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '# Title\n\nSee \$x=1\$ and [docs](https://example.com).',
               markdownEnabled: true,
               latexEnabled: true,
@@ -59,6 +60,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             // A genuine (paired, same-line) LaTeX expression elsewhere in
             // the message is what used to force the whole render onto the
             // custom LaTeX pipeline, taking codeBuilder down with it even
@@ -93,6 +95,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text:
                   '```bash\n'
                   'export PATH=\$HOME/bin:\$PATH\n'
@@ -134,6 +137,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               // On main, gpt_markdown's naive rewrite scans the raw text
               // left to right and pairs the FIRST `$` it finds (the one
               // inside the backticks) with the NEXT one anywhere later (the
@@ -166,6 +170,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text:
                   'Inline \$x^2\$ and block:\n\n\$\$\\frac{a}{b}\$\$\n\n'
                   'done.',
@@ -199,6 +204,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,

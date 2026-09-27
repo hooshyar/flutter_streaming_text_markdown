@@ -8,14 +8,17 @@ import 'package:gpt_markdown/gpt_markdown.dart' hide RevealEngine;
 import '../controller/streaming_text_controller.dart';
 import '../engine/atomic_spans.dart';
 import '../engine/reveal_engine.dart';
+import '../engine/reveal_pacer.dart';
 import '../engine/reveal_scheduler.dart';
 import '../engine/unit_policy.dart';
 import '../render/caret_inline.dart';
 import '../render/fade_span.dart';
 import '../render/markdown_options.dart';
 import '../render/markdown_renderer.dart';
+import '../render/render_scope.dart';
 import '../render/streaming_caret.dart';
 import '../theme/streaming_tokens.dart';
+import 'reveal_mode.dart';
 
 /// A widget that displays streaming text with real-time updates and markdown support.
 ///
@@ -98,6 +101,8 @@ class StreamingText extends StatefulWidget {
     this.completeAnimationOnTap = true,
     this.onTextChanged,
     this.errorBuilder,
+    this.revealMode = RevealMode.smoothFade,
+    this.pacing,
   });
 
   /// The text to display. Ignored as the initial source when [stream] is set
@@ -309,6 +314,21 @@ class StreamingText extends StatefulWidget {
   /// trailing `Error: $error` line in `Theme.of(context).colorScheme.error`.
   final Widget Function(BuildContext context, Object error)? errorBuilder;
 
+  /// How revealed text arrives on screen (DESIGN.md section 4). Defaults to
+  /// [RevealMode.smoothFade].
+  ///
+  /// Pass `revealMode: null` explicitly to opt OUT of every 2.0 reveal
+  /// default and keep the pre-2.0 behaviour driven entirely by
+  /// [wordByWord]/[fadeInEnabled]/[fadeInDuration]/[fadeInCurve]/
+  /// [chunkSize]/[typingSpeed].
+  final RevealMode? revealMode;
+
+  /// How a `Stream<String>` (or static [text]) source is paced (DESIGN.md
+  /// 4.3). When `null`, [stream] input defaults to [StreamPacing.catchUp]
+  /// and static [text] input defaults to [StreamPacing.fixed] using
+  /// [typingSpeed].
+  final StreamPacing? pacing;
+
   @override
   State<StreamingText> createState() => _StreamingTextState();
 }
@@ -410,18 +430,85 @@ class _StreamingTextState extends State<StreamingText>
     _arabicCheckedLength = 0;
   }
 
+  /// Whether [RevealMode.smoothFade]/[RevealMode.wordFade] are in effect —
+  /// both reveal in word units and drive a fade, differing only in
+  /// duration/curve (see [_effectiveFadeDuration]/[_effectiveFadeCurve]).
+  bool get _modeFadeEnabled =>
+      widget.revealMode == RevealMode.smoothFade ||
+      widget.revealMode == RevealMode.wordFade;
+
   UnitPolicy _buildPolicy() {
-    if (widget.wordByWord) return const WordPolicy();
-    final chunkSize = widget.chunkSize > 0 ? widget.chunkSize : 1;
-    return CharPolicy(chunkSize: chunkSize);
+    final mode = widget.revealMode;
+    if (mode == null) {
+      if (widget.wordByWord) return const WordPolicy();
+      final chunkSize = widget.chunkSize > 0 ? widget.chunkSize : 1;
+      return CharPolicy(chunkSize: chunkSize);
+    }
+    switch (mode) {
+      case RevealMode.smoothFade:
+      case RevealMode.wordFade:
+        return const WordPolicy();
+      case RevealMode.typewriter:
+        final chunkSize = widget.chunkSize > 0 ? widget.chunkSize : 1;
+        return CharPolicy(chunkSize: chunkSize);
+      case RevealMode.instant:
+        // Irrelevant in practice: `_instantReveal`/`_revealInstantly` bypass
+        // the policy entirely for this mode via `revealAll`/`step` looping.
+        return const CharPolicy();
+    }
   }
 
-  Duration _effectiveInterval() {
+  Duration _effectiveIntervalFor(Duration base) {
     final multiplier = widget.controller?.speedMultiplier ?? 1.0;
-    if (multiplier <= 0) return widget.typingSpeed;
-    final micros = widget.typingSpeed.inMicroseconds / multiplier;
+    if (multiplier <= 0) return base;
+    final micros = base.inMicroseconds / multiplier;
     if (!micros.isFinite) return Duration.zero;
     return Duration(microseconds: micros.round());
+  }
+
+  Duration _effectiveInterval() => _effectiveIntervalFor(widget.typingSpeed);
+
+  /// Builds the [RevealPacer] in effect per [StreamingText.pacing]
+  /// (acceptance criterion 10): an explicit override always wins; otherwise,
+  /// with a non-null [StreamingText.revealMode] (the 2.0 reveal system),
+  /// `Stream<String>` input defaults to [StreamPacing.catchUp] and static
+  /// [StreamingText.text] input defaults to [StreamPacing.fixed].
+  ///
+  /// `revealMode: null` (legacy) never defaults to catch-up pacing on its
+  /// own, regardless of [StreamingText.stream] - that keeps pre-2.0 stream
+  /// callers on the exact one-unit-per-tick behaviour they had before this
+  /// pacer existed, unless they opt in via an explicit [StreamingText.pacing].
+  RevealPacer _buildPacer() {
+    final catchUp = widget.pacing?.catchUpTuning;
+    if (catchUp != null) {
+      return CatchUpPacer(
+        window: catchUp.window,
+        k: catchUp.k,
+        floorCharsPerSecond: catchUp.floorCharsPerSecond,
+        drainWithin: catchUp.drainWithin,
+      );
+    }
+    if (widget.pacing?.fixedTypingSpeed != null) {
+      return const FixedPacer();
+    }
+    if (widget.revealMode != null && widget.stream != null) {
+      return const CatchUpPacer();
+    }
+    return const FixedPacer();
+  }
+
+  /// The scheduler's tick interval for the current [_buildPacer] choice: a
+  /// catch-up pacer ticks on its own window; a fixed pacer ticks once per
+  /// (speed-multiplier-adjusted) typing interval.
+  Duration _schedulerInterval() {
+    final catchUp = widget.pacing?.catchUpTuning;
+    if (catchUp != null) return catchUp.window;
+    final fixedTyping = widget.pacing?.fixedTypingSpeed;
+    if (fixedTyping != null) return _effectiveIntervalFor(fixedTyping);
+    if (widget.revealMode != null && widget.stream != null) {
+      return const Duration(milliseconds: 50);
+    }
+    return _effectiveInterval();
   }
 
   void _createEngineAndScheduler() {
@@ -433,7 +520,8 @@ class _StreamingTextState extends State<StreamingText>
     );
     _scheduler = RevealScheduler(
       engine: _engine,
-      interval: _effectiveInterval(),
+      interval: _schedulerInterval(),
+      pacer: _buildPacer(),
     );
   }
 
@@ -441,7 +529,8 @@ class _StreamingTextState extends State<StreamingText>
     _engine.policy = _buildPolicy();
     _engine.atomicSpans =
         widget.latexEnabled ? const AtomicSpanDetector() : null;
-    _scheduler.interval = _effectiveInterval();
+    _scheduler.pacer = _buildPacer();
+    _scheduler.interval = _schedulerInterval();
   }
 
   bool get _instantReveal =>
@@ -662,11 +751,47 @@ class _StreamingTextState extends State<StreamingText>
 
   // ---- Fade -----------------------------------------------------------
 
-  bool get _fadeAllowed =>
-      widget.animationsEnabled &&
-      widget.fadeInEnabled &&
-      !widget.markdownEnabled &&
-      !_containsArabic(_engine.revealed);
+  /// The plain-text fade duration in effect: [RevealMode.smoothFade] and
+  /// [RevealMode.wordFade] use their own DESIGN.md-tuned durations
+  /// (ignoring [StreamingText.fadeInDuration]); a `null` [revealMode] keeps
+  /// the legacy [StreamingText.fadeInDuration].
+  Duration get _effectiveFadeDuration {
+    switch (widget.revealMode) {
+      case RevealMode.smoothFade:
+        return smoothFadeDuration;
+      case RevealMode.wordFade:
+        return wordFadeDuration;
+      case RevealMode.typewriter:
+      case RevealMode.instant:
+      case null:
+        return widget.fadeInDuration;
+    }
+  }
+
+  /// The plain-text fade curve in effect - see [_effectiveFadeDuration].
+  Curve get _effectiveFadeCurve {
+    switch (widget.revealMode) {
+      case RevealMode.smoothFade:
+        return smoothFadeCurve;
+      case RevealMode.wordFade:
+        return wordFadeCurve;
+      case RevealMode.typewriter:
+      case RevealMode.instant:
+      case null:
+        return widget.fadeInCurve;
+    }
+  }
+
+  /// Whether the plain-text (`buildFadeSpan`) fade path is allowed at all.
+  ///
+  /// [RevealMode.smoothFade] fades on Arabic too (acceptance criterion 9);
+  /// only the legacy (`revealMode: null`) path suppresses fading Arabic
+  /// content, per its pre-existing contract.
+  bool get _fadeAllowed {
+    if (!widget.animationsEnabled || widget.markdownEnabled) return false;
+    if (widget.revealMode != null) return _modeFadeEnabled;
+    return widget.fadeInEnabled && !_containsArabic(_engine.revealed);
+  }
 
   bool get _trailingFadeAllowed =>
       widget.animationsEnabled &&
@@ -688,7 +813,7 @@ class _StreamingTextState extends State<StreamingText>
       hasActiveFade(
         runs: _currentFadeRuns(),
         now: _now(),
-        fadeDuration: widget.fadeInDuration,
+        fadeDuration: _reducedMotion ? Duration.zero : _effectiveFadeDuration,
       );
 
   // ---- Ticker (single, per Phase B seam) -------------------------------
@@ -1101,6 +1226,38 @@ class _StreamingTextState extends State<StreamingText>
             caretVisible ? _effectiveMarkdownOptions() : widget.markdownOptions;
 
         final blockAlignment = _blockAlignmentFor(alignment);
+
+        // PHASE-B1-PLAN.md's decision rule (acceptance criterion 11):
+        // "adopt the hybrid if the markdown stream is <=1.8x bare ... .
+        // Otherwise markdown smoothFade becomes word-paced with no alpha".
+        // B1-S4's own benchmark measured the hybrid in isolation (a mock
+        // growing `GptMarkdown` with no caret and no real `RevealEngine`)
+        // and got ~1.4x, so doc/BENCHMARKS.md recorded "HYBRID ADOPTED".
+        // Wiring it into the REAL `StreamingText` for this slice and
+        // re-measuring on `test/perf/stream_benchmark_test.dart` (the
+        // default-caret-on, real-engine benchmark) instead showed ~2.3x
+        // time and ~12.9x element-rebuild ratio — both over budget (1.8x /
+        // 6x) — because `gpt_markdown`'s own per-frame reveal ticker keeps
+        // restyling still-fading spans independently of our engine's
+        // ticks, compounding with the caret and the catch-up pacer's own
+        // per-tick work. That contradicts S4's isolated measurement, so
+        // this slice's own (more representative) numbers win: the hybrid
+        // is REJECTED for the shipped default. Markdown `smoothFade`/
+        // `wordFade` still reveal word-paced (via `WordPolicy` + the
+        // catch-up pacer below) with no `gpt_markdown` alpha - exactly the
+        // rule's "otherwise" branch. See doc/BENCHMARKS.md's "B1-S5
+        // correction" section for the numbers. Kept as a `false` constant
+        // (not simply omitted) so the wiring below stays in place as a
+        // seam if a future `gpt_markdown` release makes the hybrid cheap
+        // enough to re-adopt.
+        const markdownRevealFadeEnabled = false;
+        final markdownRevealFadeSeconds =
+            widget.revealMode == RevealMode.wordFade
+                ? wordFadeDuration.inMicroseconds /
+                    Duration.microsecondsPerSecond
+                : smoothFadeDuration.inMicroseconds /
+                    Duration.microsecondsPerSecond;
+
         // W21: a `LayoutBuilder` that only forces a width when the incoming
         // constraint is bounded, instead of unconditionally requesting
         // `double.infinity` (which throws inside an unbounded ancestor such
@@ -1110,7 +1267,9 @@ class _StreamingTextState extends State<StreamingText>
             final child = StreamingMarkdownView(
               text: renderText,
               isComplete: _isComplete,
-              isStreaming: widget.stream != null && !_isComplete,
+              isStreaming: !_isComplete,
+              revealFadeEnabled: markdownRevealFadeEnabled,
+              revealFadeSeconds: markdownRevealFadeSeconds,
               style: widget.markdownStyleSheet,
               textDirection: direction,
               textAlign: widget.textAlign,
@@ -1144,7 +1303,12 @@ class _StreamingTextState extends State<StreamingText>
         markdownContent = _wrapTrailingFade(markdownContent);
         content = Directionality(
           textDirection: direction,
-          child: markdownContent,
+          child: StreamingRenderScope(
+            isStreaming: !_isComplete,
+            isComplete: _isComplete,
+            caretBuilder: caretVisible ? _caretWidgetBuilder : null,
+            child: markdownContent,
+          ),
         );
       } else if (!_fadeAllowed && !caretVisible) {
         // No fade, no caret: the exact pre-existing plain-text widget shape
@@ -1164,7 +1328,7 @@ class _StreamingTextState extends State<StreamingText>
         content = _wrapTrailingFade(textContent);
       } else {
         final fadeDuration =
-            _reducedMotion ? Duration.zero : widget.fadeInDuration;
+            _reducedMotion ? Duration.zero : _effectiveFadeDuration;
         InlineSpan textSpan =
             _fadeAllowed
                 ? buildFadeSpan(
@@ -1172,7 +1336,7 @@ class _StreamingTextState extends State<StreamingText>
                   runs: _currentFadeRuns(),
                   now: _now(),
                   fadeDuration: fadeDuration,
-                  curve: widget.fadeInCurve,
+                  curve: _effectiveFadeCurve,
                   style: effectiveStyle,
                 )
                 : TextSpan(text: revealedText, style: effectiveStyle);

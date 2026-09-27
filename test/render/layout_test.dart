@@ -24,6 +24,7 @@ void main() {
             body: Row(
               children: [
                 StreamingText(
+                  revealMode: null,
                   text: '**hello** world',
                   markdownEnabled: true,
                   showCursor: false,
@@ -44,6 +45,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: 'مرحبا بكم في العالم',
               markdownEnabled: true,
               showCursor: false,

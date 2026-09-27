@@ -16,6 +16,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: testText,
               markdownEnabled: true, // Markdown is enabled
               typingSpeed: const Duration(milliseconds: 5), // Fast for testing
@@ -63,6 +64,7 @@ void main() {
               builder: (context, snapshot) {
                 displayedText = snapshot.data ?? '';
                 return StreamingText(
+                  revealMode: null,
                   text: displayedText,
                   typingSpeed: const Duration(milliseconds: 10),
                   wordByWord: false,
@@ -119,6 +121,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: testText,
               markdownEnabled: true,
               typingSpeed: const Duration(milliseconds: 5),
@@ -161,6 +164,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: testText,
               latexEnabled: true,
               markdownEnabled: true,

@@ -22,6 +22,7 @@ void main() {
       const MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: 'Styled text',
             markdownEnabled: true,
             animationsEnabled: false,
@@ -39,6 +40,7 @@ void main() {
       const MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: 'Styled text',
             markdownEnabled: true,
             animationsEnabled: false,

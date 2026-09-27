@@ -31,6 +31,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingText(
+            revealMode: null,
             text: 'Hello World',
             typingSpeed: Duration(milliseconds: 10),
             markdownEnabled: false,
@@ -60,6 +61,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingText(
+            revealMode: null,
             text: 'Test',
             typingSpeed: Duration(milliseconds: 5),
             showCursor: true,
@@ -91,6 +93,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,
@@ -156,6 +159,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,
@@ -225,6 +229,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               controller: streamCtrl,
@@ -284,6 +289,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,
@@ -348,6 +354,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               controller: streamCtrl,
@@ -401,6 +408,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,
@@ -473,6 +481,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,
@@ -542,6 +551,7 @@ void main() {
           MaterialApp(
             home: Scaffold(
               body: StreamingText(
+                revealMode: null,
                 text: '',
                 stream: controller.stream,
                 controller: streamCtrl,
@@ -594,6 +604,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: 'Hello World',
               markdownEnabled: false,
               typingSpeed: const Duration(milliseconds: 50),
@@ -635,6 +646,7 @@ void main() {
         return MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: stream,
               markdownEnabled: false,
@@ -686,6 +698,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,
@@ -707,6 +720,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: 'some static text',
               stream: null,
               markdownEnabled: false,
@@ -738,6 +752,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: null,
               markdownEnabled: false,
@@ -761,6 +776,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: false,
@@ -820,6 +836,7 @@ void main() {
             body: SizedBox(
               height: 100,
               child: StreamingTextMarkdown(
+                revealMode: null,
                 text: longText,
                 typingSpeed: const Duration(milliseconds: 1),
                 chunkSize: 20,
@@ -876,6 +893,7 @@ void main() {
             body: SizedBox(
               height: 100,
               child: StreamingTextMarkdown(
+                revealMode: null,
                 text: longText,
                 typingSpeed: const Duration(milliseconds: 1),
                 chunkSize: 20,

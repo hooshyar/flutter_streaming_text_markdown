@@ -190,3 +190,62 @@ Environment: same as the section above (Flutter stable, `gpt_markdown:
 ^1.3.0`, `flutter test` debug VM, shared multi-agent dev machine). Run with
 `flutter test --no-dds --tags benchmark --run-skipped
 test/perf/delegation_benchmark_test.dart`.
+
+## B1-S5 correction: the hybrid is REJECTED for the shipped default
+
+The "HYBRID ADOPTED" call above was made from `_HybridGrowing`, a mock
+`GptMarkdown` grown by a bare `Future.delayed` loop with no caret and no
+real `RevealEngine`/`RevealScheduler` in the loop at all. Wiring the exact
+same `GptMarkdown` params (`animation: GptMarkdownAnimation.fade`,
+`revealFadeSeconds: 0.18`, a huge `charactersPerSecond`) into the REAL
+`StreamingText` for `RevealMode.smoothFade`'s markdown path (this slice,
+B1-S5) and re-measuring on the actual default-caret-on regression suite
+(`test/perf/stream_benchmark_test.dart`) told a different story:
+
+| | time ratio | element-rebuild ratio | budget |
+|---|---|---|---|
+| Hybrid wired into the real default | ~2.3x | ~12.9x | FAIL (1.8x / 6x) |
+| Hybrid disabled (word-paced, no alpha) | ~1.2x | ~1.8x | PASS |
+
+Root cause: `gpt_markdown`'s span-reveal path (`_usesSpanReveal`) runs its
+own per-frame `Ticker` to restyle still-fading spans, independently of our
+engine's own reveal ticks. That cost compounds with the caret's own
+per-pulse work and the catch-up pacer's per-tick word-stepping - none of
+which the isolated mock exercised, since it had no caret and grew text on
+a plain `Future.delayed` loop rather than through `RevealEngine`/
+`RevealScheduler`.
+
+Per PHASE-B1-PLAN.md's own decision rule ("otherwise markdown smoothFade
+becomes word-paced with no alpha"), this is the branch actually shipped:
+`StreamingMarkdownView.revealFadeEnabled` is wired but hard-coded to
+`false` in `StreamingText._buildContent` (see the comment there), kept as
+a seam rather than deleted in case a future `gpt_markdown` release makes
+the span-reveal ticker cheap enough to re-adopt. `RevealMode.smoothFade`
+still reveals markdown word-by-word (via `WordPolicy` + the catch-up
+pacer) - it just does so without a `gpt_markdown` alpha animation on top.
+
+A new arm, `E_defaultAfterS5`, was added to
+`test/perf/delegation_benchmark_test.dart` measuring `StreamingText` with
+no `revealMode`/`pacing` override (the actual shipped default) - this is
+the arm that gates that file's benchmark (`expect(ratioE, <= 1.8)`); arm A
+("ours" pre-S5) is now pinned to `revealMode: null` so it keeps measuring
+what B1-S4 originally measured.
+
+Numbers from one run (6 rounds, 400px, 16ms frames, 20117-char doc):
+
+| arm | ratio vs bare |
+|---|---|
+| A ours (`revealMode: null`, pre-S5) | 2.087x |
+| B hybrid (isolated mock) | 1.400x |
+| C full-delegation | 0.893x |
+| E ours default (post-S5, shipped) | **1.440x** |
+
+And from `test/perf/stream_benchmark_test.dart` (12 rounds, median-of-medians):
+
+| | time ratio | rebuild ratio |
+|---|---|---|
+| Shipped default (`RevealMode.smoothFade`, no hybrid) | 1.168x | 1.813x |
+
+Both comfortably under the 1.8x / 6x budgets. Run with
+`flutter test --no-dds --tags benchmark --run-skipped
+test/perf/stream_benchmark_test.dart test/perf/delegation_benchmark_test.dart`.

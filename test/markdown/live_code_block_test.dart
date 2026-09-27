@@ -18,10 +18,15 @@ class _CodeCall {
 }
 
 void main() {
-  Widget buildWidget(String text, List<_CodeCall> calls, {bool showCursor = true}) {
+  Widget buildWidget(
+    String text,
+    List<_CodeCall> calls, {
+    bool showCursor = true,
+  }) {
     return MaterialApp(
       home: Scaffold(
         body: StreamingText(
+          revealMode: null,
           text: text,
           typingSpeed: const Duration(milliseconds: 16),
           wordByWord: false,

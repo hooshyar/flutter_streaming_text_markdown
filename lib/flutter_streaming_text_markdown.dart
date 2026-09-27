@@ -52,6 +52,7 @@ export 'package:gpt_markdown/gpt_markdown.dart'
 import 'package:flutter/material.dart';
 import 'package:gpt_markdown/gpt_markdown.dart' show MarkdownComponent;
 import 'src/streaming/streaming_text.dart';
+import 'src/streaming/reveal_mode.dart';
 import 'src/theme/streaming_text_theme.dart';
 import 'src/controller/streaming_text_controller.dart';
 import 'src/presets/animation_presets.dart';
@@ -320,6 +321,22 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// uninterrupted regardless of taps.
   final bool? completeAnimationOnTap;
 
+  /// How revealed text arrives on screen (DESIGN.md section 4). Defaults to
+  /// [RevealMode.smoothFade] on this constructor, [.chatGPT] and [.claude].
+  /// [.typewriter] and [.instant] default to their own matching mode.
+  ///
+  /// Pass `revealMode: null` explicitly to opt OUT of every 2.0 reveal
+  /// default and keep the pre-2.0 behaviour driven entirely by the legacy
+  /// [wordByWord]/[fadeInEnabled]/[fadeInDuration]/[fadeInCurve]/
+  /// [chunkSize]/[typingSpeed] parameters — see doc/MIGRATION.md.
+  final RevealMode? revealMode;
+
+  /// How a `Stream<String>` (or static [text]) source is paced (DESIGN.md
+  /// 4.3). When `null`, [stream] input defaults to [StreamPacing.catchUp]
+  /// and static [text] input defaults to [StreamPacing.fixed] using
+  /// [typingSpeed].
+  final StreamPacing? pacing;
+
   /// Creates a streaming markdown text widget.
   ///
   /// Provide [text] for static content, or [stream] to append chunks as they
@@ -369,6 +386,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.semanticsLabel,
     this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode = RevealMode.smoothFade,
+    this.pacing,
   });
 
   /// Creates a StreamingTextMarkdown with ChatGPT-style animation
@@ -417,6 +436,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.semanticsLabel,
     this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode = RevealMode.smoothFade,
+    this.pacing,
     Duration? fadeInDuration,
     Curve? fadeInCurve,
     Duration? typingSpeed,
@@ -471,6 +492,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.semanticsLabel,
     this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode = RevealMode.smoothFade,
+    this.pacing,
     Duration? fadeInDuration,
     Curve? fadeInCurve,
     Duration? typingSpeed,
@@ -525,6 +548,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.semanticsLabel,
     this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode = RevealMode.typewriter,
+    this.pacing,
     Duration? fadeInDuration,
     Curve? fadeInCurve,
     Duration? typingSpeed,
@@ -581,6 +606,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.semanticsLabel,
     this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode = RevealMode.instant,
+    this.pacing,
     Duration? fadeInDuration,
     Curve? fadeInCurve,
     Duration? typingSpeed,
@@ -631,6 +658,8 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.semanticsLabel,
     this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode,
+    this.pacing,
   }) : fadeInEnabled = preset.fadeInEnabled,
        fadeInDuration = preset.fadeInDuration,
        fadeInCurve = preset.fadeInCurve,
@@ -741,6 +770,8 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           semanticsLabel: widget.semanticsLabel,
           errorBuilder: widget.errorBuilder,
           completeAnimationOnTap: widget.completeAnimationOnTap ?? true,
+          revealMode: widget.revealMode,
+          pacing: widget.pacing,
           onTextChanged: widget.autoScroll ? _pinToBottom : null,
           onComplete: () {
             // Handle auto-scrolling

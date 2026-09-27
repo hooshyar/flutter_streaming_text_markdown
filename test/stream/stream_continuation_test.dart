@@ -15,6 +15,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               stream: streamController.stream,
               text: '', // Not used with stream
               markdownEnabled: false,
@@ -73,6 +74,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               stream: streamController.stream,
               text: '',
               markdownEnabled: true,

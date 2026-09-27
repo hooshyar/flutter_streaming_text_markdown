@@ -12,6 +12,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Equation: \$E = mc^2\$ is famous',
               latexEnabled: true,
               markdownEnabled: true,
@@ -49,6 +50,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               latexEnabled: true,
@@ -137,6 +139,7 @@ This is **important** mathematics.''';
           home: Scaffold(
             body: SingleChildScrollView(
               child: StreamingTextMarkdown(
+                revealMode: null,
                 text: complexText,
                 latexEnabled: true,
                 markdownEnabled: true,
@@ -178,6 +181,7 @@ This is **important** mathematics.''';
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Start \$a = b\$ middle \$\$c = d\$\$ end',
               latexEnabled: true,
               markdownEnabled: true,
@@ -217,6 +221,7 @@ This is **important** mathematics.''';
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Hi \$x + y = z\$ bye',
               latexEnabled: true,
               markdownEnabled: true,
@@ -253,6 +258,7 @@ This is **important** mathematics.''';
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'مرحبا \$x = 5\$ بالعالم',
               latexEnabled: true,
               markdownEnabled: true,
@@ -281,6 +287,7 @@ This is **important** mathematics.''';
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Fading \$a = b\$ text',
               latexEnabled: true,
               markdownEnabled: true,
@@ -312,6 +319,7 @@ This is **important** mathematics.''';
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text:
                   'First \$x = 1\$ then \$y = 2\$ and \$\$z = 3\$\$ finally \$w = 4\$',
               latexEnabled: true,
@@ -357,6 +365,7 @@ End of document.''';
           home: Scaffold(
             body: SingleChildScrollView(
               child: StreamingTextMarkdown(
+                revealMode: null,
                 text: largeText,
                 latexEnabled: true,
                 markdownEnabled: true,
@@ -388,6 +397,7 @@ End of document.''';
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Good \$x = 5\$ and bad \$unclosed and \$\$also unclosed',
               latexEnabled: true,
               markdownEnabled: true,

@@ -13,6 +13,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '**Bold** text',
               markdownEnabled: true,
               typingSpeed: const Duration(
@@ -55,6 +56,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: 'Simple text',
               markdownEnabled: false,
               typingSpeed: const Duration(milliseconds: 5),
@@ -85,6 +87,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: '**Test** text',
               markdownEnabled: true,
               typingSpeed: const Duration(milliseconds: 10),

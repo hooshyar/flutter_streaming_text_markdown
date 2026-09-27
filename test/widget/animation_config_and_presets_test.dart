@@ -28,7 +28,10 @@ void main() {
                         },
                         child: const Text('Update Text'),
                       ),
-                      StreamingTextMarkdown.chatGPT(text: text),
+                      StreamingTextMarkdown.chatGPT(
+                        revealMode: null,
+                        text: text,
+                      ),
                     ],
                   );
                 },
@@ -63,7 +66,9 @@ void main() {
         const text2 = 'hello world';
 
         Widget buildWidget(String text) {
-          return MaterialApp(home: StreamingTextMarkdown.chatGPT(text: text));
+          return MaterialApp(
+            home: StreamingTextMarkdown.chatGPT(revealMode: null, text: text),
+          );
         }
 
         await tester.pumpWidget(buildWidget(text1));
@@ -88,13 +93,16 @@ void main() {
         const text = 'hello world';
 
         await tester.pumpWidget(
-          MaterialApp(home: StreamingTextMarkdown.chatGPT(text: text)),
+          MaterialApp(
+            home: StreamingTextMarkdown.chatGPT(revealMode: null, text: text),
+          ),
         );
 
         // Change configuration (typing speed)
         await tester.pumpWidget(
           MaterialApp(
             home: StreamingTextMarkdown(
+              revealMode: null,
               text: text,
               typingSpeed: const Duration(milliseconds: 100), // Different speed
             ),
@@ -114,7 +122,11 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
-            home: StreamingTextMarkdown(text: text, animationsEnabled: false),
+            home: StreamingTextMarkdown(
+              revealMode: null,
+              text: text,
+              animationsEnabled: false,
+            ),
           ),
         );
 
@@ -133,6 +145,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: StreamingTextMarkdown(
+              revealMode: null,
               text: text,
               animationsEnabled: true,
               typingSpeed: const Duration(milliseconds: 50),
@@ -172,7 +185,9 @@ void main() {
 
         // Test .chatGPT() preset
         await tester.pumpWidget(
-          MaterialApp(home: StreamingTextMarkdown.chatGPT(text: text)),
+          MaterialApp(
+            home: StreamingTextMarkdown.chatGPT(revealMode: null, text: text),
+          ),
         );
 
         await tester.pump();
@@ -203,6 +218,7 @@ void main() {
                         child: const Text('Update Text'),
                       ),
                       StreamingTextMarkdown(
+                        revealMode: null,
                         text: text,
                         animationsEnabled: false, // Disabled animations
                       ),
@@ -262,6 +278,7 @@ void main() {
                         child: const Text('Update Text'),
                       ),
                       StreamingTextMarkdown(
+                        revealMode: null,
                         text: text,
                         animationsEnabled: animationsEnabled,
                       ),

@@ -48,6 +48,65 @@ These aren't bugs and don't require code changes, but they're visible:
    arrives or the stream closes, so a surrogate pair or grapheme cluster is
    never split mid-stream. You may see the very last character of a chunk
    appear one tick later than before.
+6. **The reveal default is now `RevealMode.smoothFade`** and
+   `Stream<String>` input now paces itself with a catch-up pacer instead of
+   a fixed per-tick rate — see the "2.0 reveal defaults" section below.
+
+## 2.0 reveal defaults: `RevealMode` and `StreamPacing`
+
+This is the biggest *default* behavior change in this release, so it gets
+its own section.
+
+**What changed.** `StreamingText`, the default `StreamingTextMarkdown`
+constructor, `.chatGPT()` and `.claude()` now default to
+`revealMode: RevealMode.smoothFade` (DESIGN.md section 4): the engine
+reveals in **word units** instead of characters/`chunkSize`, and each newly
+revealed word fades in — opacity only, 180ms, `Cubic(0.2, 0, 0, 1)` — for
+plain text, `Stream<String>` input, and Arabic content (previously
+suppressed there). `.typewriter()` and `.instant()` default to their own
+matching `RevealMode` and are unaffected in practice. Separately,
+`Stream<String>` input now defaults to catch-up pacing (`StreamPacing`):
+instead of revealing one fixed unit every `typingSpeed`, it reveals a
+backlog-proportional share every ~50ms (floored at 30 chars/s, fully
+drained within 400ms of the stream closing) — a bursty token stream catches
+up to the model's actual speed instead of lagging behind at a fixed rate.
+Static `text` input is unaffected (still paced by `typingSpeed`).
+
+**Markdown specifically:** `smoothFade` still reveals markdown word-by-word,
+but does **not** currently layer a fade animation on top of it (a
+`gpt_markdown`-delegated fade was measured, in the real integration, to
+regress frame time and rebuild counts well past this package's own perf
+budget — see `doc/BENCHMARKS.md`'s "B1-S5 correction"). Plain text keeps
+its own fade unaffected by this.
+
+**If your app depends on the exact pre-2.0 timing/cadence** — a specific
+`chunkSize`, character-vs-word cadence, or a fixed `typingSpeed`-paced
+stream — opt back into it explicitly:
+
+```dart
+// Old 1.x behaviour, unchanged: character/chunk reveal, whatever
+// wordByWord/fadeInEnabled/fadeInDuration/fadeInCurve/chunkSize/typingSpeed
+// you already pass keep meaning exactly what they meant before.
+StreamingTextMarkdown(
+  text: text,
+  revealMode: null,
+)
+```
+
+`revealMode: null` is available on `StreamingText` and every
+`StreamingTextMarkdown` constructor (including `.chatGPT()`/`.claude()`,
+which otherwise default to `smoothFade` too). It fully restores the legacy
+code path — nothing about it is upgraded silently.
+
+If you only want the old fixed-rate stream pacing but otherwise want to
+keep `smoothFade`'s word-unit reveal and fade, override just the pacer:
+
+```dart
+StreamingTextMarkdown(
+  stream: yourStream,
+  pacing: StreamPacing.fixed(const Duration(milliseconds: 50)),
+)
+```
 
 ## Adopting the non-deprecated API
 

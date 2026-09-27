@@ -32,6 +32,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: source,
               markdownEnabled: false,
               typingSpeed: Duration(seconds: 5),
@@ -60,6 +61,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: source,
               markdownEnabled: true,
               typingSpeed: Duration(milliseconds: 200),
@@ -92,6 +94,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: source,
               markdownEnabled: false,
               showCursor: false,

@@ -121,6 +121,29 @@ Every W-numbered bug from the audit is fixed:
 * `tool/check_coverage.dart` — parses `coverage/lcov.info` and enforces a
   minimum coverage threshold.
 
+* **`RevealMode`** (`{smoothFade, wordFade, typewriter, instant}`, exported)
+  and a `revealMode` parameter on `StreamingText` and every
+  `StreamingTextMarkdown` constructor. `smoothFade` (word-unit reveal, a
+  180ms opacity-only fade on `Cubic(0.2, 0, 0, 1)`) is the new default on
+  `StreamingText`, the default `StreamingTextMarkdown` constructor,
+  `.chatGPT()` and `.claude()`; `.typewriter()`/`.instant()` default to
+  their own matching mode. Pass `revealMode: null` explicitly to opt out
+  entirely and keep the pre-2.0 behaviour driven by the legacy
+  `wordByWord`/`fadeInEnabled`/`fadeInDuration`/`fadeInCurve`/`chunkSize`/
+  `typingSpeed` parameters — see `doc/MIGRATION.md`.
+* **`StreamPacing`** (`StreamPacing.catchUp(...)` / `StreamPacing.fixed(...)`)
+  and a `pacing` parameter alongside `revealMode`. `Stream<String>` input
+  now defaults to catch-up pacing (a bursty-token-smoothing pacer: reveals
+  a backlog-proportional share every ~50ms, floors at 30 chars/s, and
+  drains fully within 400ms of the stream closing) instead of one fixed
+  unit per `typingSpeed` tick; static `text` input keeps the fixed,
+  `typingSpeed`-driven pacer. An explicit `pacing:` always overrides the
+  default, on either input kind.
+* `StreamingRenderScope` — an internal `InheritedWidget` seam (carrying
+  `isStreaming`/`isComplete`/the caret builder) wrapped around the markdown
+  view, for a future block-level renderer to read instead of having those
+  threaded through by hand. Not part of the public API surface yet.
+
 ### Deprecated
 
 * `components` / `inlineComponents` on all 6 constructors — use
@@ -169,6 +192,17 @@ affect existing consumers (notably `flutter_gen_ai_chat_ui`):
   arrives or the stream closes — this is what allows `setSource`/`append`
   to never split a surrogate pair or grapheme cluster at the streaming
   edge.
+* **The default reveal is now `RevealMode.smoothFade`** on `StreamingText`,
+  the default `StreamingTextMarkdown` constructor, `.chatGPT()` and
+  `.claude()` (see Added above): word-unit reveal with a 180ms fade,
+  applying to plain text AND markdown streams, AND Arabic content (no
+  longer suppressed there, unlike the legacy per-character fade). Markdown
+  reveals word-paced but currently has no `gpt_markdown` alpha animation
+  layered on top — see the Performance note below for why. Pass
+  `revealMode: null` to keep the exact pre-2.0 behaviour.
+* **`Stream<String>` input reveals faster by default** (catch-up pacing —
+  see Added above) instead of at a fixed `typingSpeed`-per-unit rate. Pass
+  `pacing: StreamPacing.fixed(typingSpeed)` to keep the old rate.
 
 ### Performance
 
@@ -189,6 +223,14 @@ affect existing consumers (notably `flutter_gen_ai_chat_ui`):
 * No more per-tick `RegExp` compilation and no more O(n) buffer copies per
   stream tick (both from the audit's `_containsArabic`/StringBuffer
   findings).
+* A `gpt_markdown` "hybrid" reveal (letting `GptMarkdown` fade-paint the
+  head our engine reveals) was prototyped and measured in isolation at
+  ~1.4x bare, but wiring it into the real default (caret + engine +
+  catch-up pacer together) instead cost ~2.3x time and ~12.9x
+  element-rebuilds — over both budgets. It was rejected for the shipped
+  default; `smoothFade` markdown reveals word-paced with no `gpt_markdown`
+  alpha instead, keeping the real default at ~1.2x-1.5x bare across both
+  perf suites. See `doc/BENCHMARKS.md`'s "B1-S5 correction".
 
 ## 1.10.1
 

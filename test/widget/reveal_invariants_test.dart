@@ -52,6 +52,7 @@ void main() {
               MaterialApp(
                 home: Scaffold(
                   body: StreamingText(
+                    revealMode: null,
                     text: source,
                     markdownEnabled: false,
                     wordByWord: wordByWord,
@@ -77,6 +78,7 @@ void main() {
               MaterialApp(
                 home: Scaffold(
                   body: StreamingText(
+                    revealMode: null,
                     text: '',
                     stream: controller.stream,
                     markdownEnabled: false,
@@ -123,6 +125,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: code,
             markdownEnabled: true,
             wordByWord: true,
@@ -161,6 +164,7 @@ void main() {
           return MaterialApp(
             home: Scaffold(
               body: StreamingText(
+                revealMode: null,
                 text: text,
                 markdownEnabled: false,
                 typingSpeed: const Duration(milliseconds: 2),
@@ -190,6 +194,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: arabic,
             markdownEnabled: false,
             wordByWord: false,
@@ -217,6 +222,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: arabic,
             markdownEnabled: false,
             typingSpeed: const Duration(milliseconds: 5),
@@ -255,6 +261,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: source,
             markdownEnabled: false,
             latexEnabled: true,
@@ -295,6 +302,7 @@ void main() {
           return MaterialApp(
             home: Scaffold(
               body: StreamingText(
+                revealMode: null,
                 text: text,
                 markdownEnabled: false,
                 typingSpeed: const Duration(milliseconds: 20),

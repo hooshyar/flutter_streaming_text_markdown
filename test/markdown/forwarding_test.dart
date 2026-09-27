@@ -27,6 +27,7 @@ void main() {
     final markdown = await pumpAndFindMarkdown(
       tester,
       const StreamingText(
+        revealMode: null,
         text: 'Hello world',
         animationsEnabled: false,
         markdownOptions: MarkdownRenderOptions(styleSheet: sheet),
@@ -39,7 +40,11 @@ void main() {
   testWidgets('GptMarkdown.components is null by default', (tester) async {
     final markdown = await pumpAndFindMarkdown(
       tester,
-      const StreamingText(text: 'Hello world', animationsEnabled: false),
+      const StreamingText(
+        revealMode: null,
+        text: 'Hello world',
+        animationsEnabled: false,
+      ),
     );
 
     // ignore: deprecated_member_use
@@ -57,6 +62,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: '[docs](https://example.com/a)',
             markdownEnabled: true,
             animationsEnabled: false,

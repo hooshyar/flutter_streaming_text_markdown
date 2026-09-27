@@ -11,6 +11,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: '# Hello\nWorld',
             initialText: '# Hello',
             markdownEnabled: true,
@@ -27,6 +28,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: '**Bold** and *italic*',
             markdownEnabled: true,
           ),
@@ -42,6 +44,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: 'مرحبا',
             textDirection: TextDirection.rtl,
           ),
@@ -66,6 +69,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: kurdish,
             markdownEnabled: false,
             animationsEnabled: false,
@@ -91,6 +95,7 @@ void main() {
         await tester.pumpWidget(
           const MaterialApp(
             home: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Hello world',
               markdownEnabled: false,
               animationsEnabled: false,
@@ -108,6 +113,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: 'Hello World',
             wordByWord: true,
             typingSpeed: Duration(milliseconds: 50),
@@ -123,6 +129,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: 'Fade In Text',
             fadeInEnabled: true,
             fadeInDuration: Duration(milliseconds: 100),
@@ -140,7 +147,13 @@ void main() {
       final controller = StreamController<String>();
 
       await tester.pumpWidget(
-        MaterialApp(home: StreamingText(text: '', stream: controller.stream)),
+        MaterialApp(
+          home: StreamingText(
+            revealMode: null,
+            text: '',
+            stream: controller.stream,
+          ),
+        ),
       );
 
       await tester.pump();
@@ -171,6 +184,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingText(
+            revealMode: null,
             text: 'Styled Text',
             style: style,
             typingSpeed: Duration.zero,
@@ -187,6 +201,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingText(
+            revealMode: null,
             text: 'Great 👍 Keep going',
             typingSpeed: Duration(milliseconds: 10),
             markdownEnabled: false,
@@ -206,6 +221,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: '![alt](https://example.com/image.png)',
             markdownEnabled: true,
             imageBuilder: (context, url) => const Icon(Icons.image),
@@ -222,6 +238,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: '[link](https://example.com)',
             markdownEnabled: true,
             onLinkTap: (url, title) {
@@ -241,6 +258,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: '# Header\n**bold** *italic*',
             markdownEnabled: true,
             components: const <MarkdownComponent>[],
@@ -257,6 +275,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: '```dart\nprint("hello");\n```',
             markdownEnabled: true,
             codeBuilder: (context, name, code, closed) => Text('Code: $code'),
@@ -274,6 +293,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: 'Hello world',
             markdownEnabled: true,
           ),
@@ -291,6 +311,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: '## Hello\n\nStreaming text with trailing fade.',
             markdownEnabled: true,
             trailingFadeEnabled: true,
@@ -316,7 +337,10 @@ void main() {
     ) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: StreamingTextMarkdown.claude(text: 'Test text'),
+          home: StreamingTextMarkdown.claude(
+            revealMode: null,
+            text: 'Test text',
+          ),
         ),
       );
 
@@ -334,6 +358,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: StreamingTextMarkdown(
+              revealMode: null,
               text: 'short',
               markdownEnabled: true,
               trailingFadeEnabled: true,
@@ -362,6 +387,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: StreamingText(
+              revealMode: null,
               text: '',
               stream: controller.stream,
               markdownEnabled: true,
@@ -400,6 +426,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: '',
             stream: controller.stream,
             markdownEnabled: true,
@@ -430,6 +457,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: 'static content',
             animationsEnabled: false,
           ),
@@ -449,6 +477,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: StreamingTextMarkdown.chatGPT(
+            revealMode: null,
             stream: controller.stream,
             onComplete: () => completed++,
           ),
@@ -468,7 +497,7 @@ void main() {
     group('preset constructors accept fadeInDuration/fadeInCurve/typingSpeed '
         'overrides (regression: #17)', () {
       test('.chatGPT() keeps its own tuning when overrides are omitted', () {
-        const widget = StreamingTextMarkdown.chatGPT();
+        const widget = StreamingTextMarkdown.chatGPT(revealMode: null);
         expect(widget.fadeInDuration, const Duration(milliseconds: 150));
         expect(widget.fadeInCurve, Curves.easeOut);
         expect(widget.typingSpeed, const Duration(milliseconds: 15));
@@ -477,6 +506,7 @@ void main() {
 
       test('.chatGPT() applies caller overrides when provided', () {
         const widget = StreamingTextMarkdown.chatGPT(
+          revealMode: null,
           fadeInDuration: Duration(milliseconds: 500),
           fadeInCurve: Curves.bounceIn,
           typingSpeed: Duration(milliseconds: 5),
@@ -492,6 +522,7 @@ void main() {
 
       test('.claude() applies caller overrides when provided', () {
         const widget = StreamingTextMarkdown.claude(
+          revealMode: null,
           fadeInDuration: Duration(milliseconds: 999),
           fadeInCurve: Curves.linear,
           typingSpeed: Duration(milliseconds: 1),
@@ -504,6 +535,7 @@ void main() {
 
       test('.typewriter() applies caller overrides when provided', () {
         const widget = StreamingTextMarkdown.typewriter(
+          revealMode: null,
           fadeInDuration: Duration(milliseconds: 42),
           fadeInCurve: Curves.easeInOutBack,
           typingSpeed: Duration(milliseconds: 7),
@@ -516,6 +548,7 @@ void main() {
 
       test('.instant() applies caller overrides when provided', () {
         const widget = StreamingTextMarkdown.instant(
+          revealMode: null,
           fadeInDuration: Duration(milliseconds: 30),
           fadeInCurve: Curves.decelerate,
           typingSpeed: Duration(milliseconds: 2),
@@ -544,6 +577,7 @@ void main() {
         Widget build(Stream<String> stream) {
           return MaterialApp(
             home: StreamingTextMarkdown(
+              revealMode: null,
               text: '',
               stream: stream,
               markdownEnabled: false,
@@ -592,6 +626,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: StreamingTextMarkdown(
+            revealMode: null,
             text: 'hello world this should take a while to type out',
             typingSpeed: const Duration(milliseconds: 50),
             fadeInEnabled: false,
@@ -624,6 +659,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: StreamingTextMarkdown(
+              revealMode: null,
               text: 'hello world this should take a while to type out',
               typingSpeed: const Duration(milliseconds: 50),
               fadeInEnabled: false,

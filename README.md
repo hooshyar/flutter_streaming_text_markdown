@@ -114,10 +114,15 @@ StreamingTextMarkdown(
   markdownEnabled: true,
   latexEnabled: true,
   trailingFadeEnabled: true,                    // recommended for streams
-  typingSpeed: const Duration(milliseconds: 15),
   onComplete: () => setState(() => _isStreaming = false),
 )
 ```
+
+> `stream:` input defaults to `RevealMode.smoothFade` (word-unit reveal + fade)
+> paced by `StreamPacing.catchUp()` (smooths bursty token arrivals instead of
+> a fixed `typingSpeed`) — `typingSpeed` has no effect on stream input unless
+> you pass `revealMode: null` or an explicit `pacing: StreamPacing.fixed(...)`.
+> See [Configuration](#%EF%B8%8F-configuration) below.
 
 > The preset constructors (`StreamingTextMarkdown.chatGPT(stream: ...)`, `.claude(stream: ...)`, etc.) accept `stream:` too. If you need lower-level control (no auto-scroll, no shimmer, no theme resolution), the underlying `StreamingText` widget is also exported.
 
@@ -314,10 +319,12 @@ than one of them (or calling one twice) never double-fires your callback.
 | `controller` | `StreamingTextController?` | Controller for programmatic control |
 | `onComplete` | `VoidCallback?` | Callback when animation completes |
 | `completeAnimationOnTap` | `bool` | Whether tapping the widget jumps the animation to completion. Defaults to `true`; set `false` to let it play through regardless of taps. |
-| `typingSpeed` | `Duration` | Speed of typing animation |
-| `wordByWord` | `bool` | Whether to animate word by word |
-| `chunkSize` | `int` | Number of characters to reveal at once |
-| `fadeInEnabled` | `bool` | Per-character fade-in, opacity-only, driven by a single `Ticker` (constant memory). Only applies in plain-text mode (`markdownEnabled: false`) and is suppressed for Arabic/RTL — use `trailingFadeEnabled` for markdown content. |
+| `revealMode` | `RevealMode?` | How revealed text arrives on screen: `{smoothFade, wordFade, typewriter, instant}`. Defaults to `RevealMode.smoothFade` on this constructor, `.chatGPT()` and `.claude()`; `.typewriter()`/`.instant()` default to their own matching mode. Pass `revealMode: null` to opt out entirely and use the legacy `typingSpeed`/`wordByWord`/`fadeInEnabled`/`fadeInDuration`/`fadeInCurve`/`chunkSize` parameters below instead — see `doc/MIGRATION.md`. |
+| `pacing` | `StreamPacing?` | How a `Stream<String>` (or static `text`) source is paced: `StreamPacing.catchUp(...)` (the default for `stream:`, smoothing bursty token arrivals) or `StreamPacing.fixed(typingSpeed)` (the default for static `text`, and the pre-2.0 behavior). An explicit value always overrides the default. |
+| `typingSpeed` | `Duration` | Speed of typing animation. Only meaningful with `revealMode: null`, `.typewriter()`, or an explicit `StreamPacing.fixed(...)`. |
+| `wordByWord` | `bool` | Whether to animate word by word. Ignored unless `revealMode: null` (`smoothFade`/`wordFade` always reveal word-by-word; `.typewriter()`/`.instant()` always reveal by `chunkSize`). |
+| `chunkSize` | `int` | Number of characters to reveal at once. Ignored in word-unit modes. |
+| `fadeInEnabled` | `bool` | Legacy per-character fade-in, opacity-only, driven by a single `Ticker` (constant memory). Only applies in plain-text mode (`markdownEnabled: false`), only takes effect with `revealMode: null`, and is suppressed for Arabic/RTL — use `revealMode: RevealMode.smoothFade` (the default) for a fade that also covers Arabic, or `trailingFadeEnabled` for markdown content. |
 | `fadeInDuration` | `Duration` | Duration of fade-in animation (also used for trailing-fade dismiss) |
 | `trailingFadeEnabled` | `bool` | Bottom-edge gradient fade while streaming. Animates away on completion. Recommended for `Stream<String>` and markdown content. |
 | `textDirection` | `TextDirection?` | Text direction (LTR or RTL) |
@@ -343,16 +350,18 @@ than one of them (or calling one twice) never double-fires your callback.
 
 #### Choosing a fade for streaming content
 
-Per-character fade is driven by a single `Ticker` regardless of how much
-text there is (a plain 5k-char fade uses at most 2 transient tickers), so
-it's safe for streams too — it's markdown mode and Arabic/RTL where it's
-unavailable or suppressed:
+The default `revealMode: RevealMode.smoothFade` already fades plain text,
+`Stream<String>` input, AND Arabic/RTL content — a single `Ticker`
+regardless of how much text there is (at most 2 transient tickers). It does
+**not** currently fade markdown content (see `doc/BENCHMARKS.md`'s "B1-S5
+correction" for why); use `trailingFadeEnabled` there instead. The table
+below is for the legacy (`revealMode: null`) fade parameters:
 
 | Source | Recommended | Why |
 |--------|-------------|-----|
-| Static or streamed `text`, markdown off | `fadeInEnabled: true` | Single-ticker per-character fade, looks great |
-| Arabic/RTL content | `trailingFadeEnabled: true` | Per-character fade is suppressed for Arabic (shaping risk) regardless of source |
-| Markdown-enabled content | `trailingFadeEnabled: true` | Per-character fade only applies in plain-text mode; use the bottom-edge gradient instead |
+| Static or streamed `text`, markdown off | `revealMode: RevealMode.smoothFade` (default) or `fadeInEnabled: true` with `revealMode: null` | Single-ticker fade, looks great |
+| Arabic/RTL content | `revealMode: RevealMode.smoothFade` (default) | The legacy `fadeInEnabled` (`revealMode: null`) is suppressed for Arabic (shaping risk); `smoothFade` isn't |
+| Markdown-enabled content | `trailingFadeEnabled: true` | No per-word/per-character fade applies in markdown mode; use the bottom-edge gradient instead |
 
 ## Markdown Support
 

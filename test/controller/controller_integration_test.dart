@@ -20,6 +20,7 @@ void main() {
       return MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: 'Hello World',
             markdownEnabled: false,
             typingSpeed: const Duration(milliseconds: 20),
@@ -91,6 +92,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: 'short text',
               markdownEnabled: false,
               typingSpeed: const Duration(milliseconds: 5),
@@ -133,6 +135,7 @@ void main() {
           key: ValueKey(rebuildKey),
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: text,
               markdownEnabled: false,
               animationsEnabled: false,
@@ -166,6 +169,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: StreamingText(
+            revealMode: null,
             text: longText,
             markdownEnabled: false,
             fadeInEnabled: true,

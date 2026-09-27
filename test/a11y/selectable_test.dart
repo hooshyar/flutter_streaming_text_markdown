@@ -17,6 +17,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: 'select me',
               markdownEnabled: false,
               showCursor: false,
@@ -38,6 +39,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: 'select me',
               markdownEnabled: false,
               showCursor: false,
@@ -59,6 +61,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingText(
+              revealMode: null,
               text: source,
               markdownEnabled: false,
               showCursor: false,

@@ -13,6 +13,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Hello \$x = 5\$ world',
               latexEnabled: false,
               markdownEnabled: false,
@@ -37,6 +38,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'The equation \$x = 5\$ is simple',
               latexEnabled: true,
               markdownEnabled: true,
@@ -71,6 +73,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text:
                   'Matrix: \$\$\\begin{matrix} a & b \\\\ c & d \\end{matrix}\$\$ Done',
               latexEnabled: true,
@@ -99,6 +102,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown.chatGPT(
+              revealMode: null,
               text: 'Formula: \$E = mc^2\$',
               latexEnabled: true,
             ),
@@ -122,6 +126,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown.claude(
+              revealMode: null,
               text: 'The integral \$\\int_0^1 x dx = \\frac{1}{2}\$',
               latexEnabled: true,
             ),
@@ -144,6 +149,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Styled \$x = y\$ equation',
               latexEnabled: true,
               markdownEnabled: true,
@@ -169,6 +175,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: '''# Math Examples
               
 Inline math: \$x + y = z\$
@@ -209,6 +216,7 @@ Block math:
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Invalid \$unclosed LaTeX',
               latexEnabled: true,
               markdownEnabled: true,
@@ -233,6 +241,7 @@ Block math:
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Equation \$a = b\$ here',
               latexEnabled: true,
               markdownEnabled: true,
@@ -259,6 +268,7 @@ Block math:
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Themed \$x = 1\$ text',
               latexEnabled: true,
               markdownEnabled: true,
@@ -286,6 +296,7 @@ Block math:
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Start \$x = 5\$ middle \$\$y = 10\$\$ end',
               latexEnabled: true,
               markdownEnabled: true,
@@ -320,6 +331,7 @@ Block math:
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Hi \$x\$ ok',
               latexEnabled: true,
               markdownEnabled: true,
@@ -347,6 +359,7 @@ Block math:
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'Control \$test = 1\$ example',
               latexEnabled: true,
               markdownEnabled: true,
@@ -382,6 +395,7 @@ Block math:
           MaterialApp(
             home: Scaffold(
               body: StreamingTextMarkdown(
+                revealMode: null,
                 text: text,
                 markdownEnabled: true,
                 latexEnabled: true,
@@ -408,6 +422,7 @@ Block math:
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: r'Costs $10-$20 total',
               markdownEnabled: true,
               latexEnabled: true,
@@ -433,6 +448,7 @@ Block math:
         MaterialApp(
           home: Scaffold(
             body: StreamingTextMarkdown(
+              revealMode: null,
               text: 'مرحبا \$x = 5\$ عالم',
               latexEnabled: true,
               markdownEnabled: true,

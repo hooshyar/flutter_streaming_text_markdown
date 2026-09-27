@@ -24,7 +24,7 @@ String _visible(WidgetTester tester) {
     final text = (element.widget as RichText).text.toPlainText();
     if (text.trim().isNotEmpty) parts.add(text);
   }
-  return parts.join().replaceAll('', '');
+  return parts.join('\n').replaceAll('', '').replaceAll('￼', '');
 }
 
 /// Whether any span currently on screen renders in italics.
@@ -183,12 +183,166 @@ void main() {
     });
   }
 
-  testWidgets('a ~~gone~ never becomes ~~gone~~~', (tester) async {
-    const source = 'a ~~gone~ and more text follows to be sure. ';
-    var sawTripleTilde = false;
-    await _streamDefault(tester, source, (t, visible) {
-      if (visible.contains('~~~')) sawTripleTilde = true;
+  for (final mode in ['default', 'typewriter']) {
+    testWidgets('a ~~gone~ never becomes ~~gone~~~ ($mode)', (tester) async {
+      const source = 'a ~~gone~ and more text follows to be sure. ';
+      var sawTripleTilde = false;
+      void check(WidgetTester t, String visible) {
+        if (visible.contains('~~~')) sawTripleTilde = true;
+      }
+
+      if (mode == 'default') {
+        await _streamDefault(tester, source, check);
+      } else {
+        await _streamTypewriter(tester, source, check);
+      }
+      expect(sawTripleTilde, isFalse);
     });
-    expect(sawTripleTilde, isFalse);
+  }
+
+  // B1F1 round 2 BLOCKER: char-mode (typewriter, 1-char-chunk) coverage for
+  // the underscore case - the default-mode-only widget test above happened
+  // to pass on the buggy base too (gpt_markdown's own handling masked the
+  // exact mend() output at the widget level); this adds the char-mode leg.
+  testWidgets('snake_case / _private prose never gets an invented trailing _ '
+      '(typewriter, char mode)', (tester) async {
+    const source = 'Use snake_case and _private names in this module always. ';
+    var sawTrailingUnderscore = false;
+    await _streamTypewriter(tester, source, (t, visible) {
+      if (visible.isNotEmpty &&
+          visible.endsWith('_') &&
+          !source.startsWith(visible)) {
+        sawTrailingUnderscore = true;
+      }
+    });
+    expect(sawTrailingUnderscore, isFalse);
+  });
+
+  // --- B1F1 round 2, item 1: non-blocking, stop tracking __ ---------------
+  testWidgets(
+    "Hello __bold_ never becomes __bold___ (gpt_markdown doesn't render "
+    '__ anyway)',
+    (tester) async {
+      const source = 'Hello __bold_ and more text keeps going here. ';
+      var sawInventedUnderscores = false;
+      await _streamTypewriter(tester, source, (t, visible) {
+        // Any run of 3+ underscores is definitely invented - the source
+        // never has more than 2 in a row.
+        if (RegExp('_{3,}').hasMatch(visible)) sawInventedUnderscores = true;
+      });
+      expect(sawInventedUnderscores, isFalse);
+    },
+  );
+
+  // --- B1F1 round 2, item 2: broaden table header holding ------------------
+  for (final mode in ['default', 'typewriter']) {
+    testWidgets('| Name | Age (no closing pipe) never renders raw before the '
+        'separator completes ($mode)', (tester) async {
+      const source = '| Name | Age\n|---|---|\n| Bob | 42 |\n\nDone with it. ';
+      // Once the table renders as a real widget, the separator's dashes
+      // are never literal plain text again - track "separator complete"
+      // by stream position instead (frames are called once per character
+      // pushed, in order).
+      final sepCompleteAt = source.indexOf('|---|---|') + '|---|---|'.length;
+      var charsPushed = 0;
+      var sawRawPipeBeforeSeparator = false;
+      void check(WidgetTester t, String visible) {
+        charsPushed++;
+        if (charsPushed < sepCompleteAt && visible.contains('|')) {
+          sawRawPipeBeforeSeparator = true;
+        }
+      }
+
+      if (mode == 'default') {
+        await _streamDefault(tester, source, check);
+      } else {
+        await _streamTypewriter(tester, source, check);
+      }
+      expect(sawRawPipeBeforeSeparator, isFalse);
+    });
+  }
+
+  // --- B1F1 round 2, item 3: typewriter one-frame flashes ------------------
+  testWidgets('a lone ~ (no strike ever opens) never flashes before settling '
+      '(typewriter)', (tester) async {
+    const source = 'price ~5 or so, thanks for asking about it today. ';
+    final frames = <String>[];
+    await _streamTypewriter(tester, source, (t, visible) {
+      frames.add(visible);
+    });
+    // The single '~' must never appear alone as the very last visible
+    // character mid-stream (that is the one-frame flash) - once it is
+    // followed by '5' it is unambiguous ordinary text and may show.
+    for (final f in frames) {
+      if (f.endsWith('~')) {
+        fail('lone trailing ~ flashed on screen: "$f"');
+      }
+    }
+    expect(frames.last.trimRight(), source.trimRight());
+  });
+
+  testWidgets(
+    '[docs] with no ( yet never flashes as a raw bracket pair (typewriter)',
+    (tester) async {
+      const source = 'See [docs] for more information right now please. ';
+      // Track "is the bracket pair still ambiguous" by stream position, not
+      // by pattern-matching the rendered text: gpt_markdown trims trailing
+      // whitespace when it paints, so "See [docs]" (bracket pair, nothing
+      // after it yet) and "See [docs] " (bracket pair + one more,
+      // resolving, released) can render identically as far as trailing
+      // whitespace is concerned - only the character COUNT distinguishes
+      // "nothing after it yet" from "already resolved".
+      final bracketCloseAt = source.indexOf(']') + 1;
+      var charsPushed = 0;
+      var sawRawBracketStillAmbiguous = false;
+      await _streamTypewriter(tester, source, (t, visible) {
+        charsPushed++;
+        if (charsPushed == bracketCloseAt && visible.contains('[docs]')) {
+          sawRawBracketStillAmbiguous = true;
+        }
+      });
+      expect(sawRawBracketStillAmbiguous, isFalse);
+    },
+  );
+
+  testWidgets('! before [alt never flashes / never mangles into a stray ! '
+      '(typewriter)', (tester) async {
+    const source =
+        'Great deal! Check ![alt text](https://x.y/a.png) image below. ';
+    final frames = <String>[];
+    await _streamTypewriter(tester, source, (t, visible) {
+      frames.add(visible);
+    });
+    // The old bareOpenLink rewrite mishandled "![alt" mid-typing by
+    // stripping only the '[' and leaving a stray '!alt...' behind.
+    for (final f in frames) {
+      expect(
+        f.contains('!alt'),
+        isFalse,
+        reason: 'stray "!alt" leaked (missing "[" from an image): "$f"',
+      );
+    }
+    expect(frames.last.trimRight(), 'Great deal! Check  image below.');
+  });
+
+  testWidgets('a digit run at line start never flashes before it resolves into '
+      'ordinary text or a list marker (typewriter)', (tester) async {
+    const source = 'Steps:\n\n12 apples were bought at the store today. ';
+    // Track "is the digit run still bare (nothing after it yet)" by
+    // stream position, not by pattern-matching the rendered text:
+    // `gpt_markdown` collapses the blank line into a single block
+    // boundary and trims trailing whitespace, so the "still bare" and
+    // "just resolved" states can render as visually-identical strings -
+    // only the character count distinguishes them.
+    final digitRunEndsAt = source.indexOf('12') + '12'.length;
+    var charsPushed = 0;
+    var sawBareDigitRun = false;
+    await _streamTypewriter(tester, source, (t, visible) {
+      charsPushed++;
+      if (charsPushed == digitRunEndsAt && visible.contains('12')) {
+        sawBareDigitRun = true;
+      }
+    });
+    expect(sawBareDigitRun, isFalse);
   });
 }

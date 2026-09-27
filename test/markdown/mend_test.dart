@@ -87,10 +87,16 @@ void main() {
       expect(mend('Mixed ***str', isComplete: false), 'Mixed ***str***');
     });
 
-    test('closes an unterminated __bold (underscore)', () {
+    // B1F1 round 2: `__` is no longer tracked/closed at all - gpt_markdown
+    // 1.3.0 doesn't actually render `__`/`_` emphasis, it always shows the
+    // underscores literally, so "closing" an unterminated `__` only ever
+    // invented extra raw underscores that were never going to be styled
+    // (e.g. 'Hello __bold_' used to become 'Hello __bold___'). This
+    // replaces the old "closes an unterminated __bold" expectation.
+    test('never closes an unterminated __bold (underscore) - left literal', () {
       expect(
         mend('This is __very imp', isComplete: false),
-        'This is __very imp__',
+        'This is __very imp',
       );
     });
 
@@ -118,6 +124,47 @@ void main() {
     });
   });
 
+  // B1F1 round 2 BLOCKER: these three mend()-level asserts were missing
+  // from round 1's suite - the widget-level tests in
+  // inline_marker_streaming_test.dart happened to pass on the buggy base
+  // (b22e28d) too, since gpt_markdown's own rendering masked the exact
+  // string mend() produced. Calling mend() directly pins the precise
+  // output and genuinely fails on b22e28d (verified in a scratch worktree
+  // - see this file's own test names for what each one guards).
+  group('mend: B1F1 round 2 direct regression asserts', () {
+    test(
+      'Hello **bold* closes the still-open ** instead of leaving it raw',
+      () {
+        // On b22e28d this returns 'Hello **bold' (the trailing lone '*' is
+        // trimmed, but the still-open '**' bold span's closer is dropped
+        // instead of appended) - a raw, unclosed '**' then leaks through
+        // to gpt_markdown.
+        expect(mend('Hello **bold*', isComplete: false), 'Hello **bold**');
+      },
+    );
+
+    test('a ~~gone~ closes to ~~gone~~, never ~~gone~~~', () {
+      // On b22e28d this returns 'a ~~gone~~~' (the lone trailing '~' isn't
+      // recognized as ambiguous at all, so it survives literally AND the
+      // still-open '~~' closer gets appended after it).
+      expect(mend('a ~~gone~', isComplete: false), 'a ~~gone~~');
+    });
+
+    test('_private in prose never gets an invented trailing _', () {
+      // On b22e28d, a lone `_` preceded by non-word/followed by word chars
+      // toggles `underEmOpen` with no regard for whether it will ever
+      // close, so this returns
+      // 'Use snake_case and _private names in this module always. _'
+      // (note the invented trailing '_'). mend() must never track a single
+      // `_` as an emphasis delimiter at all.
+      const source =
+          'Use snake_case and _private names in this module always. ';
+      final result = mend(source, isComplete: false);
+      expect(result, source);
+      expect(result.endsWith('_'), isFalse);
+    });
+  });
+
   group('mend: hold a lone trailing marker with nothing after it', () {
     test('holds a lone trailing **', () {
       expect(mend('This is **', isComplete: false), 'This is ');
@@ -127,10 +174,14 @@ void main() {
       expect(mend('This is *', isComplete: false), 'This is ');
     });
 
-    test('holds a lone trailing ~', () {
-      // A single '~' never opens anything on its own (strike is '~~'), so
-      // there is nothing to close or hold - it is just literal text.
-      expect(mend('This is ~', isComplete: false), 'This is ~');
+    // B1F1 round 2: a lone trailing '~' is now always held, even with no
+    // strike span open at all - one more '~' arriving would turn it into a
+    // strike-through delimiter, so it's ambiguous every frame it's the very
+    // last character. This replaces the old "it's just literal text"
+    // expectation (that was itself the one-frame-flash bug the round-2
+    // report called out).
+    test('holds a lone trailing ~ even with no strike open', () {
+      expect(mend('This is ~', isComplete: false), 'This is ');
     });
 
     test('holds a lone trailing backtick', () {
@@ -199,6 +250,17 @@ void main() {
         expect(mend('| Name | Age |', isComplete: false), '');
       });
 
+      // B1F1 round 2: the row-like check used to require a trailing `|`
+      // too, so a header missing its closing pipe leaked through raw. Any
+      // line starting with `|` (after optional indentation) must hold now.
+      test('a header with no closing pipe is held just the same', () {
+        expect(mend('| Name | Age', isComplete: false), '');
+      });
+
+      test('a header partial with no closing pipe is held (typewriter)', () {
+        expect(mend('| Nam', isComplete: false), '');
+      });
+
       test(
         'table_sep_partial - a still-typing separator holds the header too',
         () {
@@ -243,6 +305,57 @@ void main() {
 
     test('html_open holds the unclosed tag', () {
       expect(mend('Line<br', isComplete: false), 'Line');
+    });
+  });
+
+  // B1F1 round 2, item 3: typewriter one-frame flashes - hold each of these
+  // until the construct resolves, instead of showing a half-typed
+  // construct for exactly one frame (or, worse, the wrong construct).
+  group('mend: B1F1 round 2 typewriter-flash holds', () {
+    test('a lone trailing ~ is held even with no strike span open at all', () {
+      // One more '~' arriving would turn this into a strike-through
+      // delimiter, an entirely different construct - held every frame
+      // it is the very last character, not just once a strike is open.
+      expect(mend('price ~5 or so', isComplete: false), 'price ~5 or so');
+      expect(mend('price ~', isComplete: false), 'price ');
+    });
+
+    test('[text] with no ( yet is held entirely', () {
+      expect(mend('See [docs]', isComplete: false), 'See ');
+    });
+
+    test('[text](url) still works once the paren has started', () {
+      expect(mend('See [docs](h', isComplete: false), 'See docs');
+    });
+
+    test('![alt] (image, no paren yet) is held entirely', () {
+      expect(mend('Pic ![alt]', isComplete: false), 'Pic ');
+    });
+
+    test('![alt with no closing bracket yet is held entirely', () {
+      expect(mend('Pic ![alt text bei', isComplete: false), 'Pic ');
+    });
+
+    test('a lone trailing ! is held - one more [ would start an image', () {
+      expect(mend('Wow!', isComplete: false), 'Wow');
+    });
+
+    test('! not followed by [ is ordinary punctuation once released', () {
+      // The '!' itself is only held while it is the very last character;
+      // once anything else follows it, it is plainly not an image opener.
+      expect(mend('Wow! That', isComplete: false), 'Wow! That');
+    });
+
+    test('a digit run at line start with no . yet is held (could be "1.")', () {
+      expect(mend('Steps:\n\n1', isComplete: false), 'Steps:\n\n');
+      expect(mend('Steps:\n\n12', isComplete: false), 'Steps:\n\n');
+    });
+
+    test('a digit run followed by real content is not held', () {
+      expect(
+        mend('Steps:\n\n12 apples', isComplete: false),
+        'Steps:\n\n12 apples',
+      );
     });
   });
 

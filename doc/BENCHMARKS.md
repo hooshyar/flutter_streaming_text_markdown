@@ -249,3 +249,108 @@ And from `test/perf/stream_benchmark_test.dart` (12 rounds, median-of-medians):
 Both comfortably under the 1.8x / 6x budgets. Run with
 `flutter test --no-dds --tags benchmark --run-skipped
 test/perf/stream_benchmark_test.dart test/perf/delegation_benchmark_test.dart`.
+
+## B1-S6 markdown fade
+
+B1-S5 shipped markdown `smoothFade`/`wordFade` with **no fade at all** -
+`gpt_markdown`'s own `animation: fade` was rejected for blowing the 1.8x/6x
+budget (~2.3x time, ~12.9x rebuilds; see the correction above). This left
+markdown's main use case with a fade-free reveal while plain text still
+faded via `buildFadeSpan`. This slice adds a cheap fade back for markdown.
+
+### Approaches considered
+
+- **(a) Trailing soft-edge mask (CHOSEN).** A `RenderProxyBox`
+  (`lib/src/render/markdown_fade_mask.dart`'s `RenderMarkdownFadeMask`) that,
+  purely at paint time:
+  1. finds the last `RenderParagraph` in the markdown subtree (cached, only
+     re-walked from `performLayout` - i.e. only when content genuinely
+     changed, never on a ticker-only repaint);
+  2. maps each of the reveal engine's still-fading `FadeRun`s (already
+     tracked for plain text, `RevealEngine.runs`) onto that paragraph's
+     plain text by **distance from the end** - the source and rendered
+     texts differ in the middle (`gpt_markdown` strips markdown syntax,
+     `mend()` can hold back an incomplete trailing marker) but grow in
+     lockstep at the tail, which is the only place an active run can ever
+     be;
+  3. gets the exact on-screen box(es) for that trailing range via
+     `getBoxesForSelection` (RTL/bidi and line-wrap aware, for free);
+  4. paints the child **exactly once** (same cost as bare), then dims each
+     box in place via a `BlendMode.dstIn` `ShaderMaskLayer`, one nested
+     layer per still-fading run (bounded by the ~32 runs `RevealEngine`
+     ever keeps, in practice 1-3 at a time).
+
+  This never touches an `Element`, never calls `setState` on the markdown
+  subtree, and never re-runs `gpt_markdown`'s segment cache - the ticker
+  that drives it (`StreamingText._onTick`) wakes the mask directly via a
+  `ChangeNotifier` (`_markdownFadeRepaint`), exactly like the existing
+  caret-opacity path added in the Phase C caret-performance fix above. It
+  reuses the plain-text fade's existing `smoothFadeDuration`/`smoothFadeCurve`
+  (180ms, `Cubic(0.2, 0, 0, 1)`) and `FadeRun` machinery rather than adding a
+  second one.
+
+  Not implemented (and not needed, since (a) landed comfortably in budget):
+
+- **(b) Block-level `FadeTransition`.** Wrapping only the newest top-level
+  block in a `FadeTransition` on first appearance. Rejected without a
+  prototype: it still requires an `Element`/`AnimationController` per
+  visible block and would fade the whole block in one shot rather than the
+  actual still-growing tail, which is coarser than (a) for zero measured
+  benefit once (a) was already shown to be cheap.
+- **(c) Other options.** Vercel's `streamdown`/AI SDK UI fade newly-appended
+  DOM text nodes via a CSS animation on insertion - the direct DOM analogue
+  of (a) (a paint/compositor-only effect keyed to "how long has this been on
+  screen", not a framework-level rebuild). `RenderParagraph` does not expose
+  a public per-range alpha-paint hook, which is why (a) dims via a masking
+  layer over the existing paint instead of asking `TextPainter` to paint
+  part of its `TextSpan` at a different alpha directly.
+
+### Numbers
+
+`test/perf/stream_benchmark_test.dart`'s default-caret-on benchmark (this
+IS "the default markdown stream" the acceptance criterion asks for -
+`RevealMode.smoothFade` is `StreamingText`'s default and the test never
+overrides `revealMode`), 3 consecutive runs, 12 rounds each, this machine:
+
+| run | time ratio (median-of-medians) | rebuild ratio |
+|---|---|---|
+| 1 | 0.667x | 1.823x |
+| 2 | 0.634x | 1.811x |
+| 3 | 0.686x | 1.814x |
+
+Both budgets (1.8x time / 6x rebuilds) hold with a wide margin - the mask's
+rebuild-ratio cost is within noise of the pre-S6 baseline (1.813x, see the
+"B1-S5 correction" section above): it adds paint-time work only, no new
+`Element`s. The sub-1.0x time ratios (markdown apparently "faster" than
+bare) are the same shared-machine wall-clock noise flagged throughout this
+doc, not a real speedup; the rebuild ratio (deterministic, load-independent)
+is the reliable signal here and is essentially unchanged from pre-S6.
+
+Correctness, checked via `test/widget/markdown_fade_mask_test.dart`:
+
+- alpha rises monotonically from sub-opaque to 1.0 and settles (pumped on
+  the real fade clock, per the pattern in `smooth_fade_test.dart`);
+- settled (non-trailing) text is never dimmed;
+- no `MarkdownFadeMask` at all - i.e. zero added cost - under reduced
+  motion, `revealMode: null` (legacy), `typewriter` and `instant`;
+- RTL/Arabic markdown and a growing code fence stream without exceptions
+  under the mask (code blocks render through their own builder, not
+  necessarily the paragraph the mask targets - "fade or no-fade" for a code
+  block's own content is explicitly acceptance-neutral per this slice's
+  brief; what matters is nothing breaks, and nothing does);
+- at most 2 transient tickers, matching acceptance criterion 9's plain-text
+  budget (the mask reuses the existing ticker/repaint-notifier pair, adding
+  none of its own).
+
+Run with `flutter test --no-dds test/widget/markdown_fade_mask_test.dart`
+and `flutter test --no-dds --tags benchmark --run-skipped
+test/perf/stream_benchmark_test.dart`.
+
+### Outcome: **(a) trailing soft-edge mask ADOPTED**
+
+`StreamingText._buildContent` wraps the markdown `LayoutBuilder` result in
+`MarkdownFadeMask` whenever `RevealMode.smoothFade`/`RevealMode.wordFade`,
+`animationsEnabled` and `markdownEnabled` all hold and reduced motion is
+off - the same gate `_modeFadeEnabled` already used for plain text.
+`markdownRevealFadeEnabled` (the `gpt_markdown`-hybrid path rejected in
+B1-S5) is untouched and stays `false`.

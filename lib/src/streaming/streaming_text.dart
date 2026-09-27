@@ -388,12 +388,23 @@ class _StreamingTextState extends State<StreamingText>
   /// A monotonic clock shared between [RevealEngine]'s reveal-run
   /// timestamps and this widget's fade rendering, so `now - revealedAt`
   /// stays consistent without needing wall-clock [DateTime] math.
-  final Stopwatch _fadeClock = Stopwatch()..start();
+  ///
+  /// Driven from the single [_ticker]'s own `elapsed` (see [_onTick])
+  /// instead of a wall-clock [Stopwatch]: under a real vsync it tracks
+  /// frame time (and [timeDilation]) exactly as before, but under
+  /// `flutter test` it advances only on pumped frames, so fade progress is a
+  /// pure function of frames pumped rather than of real elapsed time and
+  /// machine load. [Ticker.elapsed] itself resets to zero every time the
+  /// ticker restarts ([Ticker.stop] clears its start time), so
+  /// [_fadeClockOffset] carries the last observed value forward across
+  /// stop/start cycles instead of ever going backward.
+  Duration _fadeNow = Duration.zero;
+  Duration _fadeClockOffset = Duration.zero;
 
   DateTime _engineClock() =>
-      DateTime.fromMicrosecondsSinceEpoch(_fadeClock.elapsedMicroseconds);
+      DateTime.fromMicrosecondsSinceEpoch(_fadeNow.inMicroseconds);
 
-  Duration _now() => Duration(microseconds: _fadeClock.elapsedMicroseconds);
+  Duration _now() => _fadeNow;
 
   /// Kept only for the trailing-edge [ShaderMask] dismiss animation
   /// ([StreamingText.trailingFadeEnabled]) — unrelated to the single-ticker
@@ -948,6 +959,11 @@ class _StreamingTextState extends State<StreamingText>
     if (_needsTicking) {
       _ticker ??= createTicker(_onTick);
       if (!_ticker!.isTicking) {
+        // `Ticker.elapsed` resets to zero on the frame after `start()` -
+        // carry the last known fade-clock value forward so `_fadeNow` keeps
+        // advancing monotonically across this stop/start cycle instead of
+        // jumping back to (near) zero.
+        _fadeClockOffset = _fadeNow;
         _ticker!.start();
       }
     } else {
@@ -957,6 +973,7 @@ class _StreamingTextState extends State<StreamingText>
 
   void _onTick(Duration elapsed) {
     if (!mounted) return;
+    _fadeNow = _fadeClockOffset + elapsed;
     final progress =
         _engine.isComplete
             ? 1.0

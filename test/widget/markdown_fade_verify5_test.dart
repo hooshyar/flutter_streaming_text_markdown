@@ -230,7 +230,7 @@ Future<_Result> _tokenPaced(
       if (r.isEmpty) continue;
       final v = _darkOf(frames[f], r) / ref;
       seq.add(v.toStringAsFixed(2));
-      if (first == null && v > 0.03) first = v;
+      first ??= v;
       if (v > peak) peak = v;
       if (peak >= 0.9 && peak - v > drop) drop = peak - v;
     }

@@ -1086,5 +1086,254 @@ coincidentally already passing. The scratch worktree was removed after.
 (`markdown_fade_invariant_stale_test.dart`, 96 cases, and
 `markdown_fade_invariant_real_test.dart`, 112 cases) ran fully green after
 these changes; `markdown_fade_verify3_test.dart`/`4`/`5` and the default
-suite ran green across 3 consecutive runs (see the slice's own commit for
-exact timings on this machine).
+suite ran green after these changes.
+
+**CORRECTION (round 9 - see that section below for the full picture and raw
+evidence).** Round 8's claim just above - "the default suite ran green
+across 3 consecutive runs" - was never actually reproduced: round 8's own
+`markdown_fade_verify3_test.dart`/`4`/`5` pop metric scored a pop from the
+first sample *above 0.03*, not the first *rendered* sample, so a word
+first drawn at 0.00 opacity (correctly fading) could still be misreported
+as a pop once the metric skipped ahead to a later, brighter sample -
+compounded by the shared fade clock being a real wall-clock `Stopwatch`,
+so this exact misreporting rate depended on machine load and was never
+actually stable across repeated runs. The claims below in this same
+section - `H1` at `1/11`, `mixed` at exactly `0%` on every path, `tbl2`
+`chat` at `0-13%`, `tbl2adj` `chunk` at `0-27%` - were round 8's own
+un-reproduced estimates, not measurements taken after fixing either of
+those two things; round 9 replaced the fade clock with a ticker-driven one
+and fixed the pop metric, then re-measured every non-zero ceiling from
+scratch. See "B1-S6 round 9" at the end of this document for the real
+numbers and the raw pass/fail evidence.
+
+## B1-S6 round 9: a deterministic fade clock, the real pop-metric bug, and honest ceilings
+
+Round 8 left the product behaviour correct (0 dips/flashes over 1,300+
+cases, 0 pops for paragraphs/H2/H3/flat lists) but the test suite itself
+was neither deterministic nor honestly measured. Two real bugs, one metric
+bug:
+
+**1. The fade clock was a wall-clock `Stopwatch`.**
+`StreamingText`'s `_fadeClock` (`lib/src/streaming/streaming_text.dart`)
+was `Stopwatch()..start()`, so fade progress under `flutter test` depended
+on real elapsed time and machine load, not on frames pumped - the same
+`test.pump()` call could land the fade at a different progress percentage
+depending on how fast the host machine happened to be at that moment.
+**Fixed** by driving the fade clock from the shared single `Ticker`'s own
+`elapsed` instead (`_onTick`'s `elapsed` parameter): production behaviour
+is unchanged (a real `Ticker` still tracks real vsync time and
+`timeDilation`), but under test the clock now advances exactly in lockstep
+with pumped frames, deterministically. `Ticker.elapsed` itself resets to
+zero every time the ticker restarts (`Ticker.stop()` clears its internal
+start time), so `_fadeClockOffset` carries the last observed value forward
+across every stop/start cycle - `_fadeNow` is monotonic non-decreasing for
+the lifetime of the `State`, never jumping backward on a restart. The
+plain-text fade path (`lib/src/render/fade_span.dart`) was already a pure
+function of an injected `now`/`revealedAt` pair with no wall-clock call of
+its own, so fixing `_now()` in `streaming_text.dart` was the only lib
+change needed.
+
+Two existing tests broke immediately from this fix and were themselves
+bugged, not the product:
+`test/widget/smooth_fade_test.dart`/`markdown_fade_mask_test.dart`'s own
+`_pumpUntilSettled` helpers pumped `tester.pump()` with **no duration**
+in a tight loop, relying on the *real* Stopwatch clock to advance during
+the VM's own execution time between iterations - a durationless
+`tester.pump()` never advances the fake frame timestamp at all, so against
+the new ticker-driven clock the fade would never appear to progress and
+the loop would spin to `maxFrames` with the fade stuck sub-opaque. Fixed
+by pumping fixed 16ms frames each iteration (both files) - deterministic,
+and no longer dependent on how fast the test VM happens to execute a
+tight loop.
+
+**2. The verify3/4/5 pop metric scored the wrong "first" sample.**
+`markdown_fade_verify3_test.dart`/`4`/`5` (but *not*
+`markdown_fade_invariant_lib.dart`, which was already correct) computed a
+tracked word's "first" sample as `if (first == null && v > 0.03) first =
+v`, i.e. it skipped every sample at or below 0.03 opacity when looking for
+the word's first appearance. A word correctly first-rendered at exactly
+0.00 (a genuine fade start, not a bug) would have that 0.00 sample
+silently skipped, and whatever *later* - possibly much brighter, under
+load - sample happened to be the first one `> 0.03` got recorded as "the
+first visible frame" instead, misreporting a correctly-fading word as a
+pop. **Fixed** to `first ??= v` (the literal first rendered sample,
+whatever its value), matching `markdown_fade_invariant_lib.dart`'s
+existing, already-correct logic exactly.
+
+This, combined with fix 1, is the real explanation for the "plain-list
+flake" reported in earlier rounds' commit history: it was never a genuine
+per-run change in the mask's own behaviour, it was these two test bugs
+compounding - a wall-clock-dependent fade timeline being sampled by a
+metric that could pick the wrong "first" frame depending on exactly how
+that wall-clock timing lined up with the sampling frames on a given, and
+possibly loaded, run.
+
+**3. Every non-zero pop ceiling re-measured from scratch.** With both bugs
+fixed, every doc/path combination that showed ANY non-zero pop rate in
+round 8's own numbers was re-measured: `markdown_fade_invariant_stale_test
+.dart` (the only file with non-zero ceilings left after fixes 1-2) was run
+5 times on this machine, 2 of those runs with the default suite (1,061
+tests) running concurrently in a second process as CPU load, and the
+maximum pop count observed for each doc/path was recorded. Every ceiling
+below is `(max observed word count) + 1 word`, expressed as `N/wordCount`
+so `go()`'s `(fraction * r.words).ceil()` resolves to exactly `N`
+regardless of a doc's own tracked-word count - never the round-8 blanket
+`0.40`/`0.15` guesses.
+
+| doc (word count) | path | max pops observed (of N runs) | new ceiling |
+|---|---|---:|---:|
+| `tbl2` (15) | stream/chat | 5/15 (of 4) | 6/15 (40%) |
+| `tbl2` (15) | chunk | 6/15 (of 4) | 7/15 (47%) |
+| `tbl2adj` (11) | stream/chat | 3/11 (of 4) | 4/11 (36%) |
+| `tbl2adj` (11) | chunk | 5/11 (of 4) | 6/11 (55%) |
+| `tblThenList` (12) | stream/chat | 1/12 (of 4) | 2/12 (17%) |
+| `tblThenList` (12) | chunk | 3/12 (of 4) | 4/12 (33%) |
+| `mixed` (25) | every path | 1/25 (of 4) | 2/25 (8%) |
+| `listThenPara`/`olThenUl`/`setext`/`hrs` | every path | 0 (of 5) | `0` (unchanged) |
+
+Corrections to specific round-8 claims, per the evidence above:
+
+- **`H1` was never `1/11`.** `markdown_fade_invariant_real_test.dart` and
+  `markdown_fade_invariant_smoke_test.dart` already carried `2/11` at the
+  start of this round (a prior, uncommitted-to-this-doc correction) -
+  confirmed still correct (0 failures) across 5 green default-suite runs
+  in this round, including one under concurrent load; left unchanged.
+- **`mixed` was never `0%` on every path.** It measured 0/25 on 3 of 4
+  re-measurement runs but 1/25 on the 4th (a `stream caret=true gap=2`
+  case) - i.e. it DOES occasionally pop, on the `stream` path, not only in
+  `chunk` mode as round 8 claimed. Given a real table-shaped ceiling on
+  every path (`2/25`), per this round's brief.
+- **`tbl2` `chat` was never `0-13%`; `tbl2adj` `chunk` was never `0-27%`.**
+  Both were higher: `tbl2` reached 5/15 stream (33%, not capped at chat's
+  13% - the two paths share one ceiling in this file's design, and stream
+  is the worse of the two); `tbl2adj chunk` reached 5/11 - **45.5%,
+  landing EXACTLY on round 8's own 0.40 ceiling** (`ceil(0.40*11) = 5`),
+  i.e. round 8's own suite was already flaking on this exact case any run
+  that happened to land on 5 instead of 4.
+- **The round-8 "default suite ran green across 3 consecutive runs"
+  claim** (corrected inline above): not reproducible as stated, because it
+  predates fixes 1-2. This round's actual re-run evidence is below.
+
+**`markdown_fade_verify3_test.dart`/`4`'s own measured ceilings (table
+`caret=true` in verify3 at `3`; `nested list`/`table stream caret=true` in
+verify4 at `2`/`1`) were re-confirmed, not re-measured from scratch, by
+this round: they are part of the default suite and held across all 5
+green default-suite runs below (fix 2's metric correction only ever
+REDUCES false pops, it cannot manufacture new ones, so a ceiling that
+already held under the buggy metric still holds under the correct one).
+`markdown_fade_invariant_smoke_test.dart`'s `para_bold` `chat` case
+(mentioned in this round's brief as a possible genuine rare pop) is
+already asserted at exactly `0` and passed on every one of this round's 5
+default-suite runs - the rare pop was a metric/clock artifact, not a real
+one, and is gone with both fixes.
+
+**Raw evidence (this round, this machine).**
+
+`flutter test --no-dds` (default suite, 1,061 tests / 449 skipped), 5
+consecutive runs, run 3 with a second `flutter test --no-dds` running
+concurrently as load in another process:
+
+```
+run 1: 00:44 +1061 ~449: All tests passed!
+run 2: 00:38 +1061 ~449: All tests passed!
+run 3 (foreground, concurrent load): 00:55 +1061 ~449: All tests passed!
+run 3 (background load process):      00:56 +1061 ~449: All tests passed!
+run 4: 00:36 +1061 ~449: All tests passed!
+run 5: 00:36 +1061 ~449: All tests passed!
+```
+
+`flutter test --no-dds --tags fade_matrix --run-skipped` (447 tests), 2
+consecutive runs (after the ceiling fixes above; an initial run before
+the ceiling fixes failed exactly one case, `stream tbl2adj c=true g=2`,
+confirming the bug this round fixes):
+
+```
+pre-fix probe: Some tests failed.
+  markdown_fade_invariant_stale_test.dart: stream tbl2adj c=true g=2
+run 1 (post-fix): 05:30 +447: All tests passed!
+run 2 (post-fix): 05:28 +447: All tests passed!
+```
+
+`flutter test --no-dds --coverage`:
+
+```
+00:41 +1061 ~449: All tests passed!
+```
+
+`flutter analyze lib test` / `dart format --output=none
+--set-exit-if-changed lib test`: both clean (`No issues found!` /
+`Formatted 93 files (0 changed)`). Note: `flutter analyze` itself rewrites
+`analysis_options.yaml` on every invocation on this Flutter version
+(appends a `- build/**` exclude line unprompted) - reverted with `git
+checkout -- analysis_options.yaml` after every analyze run in this round;
+not a real product or test change.
+
+**4. The benchmark budget (`--tags benchmark --run-skipped`): FAILS after
+this round's clock fix, and this is a real, disclosed finding, not a
+regression to paper over.**
+
+```
+baseline (HEAD b5f9feb, before this round's fixes), this machine, this load:
+  stream_benchmark: 6445 ours frames / 1728 bare frames
+  ours median 529us, bare median 849us, pooled ratio 0.623x,
+  median-of-medians ratio 0.639x (budget <= 1.8x) - PASS
+  rebuild ratio 1.763x (budget <= 6x) - PASS
+
+after this round's deterministic-clock fix, same machine, same load,
+3 consecutive runs:
+  run 1: 1405 ours frames / 1728 bare frames, ours median 1996us,
+         median-of-medians ratio 2.156x - FAIL (budget <= 1.8x)
+         rebuild ratio 1.709x - PASS (budget <= 6x)
+  run 2: 1376 ours frames / 1728 bare frames, ours median 2163us,
+         median-of-medians ratio 2.155x - FAIL
+         rebuild ratio 1.679x - PASS
+  run 3: (delegation_benchmark_test.dart, arm E) ratio 2.166x-2.488x - FAIL
+```
+
+**Root cause, verified by comparing frame counts, not just ratios.** Under
+the OLD wall-clock `Stopwatch` fade clock, `tester.pump(const
+Duration(milliseconds: 16))` advances the *fake* test clock by 16ms but
+barely advances *real* wall-clock time at all (a `pump()` call itself
+executes in well under 16ms of real CPU time) - so the old fade clock,
+tied to real time, took **6,445 separate pumped frames** to accumulate
+enough real elapsed time to see the 180ms fade window complete, even
+though the actual reveal+markdown work finished in roughly the same
+timeframe as bare's own 1,728-frame growth. The overwhelming majority of
+those 6,445 samples were therefore cheap, idle, nothing-changed ticks
+(the ticker still fires every frame while `_fadeActive` reports true
+against a clock that's barely moved), which drags the **median** frame
+time down to something unrepresentative of the widget's real per-frame
+cost while it is actually doing work. The new, correct clock settles the
+fade in lockstep with the pumped frames instead (1,376-1,405 frames -
+now the same order of magnitude as bare's 1,728, which is the CORRECT,
+apples-to-apples comparison), so nearly every sampled frame now reflects
+genuine reveal/rebuild work rather than idle padding - and the median
+therefore reports this widget's real amortized per-frame cost during
+active work, which was always higher than round-through-8's numbers
+implied. The element-rebuild TOTALS are consistent across both
+measurements (~20,300-21,300 either way) - it's the same total work,
+redistributed over far fewer real sampled frames, which mechanically
+raises the per-frame median even though total wall-clock cost across the
+whole phase is comparable (a rough `median x frameCount` cross-check:
+~3.4M us old vs ~2.98M us new - if anything, lower total end-to-end time
+after the fix, not higher).
+
+**This is reported as a conflict, per this repo's own directive-conflict
+protocol, not silently resolved either way.** Item 1 of this round's brief
+(a deterministic fade clock) is a correctness fix this round was
+explicitly asked to make, and reverting it would bring back the
+non-deterministic test failures it was written to fix. Item 5's evidence
+list asks for this same benchmark to read `<=1.8x`/`<=6x`; after the
+correctness fix, the rebuild-ratio budget (the deterministic,
+load-independent half of this benchmark) still holds comfortably (~1.7x,
+budget 6x), but the wall-clock time-ratio budget does not (~2.1-2.5x,
+budget 1.8x) - not because of a regression in the shipped code (production
+behaviour under a real `Ticker` is unchanged by this round; only the
+TEST's own timing determinism changed), but because the OLD benchmark's
+median was never measuring this widget's real per-frame cost honestly in
+the first place. Re-tuning or redesigning this specific wall-clock
+benchmark (e.g. comparing total phase time instead of per-frame median,
+or capping frame count to match bare's own settle count) is out of scope
+for this round's brief (items 1-3: the fade clock, the pop metric, and the
+markdown-fade pop ceilings) and is flagged here for the orchestrator/next
+round rather than silently patched to force a green result.

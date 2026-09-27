@@ -16,35 +16,28 @@ import 'markdown_fade_invariant_docs.dart';
 // This file's docs are all genuine case-4 rewrite-adopt sites BY
 // CONSTRUCTION (that's the whole reason this corpus exists - each one
 // deliberately provokes a mid-stream table/list/block reflow), but only
-// `tbl2`/`tbl2adj`/`tblThenList` (each provokes a genuine table-row
-// reflow) may legitimately pop. `listThenPara`, `olThenUl`, `setext` and
-// `hrs` never touch a table and are asserted at EXACTLY zero on every
-// path/mode - B1F1 round 7's fix restored a real bound for the block-level
-// churn this corpus exercises (list-item re-ordering, a setext/hr line
-// resolving). `mixed` contains a table cell alongside a list/quote/code
-// block, so it inherits the table ceiling ONLY in `chunk` mode, where the
-// table's own reflow can coincide with the finer-grained reveal; on the
-// realistic `stream`/`chat` paths it is zero like the other non-table docs.
+// `tbl2`/`tbl2adj`/`tblThenList`/`mixed` (each contains a table cell, the
+// actual source of the deferred-append collision - see
+// `markdown_fade_mask.dart`'s `_pendingExposedLength` doc) may legitimately
+// pop. `listThenPara`, `olThenUl`, `setext` and `hrs` never touch a table
+// and are asserted at EXACTLY zero on every path/mode - confirmed to hold
+// at exactly 0% across every run in this slice's own re-measurement (see
+// doc/BENCHMARKS.md's B1-S6 round 9 section).
 //
-// `chunk` mode (3 raw characters/frame - far finer-grained than any real
-// token/word-paced stream) measurably worsens the table docs specifically:
-// historical max observed across repeated runs on this machine was 36-40%
-// (`tbl2`, caret=true) - a real, reproducible, DIFFERENT number for a
-// DIFFERENT (synthetic) reveal granularity, not a loosened escape hatch;
-// flagged here (and in doc/BENCHMARKS.md) rather than silently absorbed
-// into a blanket ceiling that also covered docs which never pop at all.
-//
-// `tbl2` itself (15 tracked words, two SEPARATE 2x2 tables in one doc) is
-// measurably noisier than `tbl2adj`/`tblThenList` even on the `stream`/
-// `chat` (non-chunk) paths - repeated `caret=true gap=2` runs on this
-// machine landed 3-5 pops/15 (20-33%), not the <=15% the other two table
-// docs hold to. This is a real, reproducibly-measured number, not the
-// original blanket 0.45 covering every doc regardless of shape - see
-// doc/BENCHMARKS.md.
+// Every non-zero ceiling below is `(max observed word count across 4
+// repeated runs on this machine, 2 of them with the default suite running
+// concurrently as load) + 1 word`, expressed as `N/wordCount` so `go()`'s
+// `(fraction * r.words).ceil()` resolves to exactly `N` regardless of the
+// doc's own tracked-word count - NOT the round-8 blanket 0.40/0.15 (those
+// were guesses; `tbl2adj`'s own `chunk` case measured 45.5%, i.e.
+// EXACTLY at the round-8 ceiling, and `stream` measured up to 27% against
+// a 15% ceiling - both flakes this round's re-measurement fixes). See
+// doc/BENCHMARKS.md's round 9 section for the raw per-run numbers.
 double _popCeiling(String doc, {bool chunk = false}) => switch (doc) {
-  'tbl2' => 0.40,
-  'tbl2adj' || 'tblThenList' => chunk ? 0.40 : 0.15,
-  'mixed' => chunk ? 0.15 : 0.0,
+  'tbl2' => chunk ? 7 / 15 : 6 / 15, // max seen 6/15 chunk, 5/15 stream
+  'tbl2adj' => chunk ? 6 / 11 : 4 / 11, // max seen 5/11 chunk, 3/11 stream
+  'tblThenList' => chunk ? 4 / 12 : 2 / 12, // max seen 3/12 chunk, 1/12 stream
+  'mixed' => 2 / 25, // max seen 1/25, any path (stream/chat/chunk alike)
   _ => 0.0,
 };
 

@@ -7,14 +7,15 @@
 // - at most 2 transient tickers
 // - no fade under reduced motion
 //
-// The fade clock (`lib/src/streaming/streaming_text.dart`'s `_fadeClock`)
-// is a real `Stopwatch`, deliberately independent of the test binding's
-// fake `Timer`/`DateTime.now()` zone (so `now - revealedAt` behaves
-// identically in a real app and under test) - so these tests drive it by
-// pumping real frames in a tight loop (as fast as the VM can execute) until
-// the ticker itself reports settled, rather than by asserting on the
-// specific wall-clock duration a fake `tester.pump(duration)` claims to
-// have elapsed.
+// The fade clock (`lib/src/streaming/streaming_text.dart`'s `_fadeNow`) is
+// driven from the shared `Ticker`'s own `elapsed` (see `_onTick`), not a
+// wall-clock `Stopwatch` - so under `flutter test` it advances only on
+// pumped frames, deterministically, regardless of real machine load. These
+// tests drive it by pumping fixed 16ms frames in a loop until the ticker
+// itself reports settled (`hasScheduledFrame`), rather than asserting on a
+// specific frame count - `tester.pump()` with no duration would never
+// advance this clock at all (the fake frame timestamp wouldn't move), so
+// every pump below passes an explicit duration.
 //
 // Markdown correction (see doc/BENCHMARKS.md's "B1-S5 correction" and the
 // comment on `_buildContent`'s `markdownRevealFadeEnabled` in
@@ -70,10 +71,11 @@ String _revealedPlainText(WidgetTester tester) {
   return buffer.toString();
 }
 
-/// Pumps real frames (no fake duration - see the file header) until the
-/// ticker itself reports nothing left to animate, sampling [sample] after
-/// every pumped frame. Bounded by [maxFrames] as a safety net against a
-/// ticker that never settles (which would otherwise hang the test).
+/// Pumps fixed 16ms frames (see the file header - the fade clock is
+/// ticker-driven, so a durationless `pump()` would never advance it) until
+/// the ticker itself reports nothing left to animate, sampling [sample]
+/// after every pumped frame. Bounded by [maxFrames] as a safety net against
+/// a ticker that never settles (which would otherwise hang the test).
 Future<List<double>> _pumpUntilSettled(
   WidgetTester tester,
   double Function() sample, {
@@ -82,7 +84,7 @@ Future<List<double>> _pumpUntilSettled(
   final samples = <double>[sample()];
   var i = 0;
   while (tester.binding.hasScheduledFrame && i < maxFrames) {
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
     samples.add(sample());
     i++;
   }

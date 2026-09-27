@@ -32,10 +32,10 @@ List<double> _activeAlphas(WidgetTester tester) {
   return renderObject.debugActiveDims().map((d) => d.$2).toList();
 }
 
-/// Pumps real frames (no fake duration - the shared `_fadeClock` is a real
-/// `Stopwatch`, independent of the test binding's fake time; see
-/// `smooth_fade_test.dart`'s file header) until the ticker itself reports
-/// nothing left to animate, sampling [sample] after every pumped frame.
+/// Pumps fixed 16ms frames (the shared fade clock is ticker-driven, see
+/// `smooth_fade_test.dart`'s file header - a durationless `pump()` would
+/// never advance it) until the ticker itself reports nothing left to
+/// animate, sampling [sample] after every pumped frame.
 Future<List<T>> _pumpUntilSettled<T>(
   WidgetTester tester,
   T Function() sample, {
@@ -44,7 +44,7 @@ Future<List<T>> _pumpUntilSettled<T>(
   final samples = <T>[sample()];
   var i = 0;
   while (tester.binding.hasScheduledFrame && i < maxFrames) {
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
     samples.add(sample());
     i++;
   }

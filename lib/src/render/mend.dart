@@ -29,10 +29,13 @@ import 'caret_inline.dart' show caretSentinel;
 ///    open inline `$x` into `` `x` ``, using [AtomicSpanDetector] to find
 ///    them (currency-shaped `$` is never touched - that stays
 ///    [AtomicSpanDetector]'s call);
-///  * closes an unterminated `**`, `__`, `*`/`_` (skipping list markers and
-///    intraword `_`), `~~`, inline code or `***` that already has content
-///    after it - but holds back a *lone* trailing marker with nothing after
-///    it yet, since more of the same character could still arrive.
+///  * closes an unterminated `**`, `*`, `~~`, inline code or `***` that
+///    already has content after it (skipping list markers and intraword
+///    `*`) - but holds back a *lone* trailing marker with nothing after it
+///    yet, since more of the same character could still arrive. `_`/`__`
+///    are never tracked at all: `gpt_markdown` 1.3.0 doesn't render either
+///    as emphasis, so "closing" one would only invent extra raw
+///    underscores.
 ///
 /// A trailing caret sentinel (see `caret_inline.dart`) is stripped before
 /// any of the above runs, then re-appended only when the mended tail does
@@ -51,9 +54,19 @@ String mend(
           ? text.substring(0, text.length - caretSentinel.length)
           : text;
 
-  final split = settledSplitOffset(body);
-  final settled = body.substring(0, split);
-  final tail = body.substring(split);
+  // `settledSplitOffset` is `gpt_markdown`'s own judgment of what's
+  // definitely finished, from ITS parser's point of view - a closed
+  // `[text]`/`![alt]` pair with nothing after it yet reads as complete,
+  // unambiguous plain-bracket text to `gpt_markdown` (it has no notion that
+  // *we* are holding it in case a `(` arrives next), so it can end up
+  // inside `settled` and never reach `_mendTail`'s tail-only pipeline at
+  // all. Truncate that one ambiguous case off the very end of the whole
+  // body FIRST, before `gpt_markdown` ever gets a say - see B1F1 round 2.
+  final safeBody = _holdImageOrLinkStart(body);
+
+  final split = settledSplitOffset(safeBody);
+  final settled = safeBody.substring(0, split);
+  final tail = safeBody.substring(split);
 
   final mended = _mendTail(tail, latexEnabled: latexEnabled);
   final out = settled + mended.text;
@@ -87,6 +100,7 @@ _TailMend _mendTail(String tail, {required bool latexEnabled}) {
 
   var s = tail;
   s = _holdOpenHtmlTag(s);
+  s = _holdImageOrLinkStart(s);
   s = _holdOpenImage(s);
   s = _rewriteOpenLink(s);
 
@@ -157,7 +171,12 @@ _FenceCheck _mendFence(String tail) {
   return const _FenceCheck(text: '', insideOpenBlock: false, handled: false);
 }
 
-final RegExp _tableRowLike = RegExp(r'^\|.*\|\s*$');
+// A "table row-like" line is any line that starts with `|` (after optional
+// leading indentation) - it does NOT need a matching trailing `|` too: GFM
+// tables tolerate a missing outer pipe on either edge, and holding only
+// when the line happened to end in `|` let a bare `| Name | Age` (no
+// trailing pipe) leak straight through as raw text.
+final RegExp _tableRowLike = RegExp(r'^[ \t]*\|');
 final RegExp _tableSepComplete = RegExp(
   r'^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$',
 );
@@ -178,14 +197,15 @@ String? _holdIncompleteTableHeader(String tail) {
     // The very last line is still being typed.
     final partial = lines.removeLast();
     if (lines.isEmpty) {
-      // "| Name | Age |" with no newline at all yet.
-      if (_tableRowLike.hasMatch(partial.trimRight())) {
+      // "| Name | Age" (with or without a trailing pipe) with no newline at
+      // all yet.
+      if (_tableRowLike.hasMatch(partial)) {
         return tail.substring(0, tail.length - partial.length);
       }
       return null;
     }
     final header = lines.last;
-    if (_tableRowLike.hasMatch(header.trimRight()) &&
+    if (_tableRowLike.hasMatch(header) &&
         _tableSepChars.hasMatch(partial) &&
         !_tableSepComplete.hasMatch(partial.trim())) {
       final cut = tail.length - partial.length - 1 - header.length;
@@ -200,7 +220,7 @@ String? _holdIncompleteTableHeader(String tail) {
   // once a real separator has landed, the header is free to render.
   final header = lines.last;
   if (header.isNotEmpty &&
-      _tableRowLike.hasMatch(header.trimRight()) &&
+      _tableRowLike.hasMatch(header) &&
       !_tableSepChars.hasMatch(header)) {
     final cut = tail.length - 1 - header.length;
     return tail.substring(0, cut < 0 ? 0 : cut);
@@ -211,6 +231,10 @@ String? _holdIncompleteTableHeader(String tail) {
 final RegExp _headingMarkerOnly = RegExp(r'^#{1,6}$');
 final RegExp _bulletMarkerOnly = RegExp(r'^[-*+]$');
 final RegExp _orderedMarkerOnly = RegExp(r'^\d+\.$');
+// A bare digit run with no `.` yet - one more digit or a `.` could still
+// turn this into an ordered-list marker (`1` -> `12` -> `12.`), so it's held
+// back exactly like the already-dotted `_orderedMarkerOnly` case.
+final RegExp _digitRunOnly = RegExp(r'^\d+$');
 final RegExp _quoteMarkerOnly = RegExp(r'^>+$');
 final RegExp _setextOrHrRun = RegExp(r'^[-=]{1,}$');
 
@@ -229,6 +253,7 @@ String? _holdMarkerOnlyLine(String tail) {
       _headingMarkerOnly.hasMatch(trimmed) ||
       _bulletMarkerOnly.hasMatch(trimmed) ||
       _orderedMarkerOnly.hasMatch(trimmed) ||
+      _digitRunOnly.hasMatch(trimmed) ||
       _quoteMarkerOnly.hasMatch(trimmed) ||
       _setextOrHrRun.hasMatch(trimmed);
   if (!isMarkerOnly) return null;
@@ -243,6 +268,33 @@ String _holdOpenHtmlTag(String s) {
   final match = _openHtmlTag.firstMatch(s);
   if (match == null) return s;
   return s.substring(0, match.start);
+}
+
+final RegExp _openImageAltInProgress = RegExp(r'!\[[^\]]*$');
+final RegExp _closedBracketNoParenYet = RegExp(r'!?\[[^\[\]]*\]$');
+final RegExp _trailingBang = RegExp(r'!$');
+
+/// Holds back the start of a possible image/link that hasn't resolved
+/// enough to know what it will become:
+///  * `![alt` with no closing `]` yet - the alt text is still being typed,
+///    so this must run *before* [_rewriteOpenLink] would otherwise mistake
+///    it for a bare `[text` link and drop just the `[`, leaving a stray `!`;
+///  * a closed `[text]`/`![alt]` with nothing after it yet - one more `(`
+///    would turn it into a tappable link/image, so it stays ambiguous;
+///  * a lone trailing `!` - one more `[` would start an image.
+String _holdImageOrLinkStart(String s) {
+  final altInProgress = _openImageAltInProgress.firstMatch(s);
+  if (altInProgress != null) {
+    return s.substring(0, altInProgress.start);
+  }
+  final closedPair = _closedBracketNoParenYet.firstMatch(s);
+  if (closedPair != null) {
+    return s.substring(0, closedPair.start);
+  }
+  if (_trailingBang.hasMatch(s)) {
+    return s.substring(0, s.length - 1);
+  }
+  return s;
 }
 
 final RegExp _openImage = RegExp(r'!\[[^\]]*\]\([^)]*$');
@@ -317,7 +369,7 @@ bool _isWordChar(String c) {
       unit == 0x5F; // _
 }
 
-/// Closes an unterminated `**`, `__`, `*`, `~~`, inline code or `***` that
+/// Closes an unterminated `**`, `*`, `~~`, inline code or `***` that
 /// already has content after it, by appending the matching closer(s). A
 /// *lone* trailing delimiter with nothing after it yet is held back instead
 /// (dropped from the returned text): one more of the same character could
@@ -331,14 +383,18 @@ bool _isWordChar(String c) {
 /// left-/right-flanking per CommonMark and not part of an intraword run
 /// (`a*b` never opens) - except for the very last character of [s], which
 /// is always ambiguous (more of the run may still arrive) and is handled by
-/// the trailing-hold step below instead. A single `_` is never treated as
-/// an emphasis delimiter at all here: it is far too common in ordinary
-/// prose and identifiers (`snake_case`, `_private`, `dunder__`) to safely
-/// guess whether an unclosed one will ever close.
+/// the trailing-hold step below instead.
+///
+/// Neither `_` nor `__` is ever treated as an emphasis delimiter here: `_`
+/// is far too common in ordinary prose and identifiers (`snake_case`,
+/// `_private`, `dunder__`) to safely guess whether an unclosed one will
+/// ever close, and `gpt_markdown` 1.3.0 doesn't actually render `_`/`__`
+/// emphasis at all - it always shows the underscores literally - so
+/// "closing" either one just invents extra raw underscores that were never
+/// going to be styled anyway.
 String _closeOrHoldInlineMarkers(String s) {
   var boldItalicOpen = false;
   var boldOpen = false;
-  var underBoldOpen = false;
   var strikeOpen = false;
   var emOpen = false;
   var codeOpen = false;
@@ -405,11 +461,7 @@ String _closeOrHoldInlineMarkers(String s) {
       i += 2;
       continue;
     }
-    if (s.startsWith('__', i)) {
-      underBoldOpen = !underBoldOpen;
-      i += 2;
-      continue;
-    }
+    // `__` is never tracked - see the doc comment above.
     if (s.startsWith('~~', i)) {
       strikeOpen = !strikeOpen;
       i += 2;
@@ -455,18 +507,16 @@ String _closeOrHoldInlineMarkers(String s) {
     if (boldItalicOpen) '***',
     if (codeOpen) '`',
     if (boldOpen) '**',
-    if (underBoldOpen) '__',
     if (strikeOpen) '~~',
     if (emOpen) '*',
   ];
 
-  // A lone trailing '~' is ambiguous only while a strike span is already
-  // open (one more '~' would complete its closer) - held back regardless of
-  // whether it ends up matching a candidate token below. A trailing '~'
-  // with no strike open at all is just literal text (there is nothing for
-  // it to become on its own - strike needs a full '~~').
+  // A lone trailing '~' is always ambiguous while streaming - one more '~'
+  // arriving would turn it into a strike-through delimiter, an entirely
+  // different construct - so it's held back regardless of whether a strike
+  // span happens to be open already.
   var result = s;
-  if (strikeOpen && result.endsWith('~') && !result.endsWith('~~')) {
+  if (result.endsWith('~') && !result.endsWith('~~')) {
     result = result.substring(0, result.length - 1);
   }
 

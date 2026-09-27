@@ -996,7 +996,23 @@ class _StreamingTextState extends State<StreamingText>
     // fade can keep settling after the scheduler itself has gone idle -
     // e.g. the last word of a burst still fading out after the stream
     // paused - without re-running `gpt_markdown`'s segment cache.
-    if (widget.markdownEnabled) {
+    //
+    // PERF (B1-S6 round 10): gated on [_markdownFadeActive], not merely
+    // `widget.markdownEnabled` - the ticker keeps running for the WHOLE
+    // stream whenever the caret is visible (`_needsTicking`'s
+    // `_caretVisible` clause), which is most of a typical reveal. Pinging
+    // unconditionally called `markNeedsPaint()` on the mask's
+    // `RenderProxyBox` every single tick even when no run was actually
+    // fading, forcing a full repaint of the entire (potentially 20k-char)
+    // markdown subtree 60x/sec for no visual effect. `_markdownFadeActive`
+    // already answers "is a run still within its fade window, plus the
+    // ticking safety slack" - the exact condition under which a repaint can
+    // possibly change anything - so gating on it drops the ping (and the
+    // repaint it causes) to zero cost outside an active fade window, with
+    // no correctness change: [_collectDims] was already a no-op on those
+    // frames, this only stops making the render tree redundantly repaint to
+    // discover that.
+    if (widget.markdownEnabled && _markdownFadeActive) {
       _markdownFadeRepaint.ping();
     }
 

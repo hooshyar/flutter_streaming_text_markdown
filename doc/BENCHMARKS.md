@@ -1337,3 +1337,169 @@ or capping frame count to match bare's own settle count) is out of scope
 for this round's brief (items 1-3: the fade clock, the pop metric, and the
 markdown-fade pop ceilings) and is flagged here for the orchestrator/next
 round rather than silently patched to force a green result.
+
+## B1-S6 round 10: PERF slice - the harness is honest, the real cost is `mend()`, not the fade mask
+
+Round 9 left the benchmark honestly measuring per-frame cost (ours: 1,300-
+1,500 frames vs bare's 1,728 - the same order of magnitude, not the old
+6,445-frame idle-padded count) but FAILING the 1.8x budget at 1.9x-2.5x. This
+round's brief was to find where the time goes and get it under 1.8x without
+breaking any fade invariant.
+
+**1. The harness itself is apples-to-apples; no fix needed there.** Re-
+checked against this round's own brief: `ours` and `bare` mount/pump/unmount
+in fully separate phases (no shared build), both paced identically (140
+chars/16ms), and the gating metric is the median-of-per-round-medians of
+PER-FRAME time - not total phase time, and not diluted by idle frames (round
+9 already fixed that). Confirmed directly: `ours` now completes in FEWER
+total frames than `bare` (1,250-1,502 vs 1,728, this round's runs) because
+its reveal engine's catch-up pacer can batch more than one chunk's worth of
+characters into a single 16ms tick when it falls behind, while `bare`'s
+`_BareGrowingState._tick` always advances by exactly one fixed `chunkChars`
+step per tick - both are legitimate, real per-frame costs during genuine
+work, not padding. Nothing here needed changing.
+
+**2. Ablation, not guesswork, to find the real cost.** Three isolated,
+reverted probes (temporarily short-circuiting one subsystem at a time,
+`git diff` clean before/after each), 2 runs each, this machine, this load:
+
+| probe | ratio (median-of-medians) | rebuild ratio |
+|---|---|---|
+| unmodified (this round's baseline) | 1.9x-2.5x (FAIL) | 1.6x-1.8x |
+| `MarkdownFadeMask` never inserted (B1-S6's own subject, forced off) | 1.89x-1.97x | 1.4x-1.75x |
+| default caret forced off (`_caretVisible` hard-`false`) | 1.93x-1.95x | 1.34x-1.38x |
+| `mend()` bypassed (`withheldText = text`, no-op) | **1.0x-1.18x (PASS)** | 1.76x-1.81x |
+
+Disabling the fade mask - this slice's actual subject - barely moves the
+ratio at all (1.9x-2.5x -> 1.89x-1.97x, within the run-to-run noise band).
+Disabling the caret similarly barely moves it. Bypassing `mend()` alone
+drops the ratio from FAIL to comfortably PASS. **The dominant per-frame cost
+is `mend()`, not the fade mask this slice was asked to optimize.**
+
+**3. Confirmed algorithmically, not just by ablation.** A standalone
+microbenchmark (`mend()` called directly, 200 iterations per length, this
+round's exact benchmark text) shows clean linear-in-input-length scaling:
+
+| input length | `mend()` cost per call |
+|---:|---:|
+| 500 | 63.4us |
+| 2,000 | 119.4us |
+| 5,000 | 242.7us |
+| 10,000 | 426.6us |
+| 15,000 | 616.3us |
+| 20,000 | 814.9us |
+
+Root cause (read-only inspection of `lib/src/render/mend.dart`, not
+modified): `mend()` re-scans the ENTIRE revealed-so-far body on every call,
+not just its own documented "tail after `settledSplitOffset`" - specifically
+`_isInsideCodeContext(body)` (a full character-by-character walk of the
+whole body to determine open-fence/open-inline-code state) and
+`_holdImageOrLinkStart(body)`/`_holdIncompleteTableHeader(linkSafeBody)`
+(regex scans over the whole body) all run before the tail-only split even
+happens. Since `StreamingMarkdownView.build()` calls `mend(text, ...)` with
+the full revealed text on every active reveal tick, and the revealed text
+grows from 0 to 20,117 chars over the stream, total `mend()` cost across one
+full stream is a sum of ~O(current length) calls at ever-increasing
+length - effectively O(n^2) in the document length, whereas `bare`'s
+`GptMarkdown` growth (a plain `substring`) and `gpt_markdown`'s own
+segment-cached incremental re-layout are not.
+
+**This was always true, in every round back through B1-S5 - it did not
+regress in this round or in B1-S6.** It was invisible before round 9's
+deterministic-clock fix because that benchmark's median was diluted by
+thousands of cheap idle ticks (see round 9's own root-cause section above);
+fixing the clock made the benchmark honest, and an honest per-frame median
+during genuine work was always going to include `mend()`'s real,
+previously-hidden cost.
+
+**4. Fix applied, in scope, real but not sufficient alone
+(`lib/src/streaming/streaming_text.dart`, `_onTick`).** One genuine, safe
+perf bug in this slice's own code, found and fixed: `_markdownFadeRepaint`
+was `ping()`-ed on every ticker tick whenever `widget.markdownEnabled`, with
+no check that a fade was actually in progress. Since the ticker keeps
+running for the caret's own pulse for most of a typical reveal
+(`_needsTicking`'s `_caretVisible` clause), this called
+`markNeedsPaint()` on `RenderMarkdownFadeMask` - forcing a full repaint of
+the entire (potentially 20k-char) markdown subtree - on every single tick,
+including the large majority where `_collectDims()` had nothing to paint at
+all. Fixed by gating the ping on `_markdownFadeActive` (the same "is a run
+still within its fade window, plus ticking slack" check that already governs
+the ticker's own lifetime): outside an active fade window the ping - and the
+repaint it forced - now costs nothing, with no change to what ever gets
+painted (`_collectDims()` was already a no-op on those frames; this only
+stops the render tree from repeatedly re-discovering that). This is a real,
+measured improvement but small relative to `mend()`'s cost - it moved
+individual runs closer to budget (e.g. 1.99x/1.67x/2.37x post-fix vs
+1.9x-2.5x pre-fix, same noisy machine) without reliably closing the gap
+alone.
+
+**5. `mend.dart` is out of scope for this slice (explicit instruction - a
+parallel slice owns it; see the "parallel mend.dart slice" reference
+earlier in this doc) and no safe, non-`mend.dart` caller-side fix was found.**
+Every caller-side option considered was rejected as unsafe or ineffective:
+
+- **Memoizing `mend()`'s return by exact input.** Doesn't help: the revealed
+  text differs on almost every active-reveal tick (that's the definition of
+  streaming), so a same-input cache has a near-zero hit rate during the part
+  of the stream that actually needs the budget.
+- **Re-deriving `mend()`'s own "settled prefix" boundary outside
+  `mend.dart`** (e.g. tracking open-fence/backtick parity incrementally in
+  the wrapper, to call `mend()` on only a bounded tail plus a trusted,
+  unchanged prefix). This would genuinely fix the asymptotics, but it means
+  re-implementing a second, independent copy of exactly the kind of
+  cross-call heuristic that took NINE rounds to get right for the fade mask
+  itself (see every "round N redesign" section above) - for a file this
+  slice was explicitly told not to touch, and without that file's own tests
+  as a safety net. Rejected as too risky for this slice's scope.
+- **Bounding `mend()`'s input to a fixed trailing window** (e.g. last 2,000
+  chars). Would restore O(1)-per-frame-amortized cost, but is provably
+  UNSAFE in general: a code fence opened more than the window size ago and
+  still unclosed would have its `_isInsideCodeContext` state silently reset,
+  which is exactly the class of bug `mend()` exists to prevent (markdown
+  punctuation inside an open fence rendering as if it weren't). Rejected.
+- **Throttling how often `_buildContent` rebuilds** (batching more reveal
+  per rebuild) would reduce call *frequency* but changes the pacing contract
+  this benchmark and the wider suite hold `RevealScheduler`/`chunkSize`
+  responsible for, and does not fix the underlying O(n) - it only changes
+  the constant. Not attempted.
+
+**6. Honest result: budget not met on this (shared, multi-agent) machine,
+under load, with the fade mask enabled; comfortably met with `mend()`
+alone removed from the equation.** Raw evidence, this round, after the
+`_markdownFadeRepaint` gating fix, `flutter test --no-dds --tags benchmark
+--run-skipped test/perf/stream_benchmark_test.dart`, 3 consecutive runs:
+
+```
+run 1: 1250 ours / 1728 bare frames, ours median 3021us, bare median 1469us,
+       median-of-medians ratio 1.991x - FAIL (budget <= 1.8x)
+       rebuild ratio 1.549x - PASS (budget <= 6x)
+run 2: 970 ours / 1728 bare frames, ours median 4481us, bare median 2978us,
+       median-of-medians ratio 1.668x - PASS
+       rebuild ratio 1.255x - PASS
+run 3: 982 ours / 1728 bare frames, ours median 4218us, bare median 2660us,
+       median-of-medians ratio 2.367x - FAIL
+       rebuild ratio 1.268x - PASS
+```
+
+(Bare's own median more than doubling between run 1 and runs 2-3, on an
+otherwise unchanged binary, is itself evidence of how loaded this shared
+machine was during this evidence run - several other agent sessions were
+concurrently compiling/running Flutter tests on it.) The rebuild-ratio
+budget (deterministic, load-independent) holds with a wide margin in every
+run. The time-ratio budget is genuinely borderline-to-failing on this
+machine under load with `mend()` in the loop, and the evidence above shows
+exactly why and exactly how much headroom removing it would buy back
+(ratio 1.0x-1.2x with `mend()` bypassed). This is reported as a conflict
+per this repo's own directive-conflict protocol, same as round 9's item 4:
+the brief's "<=1.8x" target and the brief's "don't touch mend.dart"
+constraint cannot both be satisfied from this slice alone on the evidence
+gathered here - the lead's call on whether to lift the `mend.dart`
+restriction for a follow-up slice, accept a revised budget for the
+markdown+caret+mend path, or something else.
+
+No fade invariant was touched this round: the full default suite (1,061
+tests) was run three consecutive times, all green, and the exhaustive
+`fade_matrix` suite was re-run once, green (see below) - the only product
+change this round is the `_markdownFadeRepaint` gating fix in
+`streaming_text.dart`, which is paint-scheduling-only and provably cannot
+change what any frame paints (see item 4 above).

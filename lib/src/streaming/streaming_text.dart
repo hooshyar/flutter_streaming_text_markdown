@@ -513,6 +513,12 @@ class _StreamingTextState extends State<StreamingText>
   }
 
   void _createEngineAndScheduler() {
+    // A brand new `RevealEngine` instance is itself a fresh document context
+    // for `MarkdownFadeMask` (its own `epoch` restarts at 0) - bump this
+    // offset so `_fadeEpoch` below still strictly increases across an
+    // engine swap (e.g. `_handleStreamSwap`), not just within one engine's
+    // own lifetime.
+    _fadeEpochBase += 1;
     _engine = RevealEngine(
       policy: _buildPolicy(),
       atomicSpans: widget.latexEnabled ? const AtomicSpanDetector() : null,
@@ -525,6 +531,18 @@ class _StreamingTextState extends State<StreamingText>
       pacer: _buildPacer(),
     );
   }
+
+  /// Bumped by one every time [_createEngineAndScheduler] replaces [_engine]
+  /// with a brand new instance. See [_fadeEpoch].
+  int _fadeEpochBase = 0;
+
+  /// A monotonically-increasing signal `MarkdownFadeMask` watches to know
+  /// when it must drop everything it has cached about "the document so
+  /// far": bumped on a brand new `RevealEngine` (a stream swap) and on the
+  /// current engine's own non-prefix `setSource` (a `text:` param replaced
+  /// with unrelated content). See `RevealEngine.epoch`'s doc for why a
+  /// rendered-text-only diff can't safely infer this on its own.
+  int get _fadeEpoch => _fadeEpochBase + _engine.epoch;
 
   void _syncEngineConfig() {
     _engine.policy = _buildPolicy();
@@ -1370,6 +1388,7 @@ class _StreamingTextState extends State<StreamingText>
         if (_markdownFadeAllowed) {
           markdownContent = MarkdownFadeMask(
             enabled: true,
+            epoch: _fadeEpoch,
             now: _now,
             fadeDuration: _effectiveFadeDuration,
             curve: _effectiveFadeCurve,

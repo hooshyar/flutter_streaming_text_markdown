@@ -170,6 +170,7 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
     super.key,
     required Widget super.child,
     required this.enabled,
+    required this.epoch,
     required this.now,
     required this.fadeDuration,
     required this.curve,
@@ -179,6 +180,12 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
   /// Whether the mask is active at all. `false` paints [child] unmodified,
   /// with zero extra cost and no layer pushed.
   final bool enabled;
+
+  /// A monotonically-increasing "this is a genuinely new document" signal
+  /// (see `StreamingText._fadeEpoch`'s doc). A change from the previously
+  /// seen value drops every cached offset/run - never tries to diff the new
+  /// text against stale state.
+  final int epoch;
 
   /// The shared fade clock (matches the reveal engine's own).
   final Duration Function() now;
@@ -197,6 +204,7 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
   RenderMarkdownFadeMask createRenderObject(BuildContext context) {
     return RenderMarkdownFadeMask(
       enabled: enabled,
+      epoch: epoch,
       now: now,
       fadeDuration: fadeDuration,
       curve: curve,
@@ -211,6 +219,7 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
   ) {
     renderObject
       ..enabled = enabled
+      ..epoch = epoch
       ..now = now
       ..fadeDuration = fadeDuration
       ..curve = curve
@@ -234,11 +243,13 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
   /// Creates the render object. See [MarkdownFadeMask]'s fields.
   RenderMarkdownFadeMask({
     required bool enabled,
+    required int epoch,
     required this.now,
     required this.fadeDuration,
     required this.curve,
     required Listenable repaint,
   }) : _enabled = enabled,
+       _epoch = epoch,
        _repaint = repaint;
 
   bool _enabled;
@@ -268,6 +279,20 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
   Curve curve;
 
   Listenable _repaint;
+
+  int _epoch;
+
+  /// See [MarkdownFadeMask.epoch]. A change drops every cached offset/run
+  /// immediately (not deferred to the next layout) - see the class doc.
+  set epoch(int value) {
+    if (_epoch == value) return;
+    _epoch = value;
+    _paraCache.clear();
+    _slots = <_Slot>[];
+    _peakGlobalText = '';
+    _runs.clear();
+    markNeedsPaint();
+  }
 
   /// See [MarkdownFadeMask.repaint].
   set repaint(Listenable value) {
@@ -428,43 +453,165 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
       }
       _peakGlobalText = newGlobalText;
     } else {
-      // A genuine upstream rewrite (a `**` closing, a link resolving,
-      // `mend()` releasing a previously-withheld tail into DIFFERENT
-      // content, not the same content reappearing - e.g. a list item's "-"
-      // marker paragraph being replaced outright by "Alpha" once its first
-      // word arrives, rather than growing into "- Alpha") or a non-append
-      // source reset changed something at or before the point that was
-      // already rendered. Clip every live run so it can never extend past
-      // the point where the text actually diverges - a run past that point
-      // would be describing characters that no longer exist at that
-      // position. This is safe precisely because `_runs` only ever holds
-      // runs still WITHIN `fadeDuration` (settled ones are pruned every
-      // refresh, below) - anything clipped here was already "in flight",
-      // never something that had already reached full opacity, so clipping
-      // it can't make already-settled text dip.
+      // A genuine reflow: `newGlobalText` is at least as long as `peak` but
+      // ISN'T a plain append (a `**` closing, a link resolving, `mend()`
+      // releasing a withheld tail into different content, or `gpt_markdown`
+      // transiently re-rendering an entire list/table as one placeholder
+      // paragraph before restoring it - verify round 4's flash bug: that
+      // placeholder text is neither shorter than `peak` nor a prefix of it,
+      // so naively re-arming everything past a bare common-PREFIX point
+      // re-faded every already-settled list item on both the hiccup and the
+      // restoration, 3-5 times each).
       //
-      // The diverging tail (`newGlobalText` beyond `commonLen`) IS re-armed
-      // as a fresh run: it's new content at those global positions (the
-      // list-marker-replacement case above is exactly this - "Alpha" is
-      // brand new, not a rewrite of something long-settled), and doing so
-      // in the SAME global coordinate space the growth branch already uses
-      // - never re-deriving offsets from source text or another
-      // paragraph's space - carries none of the cross-space mapping risk
-      // that caused the last two rounds' bugs. A divergence at position 0
-      // (nothing in common) simply re-arms the entire new text as one run,
-      // which is also correct for a non-prefix source reset (the whole new
-      // document is "new").
-      final commonLen = _commonPrefixLength(peak, newGlobalText);
-      for (final run in _runs) {
-        if (run.end > commonLen) run.end = commonLen;
+      // First, the cheapest and most exact case: `peak` (unmodified,
+      // contiguous) simply RELOCATED - something was inserted before and/or
+      // after it, e.g. a lone marker/placeholder paragraph "Alpha " getting
+      // prefixed by a transient "\n\n" artifact before the rest of that
+      // list item streams in. Every existing run shifts by exactly how far
+      // `peak` moved (still the same characters, just further along); only
+      // the genuinely new edges around it get a fresh run. This is checked
+      // before the prefix/suffix split below because that split requires a
+      // non-empty match at BOTH ends to recognize an insertion - it can't
+      // see a relocation where the common material sits at neither end of
+      // `newGlobalText`.
+      final peakPos = peak.isEmpty ? -1 : newGlobalText.indexOf(peak);
+      if (peakPos != -1) {
+        if (peakPos > 0) {
+          for (final run in _runs) {
+            run.start += peakPos;
+            run.end += peakPos;
+          }
+          // The material BEFORE the relocated `peak` is deliberately never
+          // armed as a fresh run, even though it's technically "new
+          // characters" - it's exactly as likely to be a transient artifact
+          // (stray newlines/markers gpt_markdown shows before the real
+          // content of a list item resolves) as real content, and unlike
+          // the material after `peak` there is no later growth check that
+          // would ever re-validate it: if the artifact disappears on a
+          // LATER frame (peak still frozen, so this same branch never
+          // revisits it), a run created here would keep dimming whatever
+          // now occupies those global positions - verified directly: this
+          // is what made an unrelated, already-progressing word visibly
+          // dip after a list item's leading marker artifact came and went.
+        }
+        // The material AFTER the relocated `peak`, in contrast, IS armed:
+        // it's the tail of the document, exactly where genuinely new
+        // content actually streams in, and if it turns out to have been an
+        // artifact too, the next real growth step's `startsWith(peak)`
+        // check (using the still-frozen, reliable `peak`) simply adds
+        // another run for whatever the tail turns out to really be -
+        // nothing here depends on this guess having been correct.
+        final afterStart = peakPos + peak.length;
+        if (newGlobalText.length > afterStart) {
+          _runs.add(_GlobalRun(afterStart, newGlobalText.length, now()));
+        }
+        // `_peakGlobalText` deliberately NOT updated here (see the class
+        // doc's "peak only ever advances on confirmed growth" invariant) -
+        // `newGlobalText` may itself be a transient artifact, and adopting
+        // it as the trusted baseline would make the NEXT frame's comparison
+        // fail once the artifact clears, re-arming the very content this
+        // branch just correctly preserved. Comparing against the same
+        // reliable `peak` again next frame converges once the real
+        // structure settles into a clean superset of it.
+        _refreshFinish();
+        return;
       }
-      _runs.removeWhere((r) => r.end <= r.start);
-      if (newGlobalText.length > commonLen) {
-        _runs.add(_GlobalRun(commonLen, newGlobalText.length, now()));
+
+      // Otherwise, diff on the common PREFIX *and* common SUFFIX (bounded
+      // so they can't overlap within `peak`): the next most common reflow
+      // shape is "something got INSERTED in the middle" of `peak` itself
+      // (`peak` unchanged before and after the insertion point, only the
+      // gap between is new). `unexplained` is how much of `peak` ISN'T
+      // accounted for by that split.
+      final prefixLen = _commonPrefixLength(peak, newGlobalText);
+      final maxSuffix =
+          (peak.length - prefixLen) < (newGlobalText.length - prefixLen)
+              ? peak.length - prefixLen
+              : newGlobalText.length - prefixLen;
+      final suffixLen = _commonSuffixLength(peak, newGlobalText, maxSuffix);
+      final unexplained = peak.length - prefixLen - suffixLen;
+
+      if (unexplained <= 0) {
+        // A clean insertion: `peak == newGlobalText[0:prefixLen] +
+        // newGlobalText[newGlobalText.length-suffixLen:]` with a brand new
+        // gap in between. Nothing in `peak` moved out of that shape, so:
+        //  - a run entirely before the insertion point is untouched;
+        //  - a run entirely at/after the (new) suffix start just SHIFTS
+        //    forward by exactly how much the document grew - the same
+        //    characters, now further along;
+        //  - a run straddling the inserted gap can't be described that
+        //    simply; per the "prefer no fade over a flash" directive it's
+        //    dropped rather than guessed at (it was in-flight, never
+        //    already-settled, so dropping it can't cause a flash - at
+        //    worst a few characters stop fading early).
+        final growth = newGlobalText.length - peak.length;
+        final suffixStartInPeak = peak.length - suffixLen;
+        for (final run in _runs) {
+          if (run.end <= prefixLen) {
+            continue;
+          } else if (run.start >= suffixStartInPeak) {
+            run.start += growth;
+            run.end += growth;
+          } else {
+            run.end = run.start;
+          }
+        }
+        _runs.removeWhere((r) => r.end <= r.start);
+
+        final middleStart = prefixLen;
+        final middleEnd = newGlobalText.length - suffixLen;
+        if (middleEnd > middleStart) {
+          _runs.add(_GlobalRun(middleStart, middleEnd, now()));
+        }
+      } else {
+        // Neither a clean insertion nor a whole-peak relocation - `peak`
+        // isn't fully (or almost fully) explained by a prefix+suffix split.
+        // Every existing run past the confirmed common prefix is discarded
+        // rather than guessed at: `_slots`/global offsets are rebuilt fresh
+        // from the CURRENT tree every layout, so a stale run's numeric
+        // range - computed against a DIFFERENT structure - could now
+        // overlap anything once paragraphs have been reshuffled, including
+        // content that has nothing to do with what that run originally
+        // described (verified directly: leaving runs untouched here made
+        // an unrelated already-fading word visibly dip, because the run's
+        // old numbers landed on it purely by coincidence after a reflow).
+        // A discarded IN-FLIGHT run just pops that word to full opacity a
+        // little early - never a flash of already-settled text, since
+        // settled text has no active run to discard in the first place.
+        for (final run in _runs) {
+          if (run.end > prefixLen) run.end = prefixLen;
+        }
+        _runs.removeWhere((r) => r.end <= r.start);
+
+        // Arm a fresh run ONLY for whatever lies beyond both the confirmed
+        // common prefix AND the previous peak's own length - i.e. content
+        // that is unambiguously new (the document is longer than it has
+        // ever been), not a guess about content that merely looks
+        // different right now. This is what keeps a transient artifact
+        // (verify round 4's list/table flash) from ever re-fading
+        // already-settled text: that text sits within the old peak's
+        // length, never in the "unambiguously new" range armed below.
+        final armFrom = prefixLen > peak.length ? prefixLen : peak.length;
+        if (newGlobalText.length > armFrom) {
+          _runs.add(_GlobalRun(armFrom, newGlobalText.length, now()));
+        }
       }
+      // `peak` still advances even out of a reflow - once the real
+      // structure resolves, comparing against the now-longer `peak` again
+      // next frame is what lets a LATER, genuinely different artifact (not
+      // simply the same one recurring) still be judged correctly, and
+      // `_slots`/`_collectDims` only ever look at CURRENT paragraphs, so an
+      // out-of-date `peak` string never leaks into what's actually painted.
       _peakGlobalText = newGlobalText;
     }
 
+    _refreshFinish();
+  }
+
+  /// Prunes runs that can no longer be active, so a long-running stream
+  /// never accumulates an unbounded backlog of settled runs. Shared by
+  /// every branch of [_refresh].
+  void _refreshFinish() {
     final nowValue = now();
     _runs.removeWhere((r) => nowValue - r.revealedAt >= fadeDuration);
   }
@@ -610,6 +757,18 @@ int _commonPrefixLength(String a, String b) {
   final max = a.length < b.length ? a.length : b.length;
   var i = 0;
   while (i < max && a.codeUnitAt(i) == b.codeUnitAt(i)) {
+    i++;
+  }
+  return i;
+}
+
+/// The length of the common suffix shared by [a] and [b], never exceeding
+/// [maxLen] (the caller bounds this so a prefix match and a suffix match
+/// can never overlap the same characters of the shorter string).
+int _commonSuffixLength(String a, String b, int maxLen) {
+  var i = 0;
+  while (i < maxLen &&
+      a.codeUnitAt(a.length - 1 - i) == b.codeUnitAt(b.length - 1 - i)) {
     i++;
   }
   return i;

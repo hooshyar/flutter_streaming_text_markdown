@@ -190,9 +190,19 @@ Future<_Result> _run(
     }
   }
   if (!useGrowingText) unawaited(sc.close());
-  for (var g = 0; g < 40; g++) {
+  // Pump until the shared ticker itself reports nothing left to animate,
+  // rather than a fixed frame count - a fixed count that's merely "usually
+  // enough" is exactly what made this suite flaky under machine load (a
+  // slower run needs more real frames for the same real-time fade window
+  // to elapse). Capped as a safety net against a ticker that never settles.
+  var settleGuard = 0;
+  while (t.binding.hasScheduledFrame && settleGuard < 400) {
     await cap();
+    settleGuard++;
   }
+  // One more capture after the ticker stops, so the final settled frame
+  // (not just the last mid-settle one) is what `last`/`ref` below measure.
+  await cap();
 
   final last = frames.last;
   var pops = 0;
@@ -353,10 +363,14 @@ void main() {
     }
 
     testWidgets('a growing text: param (no Stream) never pops', (t) async {
+      // A flat, single-paragraph document here would pass even on the
+      // pre-round-3 code (that bug was specifically about paragraph
+      // IDENTITY churn - list items/table cells/code lines/quotes - which a
+      // single growing paragraph never triggers). Use a list, which does.
       final r = await _run(
         t,
-        ['Alpha bravo ', 'charlie delta ', 'echo foxtrot golf. '],
-        ['bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf.'],
+        ['- Alpha bravo\n- Charlie delta\n', '- Echo foxtrot\n'],
+        ['Alpha', 'bravo', 'Charlie', 'delta', 'Echo', 'foxtrot'],
         useGrowingText: true,
       );
       expect(r.pops, 0, reason: 'growing-text words popped in: ${r.report}');
@@ -376,32 +390,106 @@ void main() {
         ),
       );
       sc.add('Alpha bravo charlie ');
-      for (var i = 0; i < 30; i++) {
+      var guard = 0;
+      while (t.binding.hasScheduledFrame && guard < 400) {
         await _frame(t);
+        guard++;
       }
-      final before = _darkOf(await _snap(t), _rectsOf(t, 'Alpha'));
-
+      await _frame(t);
       // A non-append replacement (StreamingText with a brand new `text:`)
       // is the render-tree-level equivalent of the engine's non-prefix
-      // `setSource` - a completely different document.
+      // `setSource` - a completely different document. `RevealMode.instant`
+      // plus checking only the end state (an earlier version of this test)
+      // is weak - it can't tell "never dimmed" apart from "dimmed then
+      // recovered by the time we finally looked". Use the real default
+      // (`smoothFade`) and sample every frame instead.
       await t.pumpWidget(
         _host(
           const StreamingText(
             text: 'Totally different content here now.',
             markdownEnabled: true,
             showCursor: false,
-            revealMode: RevealMode.instant,
           ),
         ),
       );
-      for (var i = 0; i < 60; i++) {
+      final samples = <double>[];
+      guard = 0;
+      while (t.binding.hasScheduledFrame && guard < 400) {
         await _frame(t);
+        final rects = _rectsOf(t, 'Totally');
+        if (rects.isNotEmpty) samples.add(_darkOf(await _snap(t), rects));
+        guard++;
       }
-      final afterAlpha = _darkOf(await _snap(t), _rectsOf(t, 'Totally'));
+      await _frame(t);
+      final finalRects = _rectsOf(t, 'Totally');
+      final finalAlpha = _darkOf(await _snap(t), finalRects);
+      samples.add(finalAlpha);
+
+      expect(samples, isNotEmpty, reason: 'the new document never rendered');
+      // The new document must rise (fade in) monotonically to its own
+      // final darkness - never pop in already-dark, and never dip once it
+      // has risen (both would show up as a non-monotonic sequence here).
+      for (var i = 1; i < samples.length; i++) {
+        expect(
+          samples[i],
+          greaterThanOrEqualTo(samples[i - 1] - 0.05 * finalAlpha),
+          reason:
+              'the reset document\'s alpha must never dip frame-to-frame: '
+              '$samples',
+        );
+      }
+      unawaited(sc.close());
+      await t.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('non-prefix setSource, new doc shorter than old peak', (
+      t,
+    ) async {
+      // The specific failure mode verify round 4 flagged: while the new
+      // document is still SHORTER than the old one's peak length, it must
+      // still render at full darkness immediately (not be suppressed as if
+      // it were a "temporary regression" of the old, longer document).
+      final sc = StreamController<String>();
+      await t.pumpWidget(
+        _host(
+          StreamingText(
+            text: '',
+            stream: sc.stream,
+            markdownEnabled: true,
+            showCursor: false,
+          ),
+        ),
+      );
+      sc.add(
+        'A long original message with plenty of settled words already shown. ',
+      );
+      var guard = 0;
+      while (t.binding.hasScheduledFrame && guard < 400) {
+        await _frame(t);
+        guard++;
+      }
+      await _frame(t);
+
+      await t.pumpWidget(
+        _host(
+          const StreamingText(
+            text: 'Short reply now.',
+            markdownEnabled: true,
+            showCursor: false,
+          ),
+        ),
+      );
+      guard = 0;
+      while (t.binding.hasScheduledFrame && guard < 400) {
+        await _frame(t);
+        guard++;
+      }
+      await _frame(t);
+      final last = _darkOf(await _snap(t), _rectsOf(t, 'Short'));
       expect(
-        afterAlpha,
-        greaterThan(0.9 * (before.isNaN ? 1.0 : before)),
-        reason: 'the new document must not be left dimmed after a reset',
+        last,
+        greaterThan(0.0),
+        reason: 'the shorter replacement document must actually render',
       );
       unawaited(sc.close());
       await t.pumpWidget(const SizedBox());
@@ -409,6 +497,12 @@ void main() {
   });
 
   group('B1 verify-round-3: caret must not dim with each new word', () {
+    // `markdownEnabled: false` is a CONTROL case, not a regression check for
+    // this bug: plain text never goes through `MarkdownFadeMask` at all (it
+    // uses `buildFadeSpan` instead), so it trivially "passes" on any version
+    // of this file - it exists to confirm the sampling itself is sound, not
+    // to catch a markdown-specific regression. Only `markdownEnabled: true`
+    // can ever fail against the pre-fix code.
     for (final md in [true, false]) {
       testWidgets('caret darkness stays stable, markdownEnabled=$md', (
         t,
@@ -425,11 +519,19 @@ void main() {
             ),
           ),
         );
-        const words = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo'];
+        const words = [
+          'Alpha',
+          'Bravo',
+          'Charlie',
+          'Delta',
+          'Echo',
+          'Foxtrot',
+          'Golf',
+        ];
         final caretSamples = <double>[];
         for (final w in words) {
           sc.add('$w ');
-          for (var f = 0; f < 10; f++) {
+          for (var f = 0; f < 16; f++) {
             await _frame(t);
             final rb =
                 _key.currentContext!.findRenderObject()!

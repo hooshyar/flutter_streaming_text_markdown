@@ -75,6 +75,7 @@ class RevealEngine {
   int _cursor = 0;
   bool _inputClosed = false;
   bool _completedFired = false;
+  int _epoch = 0;
 
   String? _revealedCache;
   int _revealedCacheCursor = -1;
@@ -101,6 +102,16 @@ class RevealEngine {
 
   /// The last (up to) 32 reveal steps, for driving a fade effect.
   List<RevealRun> get runs => List.unmodifiable(_runs);
+
+  /// Bumped every [reset] and every non-prefix [setSource] (a genuinely
+  /// different document replacing the old one, not a plain append) - never
+  /// on ordinary growth. A paint-time consumer (e.g. `MarkdownFadeMask`)
+  /// watches this to know when it must drop everything it has cached about
+  /// "the document so far" instead of trying to diff the new text against
+  /// stale state: a rendered-text-only diff can't tell "the whole document
+  /// changed" apart from "a markdown block reflowed", and conflating them
+  /// either flashes settled text or leaves brand new text unfaded.
+  int get epoch => _epoch;
 
   /// `source.substring(0, cursor)` - always a prefix of [source]. Cached
   /// per cursor position.
@@ -178,6 +189,7 @@ class RevealEngine {
       _cursor = floor;
       _completedFired = false;
       _maxProgress = s.isEmpty ? 0.0 : floor / s.length;
+      _epoch++;
     }
 
     _inputClosed = closed;
@@ -237,6 +249,7 @@ class RevealEngine {
     _cursor = 0;
     _completedFired = false;
     _maxProgress = 0.0;
+    _epoch++;
     _runs.clear();
     _invalidateCache();
   }

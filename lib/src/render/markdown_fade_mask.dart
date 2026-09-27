@@ -591,7 +591,51 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
         // (verify round 4's list/table flash) from ever re-fading
         // already-settled text: that text sits within the old peak's
         // length, never in the "unambiguously new" range armed below.
-        final armFrom = prefixLen > peak.length ? prefixLen : peak.length;
+        //
+        // `peak.length` is only a reliable BOUNDARY when nothing before it
+        // changed length - if the reflow itself inserted or removed
+        // characters ahead of this point (e.g. an extra artifact newline),
+        // everything from here on shifts, and `peak.length` can land mid-
+        // PARAGRAPH in `newGlobalText` instead of exactly at a paragraph's
+        // own boundary. Several blanket rules were tried and rejected here:
+        // leaving it as a raw character offset dimmed one trailing
+        // character of an already-settled word (a small but real,
+        // measurable dip); ALWAYS snapping forward to the next paragraph
+        // excluded an entire genuinely-new cell/list-item whenever the
+        // boundary happened to land just a couple of characters inside THAT
+        // paragraph rather than a stale one before it (a pop); ALWAYS
+        // snapping backward to the paragraph's start re-armed (and so
+        // re-faded) a paragraph that was actually mostly old (the opposite
+        // bug); a 50/50 "how much of the slot's LENGTH did the old peak
+        // overlap" fraction is just as easily thrown off by a shift as a
+        // raw offset is, and picked the wrong side outright on a borderline
+        // case. What's actually reliable: whether the old peak contains
+        // this exact paragraph's CURRENT text anywhere at all (a plain
+        // substring search, ignoring position).
+        var armFrom = prefixLen > peak.length ? prefixLen : peak.length;
+        for (final slot in slots) {
+          final slotEnd = slot.globalStart + slot.length;
+          if (armFrom > slot.globalStart && armFrom < slotEnd) {
+            // Does the OLD peak actually contain this slot's own CURRENT
+            // text anywhere (not necessarily at the same position - just a
+            // plain substring search)? If so, this exact paragraph content
+            // already existed and has simply been given a new (possibly
+            // shifted) position by the reflow - snap FORWARD, past it
+            // entirely, so none of it gets re-armed. If the old peak never
+            // contained this text at all, the paragraph is genuinely new -
+            // snap BACKWARD to its start so the whole thing gets faded
+            // instead of popping in unfaded. A fixed 50/50 fraction of "how
+            // much of the slot's LENGTH the old peak's length overlapped"
+            // was tried first and rejected: it's just as easily thrown off
+            // by a shift as a raw character offset is, and a borderline
+            // case (a slot barely past 50% by sheer coincidence) picked the
+            // wrong side outright.
+            final slotText = newGlobalText.substring(slot.globalStart, slotEnd);
+            armFrom = peak.contains(slotText) ? slotEnd : slot.globalStart;
+            break;
+          }
+          if (armFrom <= slot.globalStart) break;
+        }
         if (newGlobalText.length > armFrom) {
           _runs.add(_GlobalRun(armFrom, newGlobalText.length, now()));
         }

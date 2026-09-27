@@ -138,8 +138,9 @@ List<String> _tokens(String s) =>
     RegExp(r'\s*\S+|\s+').allMatches(s).map((m) => m.group(0)!).toList();
 
 class _Result {
-  _Result(this.worstDrop, this.report);
+  _Result(this.worstDrop, this.pops, this.report);
   final double worstDrop;
+  final int pops;
   final String report;
 }
 
@@ -203,9 +204,11 @@ Future<_Result> _tokenPaced(
 
   final last = frames.last;
   var worst = 0.0;
+  var pops = 0;
   final offenders = <String>[];
   for (final word in words) {
     final ref = _darkOf(last, _rectsOf(t, word));
+    double? first;
     var peak = 0.0;
     var drop = 0.0;
     final seq = <String>[];
@@ -214,8 +217,13 @@ Future<_Result> _tokenPaced(
       if (r.isEmpty) continue;
       final v = _darkOf(frames[f], r) / ref;
       seq.add(v.toStringAsFixed(2));
+      if (first == null && v > 0.03) first = v;
       if (v > peak) peak = v;
       if (peak >= 0.9 && peak - v > drop) drop = peak - v;
+    }
+    if ((first ?? 0) > 0.8) {
+      pops++;
+      offenders.add('$word POPPED IN first=${first!.toStringAsFixed(2)}');
     }
     if (drop > worst) worst = drop;
     if (drop > 0.05) {
@@ -225,7 +233,7 @@ Future<_Result> _tokenPaced(
     }
   }
   await t.pumpWidget(const SizedBox());
-  return _Result(worst, offenders.join('\n'));
+  return _Result(worst, pops, offenders.join('\n'));
 }
 
 void main() {
@@ -280,6 +288,11 @@ void main() {
               reason:
                   'settled content must stay within 5% of its final '
                   'darkness on every frame:\n${r.report}',
+            );
+            expect(
+              r.pops,
+              0,
+              reason: 'no word should pop in already-dark:\n${r.report}',
             );
           });
         }

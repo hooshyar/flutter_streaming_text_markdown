@@ -542,3 +542,98 @@ Benchmarks re-run after the redesign
 both comfortably inside the 1.8x/6x budget, and the rebuild ratio is
 actually LOWER than round 2's (the per-paragraph `toPlainText()`-identity
 cache pays off more than the earlier single-paragraph tracking did).
+
+### B1 final-verify round 4: lists/tables re-flash + non-prefix reset
+
+Round 3's global offset space fixed pop-in, the paint overshoot and the
+caret dim, but introduced two new blockers.
+
+**1. Lists/tables re-flash.** Streamed token-paced (about one word every
+2-6 frames), every settled bulleted, numbered or nested list item - and
+sometimes a table header - dropped from alpha 1.0 to 0.0 and re-faded 3-5
+times, with the caret on or off, on both the stream and `text:` paths.
+Cause: `gpt_markdown` transiently renders a list/table as one placeholder
+paragraph (stray newlines/markers, e.g. `'@\n@\n\n-'`) before restoring the
+real structure. Round 3 diffed a reflow on a bare common-PREFIX check; the
+placeholder text diverged from the peak at position 0, so the "rewrite"
+branch re-armed the WHOLE document as a fresh run - both when the
+placeholder appeared and again when the real structure came back.
+
+**The fix** (`lib/src/render/markdown_fade_mask.dart`'s `_refresh`): a
+reflow (new text at least as long as the peak, but not a plain append) is
+now diffed on the common PREFIX *and* common SUFFIX (bounded so they can't
+overlap):
+
+- if the peak is fully explained as `prefix + gap + suffix` (a clean
+  insertion), existing runs before the gap are untouched, runs at/after the
+  new suffix start SHIFT forward by the growth amount, and only the gap
+  itself gets a fresh run;
+- if the peak (unmodified, contiguous) is found intact elsewhere in the new
+  text (a whole-paragraph relocation - e.g. a lone marker paragraph gaining
+  a leading artifact), existing runs shift by the same amount and only the
+  genuinely new tail after it is armed;
+- otherwise, existing runs are clipped to the common prefix (safe - `_runs`
+  only ever holds runs still within `fadeDuration`, so nothing clipped here
+  had already reached full opacity) and a fresh run is armed only for
+  content beyond BOTH the prefix and the previous peak's length - except
+  when that boundary lands inside one paragraph's own span, in which case
+  whether the OLD peak actually contains that paragraph's current text
+  anywhere (a plain substring search, ignoring position) decides whether to
+  exclude the whole paragraph (it already existed, just moved) or arm it in
+  full (it's genuinely new) - two blanket alternatives (always snap forward
+  to the next paragraph; always snap backward to the current one; a 50/50
+  length-overlap fraction) were each tried and rejected, because each
+  turned a real fix for one shape of this bug into a regression for
+  another, on paragraphs that were ambiguous for different reasons.
+
+The peak itself only ever advances on confirmed growth or a paragraph-
+relocation/clean-insertion match, never on an unproven guess (a transient
+artifact must never become the trusted baseline a later frame gets compared
+against), and any text shorter than the peak is treated as a transient
+regression (not a rewrite) purely by length, since the filler content shown
+mid-hiccup isn't always a clean prefix cut of what was there before.
+
+**2. Non-prefix reset.** Replacing `text:` with unrelated content popped in
+unfaded while shorter than the old peak, then flashed to 0 and re-faded once
+it grew past the old peak's length. Plain text (which never goes through
+`MarkdownFadeMask`) got this right. Fix: `RevealEngine` now exposes an
+`epoch`, bumped on `reset()` and a non-prefix `setSource`; `StreamingText`
+combines that with a counter bumped every time it recreates the whole
+engine (`_createEngineAndScheduler`, e.g. a stream swap), and passes the
+total to `MarkdownFadeMask` as `epoch`. A change clears the mask's cached
+peak/runs outright, rather than trying to diff the new document against
+stale state.
+
+**New tests:**
+
+- `test/widget/markdown_fade_verify4_test.dart` (adapted from the
+  verifier's `flash_test.dart`/`listre_test.dart`): token-paced (about one
+  word per 3 frames) bulleted/numbered/nested lists and a table, caret on
+  and off, via both `Stream` and growing `text:` paths - 16 cases, each
+  asserting every settled word stays within 5% of its own final darkness on
+  every sampled frame AND that no word pops in already-dark. 8 of the 16
+  fail outright against integration HEAD `6881fcb` (nested list and table
+  cases, both caret states; plain bulleted/numbered lists with the caret
+  on) with drops of 0.9+ - the exact repeated-reflash pattern described
+  above. The remaining 8 (plain bulleted/numbered lists, caret off) no
+  longer reproduce the bug against `6881fcb` on this machine, because the
+  parallel mend.dart slice's own fix (holding `- `/`1. ` marker lines,
+  merged in as `7047a1c`) already reduces how often that specific artifact
+  fires for the simplest list shape - they remain in the suite as
+  regression coverage for the mask's own logic, independent of whichever
+  mend.dart revision is in front of it.
+- `markdown_fade_verify3_test.dart`'s reset tests strengthened: sample every
+  frame with the real `smoothFade` default instead of `RevealMode.instant`
+  checking only the end state, and gained a shorter-than-peak case. Its
+  settle waits now poll `hasScheduledFrame` instead of a fixed frame count
+  (flaky under load in a parallel full-suite run - a fixed count sized to
+  "usually be enough" isn't when the real fade clock's wall-clock timing
+  competes with other processes for the CPU). The "growing text: never
+  pops" test now uses a list document instead of a flat paragraph, which
+  never exercised the paragraph-churn bug this suite exists to guard.
+
+Verified deterministic: the full suite was run three consecutive times,
+all green (1026 tests each run), after the settle-wait fix above.
+
+Benchmarks re-run after this fix: time ratio 0.31x-0.69x (median-of-medians
+~0.57x), rebuild ratio 1.61x - still comfortably inside the 1.8x/6x budget.

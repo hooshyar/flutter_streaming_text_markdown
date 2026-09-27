@@ -271,6 +271,59 @@ void main() {
     expect(engine.revealed, engine.source);
   });
 
+  test('a currency range in an open stream does not lag the reveal', () {
+    // `Plan: $5-10 ...` must be classified as currency, not an unclosed
+    // math span: an unclosed span would park the cursor at the `$` for
+    // the rest of the stream instead of revealing up to the tail.
+    const source = 'Plan: \$5-10 per month billed yearly and more words here';
+    const chunks = [
+      'Plan: \$5-',
+      '10 per month ',
+      'billed yearly ',
+      'and more words here',
+    ];
+    final engine = RevealEngine(
+      policy: const CharPolicy(),
+      atomicSpans: const AtomicSpanDetector(),
+    );
+    for (final chunk in chunks) {
+      engine.append(chunk);
+      var guard = 0;
+      while (engine.step() && guard < source.length + 10) {
+        guard++;
+      }
+    }
+    expect(
+      engine.cursor,
+      greaterThanOrEqualTo(engine.source.length - 1),
+      reason: 'only the final grapheme/word holdback may remain',
+    );
+  });
+
+  test('an unclosed \$ gives up after 32 units / at end of line while '
+      'input is still open', () {
+    for (final source in <String>[
+      'See \$HOME_DIRECTORY_value and then a long trailing sentence with '
+          'many words',
+      '\$foo\nnext line',
+    ]) {
+      final engine = RevealEngine(
+        policy: const CharPolicy(),
+        atomicSpans: const AtomicSpanDetector(),
+      );
+      engine.append(source);
+      var guard = 0;
+      while (engine.step() && guard < source.length + 10) {
+        guard++;
+      }
+      expect(
+        engine.cursor,
+        greaterThan(source.indexOf('\$')),
+        reason: 'reveal must proceed past the \$ in "$source"',
+      );
+    }
+  });
+
   test(
     'shell \$VARS inside a fenced code block are not atomic spans (W11)',
     () {

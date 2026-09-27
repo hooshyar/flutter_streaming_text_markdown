@@ -36,11 +36,16 @@ class AtomicSpan {
 /// LaTeX rather than currency, using pandoc's own heuristic: an opening `$`
 /// must be immediately followed by a non-space character, a closing `$`
 /// must be immediately preceded by a non-space character and NOT followed
-/// by a digit, and a `$` immediately followed by a run of digits and then
-/// whitespace/punctuation (`$5`, `$10 - $20`, `$ alone`) - or a `-` that
-/// itself starts a `-$` currency range (`$10-$20`, `$10k-$20k`), but NOT
-/// a `-` heading into real math (`$1-p$`, `$2k-1$`) - is currency, never
-/// an opening delimiter. Without this, `latexEnabled` on an open (still
+/// by a digit, and a `$` matching the currency grammar
+/// `$N[kKmMbB]?(-($N|N)[kKmMbB]?)?` - `N` is a run of digits with `.`/`,`
+/// allowed between digits (`5.99`, `1,000`), an optional one-char magnitude
+/// suffix (`$10k`, `$5M`, `$2B`), and an optional `-`-joined range
+/// (`$5-10`, `$10-$20`, `$10k-$20k`, `$20-30/month`) - followed by
+/// whitespace or punctuation is currency, never an opening delimiter.
+/// Running out of input mid-match while the source is still streaming is
+/// ambiguous, not currency; and `-` heading into real math (`$1-p$`,
+/// `$2k-1$`, `$1-\alpha$`) is not a range either, so those fall through to
+/// the pandoc rules. Without this, `latexEnabled` on an open (still
 /// streaming) source would treat a bare `$5` as an unclosed span and freeze
 /// the reveal right before it, since more input could - as far as the
 /// detector could tell - still arrive to "close" it.
@@ -51,6 +56,12 @@ class AtomicSpan {
 /// paragraph has actually ended without a matching delimiter turning up
 /// inside it, a stray `$`/`\(`/`\[` was never going to close there and must
 /// not hold the cursor hostage waiting for one in some later paragraph.
+/// A single `$` in a still-open paragraph is additionally capped: it holds
+/// back at most 32 UTF-16 units or to the end of the current line,
+/// whichever comes first, then reveals as a literal - a runaway unclosed
+/// `$` would otherwise freeze the reveal for the whole rest of a long
+/// streaming paragraph. `$$...$$`, `\(...\)` and `\[...\]` keep the plain
+/// paragraph bound; the search for their closing delimiter is not capped.
 class AtomicSpanDetector {
   /// Creates a detector. Stateless and cheap to construct.
   const AtomicSpanDetector();
@@ -64,6 +75,11 @@ class AtomicSpanDetector {
   static const _bracketOpen = r'\[';
   static const _bracketClose = r'\]';
   static const _paragraphBreak = '\n\n';
+
+  /// How far (in UTF-16 units from the opening `$`) an unclosed
+  /// single-`$` span may hold the reveal back while the paragraph is
+  /// still open before the `$` is treated as literal text.
+  static const _unclosedDollarBudget = 32;
 
   /// Returns every LaTeX span found in [source], outside of code.
   List<AtomicSpan> spans(String source) {
@@ -208,40 +224,86 @@ class AtomicSpanDetector {
     final nextChar = source[next];
     if (_isSpace(nextChar)) return false;
     if (_isDigit(nextChar)) {
-      var j = next;
-      while (j < source.length && _isDigit(source[j])) {
-        j++;
-      }
-      if (j >= source.length) {
-        // A trailing run of digits with nothing after it yet (still
-        // streaming): can't tell currency from math, so don't hold on it.
-        return false;
-      }
-      var after = source[j];
-      if (_isMagnitudeSuffix(after)) {
-        // `$10k`, `$5M`, `$2B`: a magnitude suffix on a currency number is
-        // still currency, so look past it before checking the boundary.
-        j++;
-        if (j >= source.length) {
-          // Still streaming, ambiguous: don't hold the cursor on it.
-          return false;
-        }
-        after = source[j];
-      }
-      if (_isSpace(after) || _isPunctuation(after)) {
-        return false; // `$5 `, `$2B,`, ... : currency.
-      }
-      if (after == '-' &&
-          (j + 1 >= source.length || source[j + 1] == _dollar)) {
-        // A `-` right after the digits is only a currency boundary when it
-        // starts a currency RANGE - immediately followed by another `$`
-        // (`$10-$20`, `$10k-$20k`). `-$` anywhere else is real math
-        // (`$1-p$`, `$2k-1$`, `$1-\alpha$`). A trailing `-` with nothing
-        // after it yet is still ambiguous while streaming: don't hold.
-        return false;
-      }
+      // One currency grammar: `$N[kKmMbB]?(-($N|N)[kKmMbB]?)?` followed by
+      // whitespace or punctuation is currency (`$5 `, `$2B,`, `$5-10 per
+      // month`, `$10-$20`, `$20-30/month`). Running out of input mid-match
+      // is ambiguous while still streaming. Anything else (`$1-p$`,
+      // `$10x$`) is not a currency match at all and falls through to the
+      // pandoc opening rule.
+      final currencyEnd = _matchCurrencyEnd(source, next);
+      if (currencyEnd == -1) return false;
+      final after = source[currencyEnd];
+      if (_isSpace(after) || _isPunctuation(after)) return false;
     }
     return true;
+  }
+
+  /// Matches the currency grammar at [i], where `source[i - 1]` is the
+  /// `$` and `source[i]` is a digit:
+  ///
+  ///   `N[kKmMbB]?('-' ('$' N | N) [kKmMbB]?)?`
+  ///
+  /// Returns the index just past the whole match, or -1 when the input
+  /// ends before the match can be resolved: a mid-match end while the
+  /// source is still streaming is ambiguous rather than currency (a bare
+  /// trailing `$5`, `$10-`, or `$10-$` could still grow into either).
+  static int _matchCurrencyEnd(String source, int i) {
+    var j = _consumeNumber(source, i);
+    if (j >= source.length) return -1;
+    if (_isMagnitudeSuffix(source[j])) {
+      j++;
+      if (j >= source.length) return -1;
+    }
+    if (source[j] != '-') return j;
+
+    // Optional `-`-joined range: `-` then either `$N` (`$10-$20`,
+    // `$10k-$20k`) or plain `N` (`$5-10`, `$10-20k`), each with its own
+    // optional magnitude suffix.
+    var k = j + 1;
+    if (k >= source.length) {
+      // A lone trailing `-` with nothing after it yet is still ambiguous
+      // while streaming: don't hold.
+      return -1;
+    }
+    if (source[k] == _dollar) {
+      k++;
+      if (k >= source.length) return -1;
+      if (!_isDigit(source[k])) return j;
+      k = _consumeNumber(source, k);
+    } else if (_isDigit(source[k])) {
+      k = _consumeNumber(source, k);
+    } else {
+      // `-` followed by neither `$` nor a digit (`$1-p$`, `$1-\alpha$`):
+      // no range ever started, so the currency match ends before the `-`.
+      return j;
+    }
+    if (k >= source.length) return -1;
+    if (_isMagnitudeSuffix(source[k])) {
+      k++;
+      if (k >= source.length) return -1;
+    }
+    return k;
+  }
+
+  /// Consumes a currency number: a run of digits with `.`/`,` allowed
+  /// between digits (`5.99`, `1,000`). A separator not followed by another
+  /// digit ends the number and stays outside the match, so a sentence-end
+  /// `$5.` or `$5,` still terminates here.
+  static int _consumeNumber(String source, int i) {
+    var j = i;
+    while (j < source.length) {
+      final c = source[j];
+      if (_isDigit(c)) {
+        j++;
+      } else if ((c == '.' || c == ',') &&
+          j + 1 < source.length &&
+          _isDigit(source[j + 1])) {
+        j += 2;
+      } else {
+        break;
+      }
+    }
+    return j;
   }
 
   /// Whether a `$` at [index] can close a LaTeX span, per the pandoc-style
@@ -292,6 +354,15 @@ class AtomicSpanDetector {
     if (bounded) {
       // The paragraph already ended with no matching close: this `$` was
       // never going to become math here, so it must not hold the cursor.
+      return start + 1;
+    }
+    if (len - start > _unclosedDollarBudget ||
+        source.indexOf('\n', searchFrom) != -1) {
+      // The paragraph is still open, but a single `$` can't hold the
+      // reveal hostage for more than 32 UTF-16 units or past the end of
+      // the line - whichever comes first. Past that the `$` was literal
+      // all along (a stray, a shell var, ...), so reveal it and move on.
+      // `$$`, `\(` and `\[` keep the plain paragraph bound instead.
       return start + 1;
     }
     // The paragraph itself hasn't finished yet - stay ambiguous/withheld

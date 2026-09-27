@@ -62,7 +62,13 @@ String mend(
   // inside `settled` and never reach `_mendTail`'s tail-only pipeline at
   // all. Truncate that one ambiguous case off the very end of the whole
   // body FIRST, before `gpt_markdown` ever gets a say - see B1F1 round 2.
-  final safeBody = _holdImageOrLinkStart(body);
+  // Same reasoning applies to a table header row that isn't the very first
+  // thing in the document (B1F1 round 3): `gpt_markdown` has no notion of
+  // "might still become a table" either, so it too must be checked against
+  // the whole body, not just the post-split tail.
+  final linkSafeBody =
+      _isInsideCodeContext(body) ? body : _holdImageOrLinkStart(body);
+  final safeBody = _holdIncompleteTableHeader(linkSafeBody) ?? linkSafeBody;
 
   final split = settledSplitOffset(safeBody);
   final settled = safeBody.substring(0, split);
@@ -99,10 +105,17 @@ _TailMend _mendTail(String tail, {required bool latexEnabled}) {
   }
 
   var s = tail;
-  s = _holdOpenHtmlTag(s);
-  s = _holdImageOrLinkStart(s);
-  s = _holdOpenImage(s);
-  s = _rewriteOpenLink(s);
+  // None of the HTML-tag/image/link holds and rewrites below make sense
+  // inside an open code fence or inline code span - `<`, `!`, `[`, `]`, `(`
+  // are all just literal characters there (e.g. Rust's `vec![1, 2, 3]`
+  // written inline as `` `vec![1, 2, 3]` ``). Skip the whole block (B1F1
+  // round 3, non-blocking item 1).
+  if (!_isInsideCodeContext(s)) {
+    s = _holdOpenHtmlTag(s);
+    s = _holdImageOrLinkStart(s);
+    s = _holdOpenImage(s);
+    s = _rewriteOpenLink(s);
+  }
 
   // Only ours to rewrite when the caller has LaTeX recognition on - with it
   // off (the default), a `$` is never touched here, so a plain variable
@@ -151,7 +164,20 @@ _FenceCheck _mendFence(String tail) {
 
   if (inFence) {
     // Already inside a real, previously-opened fence - `gpt_markdown` grows
-    // the code block itself from here. Never touch a byte of it.
+    // the code block itself from here. Never touch a byte of it, EXCEPT a
+    // trailing backtick-only partial line with no newline yet: that could
+    // still be the closing ``` in progress (1 or 2 backticks so far), so
+    // showing it now would flash a stray backtick inside the code content
+    // for a frame (B1F1 round 3, non-blocking item 2).
+    if (!hasTrailingNewline &&
+        _bareBacktickRun.hasMatch(partialLine.trimLeft())) {
+      final cut = tail.length - partialLine.length;
+      return _FenceCheck(
+        text: tail.substring(0, cut),
+        insideOpenBlock: true,
+        handled: true,
+      );
+    }
     return _FenceCheck(text: tail, insideOpenBlock: true, handled: true);
   }
 
@@ -187,6 +213,13 @@ final RegExp _tableSepChars = RegExp(r'^[|:\- \t]*$');
 /// this a bare header (or one with a still-typing separator) would render
 /// for a frame or two as a raw pipe-delimited line instead. Returns `null`
 /// when the trailing shape isn't a header/partial-separator pair at all.
+///
+/// Runs against the LAST BLOCK of whatever string it's given, regardless of
+/// what precedes it (a paragraph, a heading, a list, nothing) - callers pass
+/// it the *whole* body (see B1F1 round 3: calling it only on the tail after
+/// `settledSplitOffset` missed a table that isn't the very first thing in
+/// the document, since `gpt_markdown`'s own settled/unsettled split has no
+/// notion of "might still become a table").
 String? _holdIncompleteTableHeader(String tail) {
   final hasTrailingNewline = tail.endsWith('\n');
   final body = hasTrailingNewline ? tail.substring(0, tail.length - 1) : tail;
@@ -194,24 +227,30 @@ String? _holdIncompleteTableHeader(String tail) {
   if (lines.isEmpty) return null;
 
   if (!hasTrailingNewline) {
-    // The very last line is still being typed.
+    // The very last line is still being typed. It might be a table's very
+    // first row (nothing above it needs to be a row too - anything at all
+    // may precede a table's header), or a separator-in-progress under an
+    // already-committed header row.
     final partial = lines.removeLast();
-    if (lines.isEmpty) {
-      // "| Name | Age" (with or without a trailing pipe) with no newline at
-      // all yet.
-      if (_tableRowLike.hasMatch(partial)) {
-        return tail.substring(0, tail.length - partial.length);
+    if (!_tableRowLike.hasMatch(partial)) return null;
+
+    final linePreceding = lines.isEmpty ? null : lines.last;
+    if (linePreceding != null && _tableRowLike.hasMatch(linePreceding)) {
+      // The line right above is ALSO row-shaped - the partial line reads as
+      // a separator-in-progress under it, unless it already has non-
+      // separator content (then it's an ordinary data row of an
+      // already-settled table, not our concern).
+      if (_tableSepChars.hasMatch(partial) &&
+          !_tableSepComplete.hasMatch(partial.trim())) {
+        final cut = tail.length - partial.length - 1 - linePreceding.length;
+        return tail.substring(0, cut < 0 ? 0 : cut);
       }
       return null;
     }
-    final header = lines.last;
-    if (_tableRowLike.hasMatch(header) &&
-        _tableSepChars.hasMatch(partial) &&
-        !_tableSepComplete.hasMatch(partial.trim())) {
-      final cut = tail.length - partial.length - 1 - header.length;
-      return tail.substring(0, cut < 0 ? 0 : cut);
-    }
-    return null;
+
+    // Nothing row-shaped directly above - this is a table's first (header)
+    // row, still being typed. Hold just this line, whatever precedes it.
+    return tail.substring(0, tail.length - partial.length);
   }
 
   // Trailing newline: the last committed line might be a bare header with
@@ -282,6 +321,10 @@ final RegExp _trailingBang = RegExp(r'!$');
 ///  * a closed `[text]`/`![alt]` with nothing after it yet - one more `(`
 ///    would turn it into a tappable link/image, so it stays ambiguous;
 ///  * a lone trailing `!` - one more `[` would start an image.
+///
+/// Never applied inside an open code fence or inline code span (`[`/`!`/`]`
+/// are just literal characters there, e.g. Rust's `vec![1, 2, 3]` written
+/// as `` `vec![1, 2, 3]` `` - callers check [_isInsideCodeContext] first.
 String _holdImageOrLinkStart(String s) {
   final altInProgress = _openImageAltInProgress.firstMatch(s);
   if (altInProgress != null) {
@@ -295,6 +338,39 @@ String _holdImageOrLinkStart(String s) {
     return s.substring(0, s.length - 1);
   }
   return s;
+}
+
+/// Whether the very end of [s] sits inside an open ``` fence or an open
+/// inline `` ` `` code span - in either case, markdown-ish punctuation
+/// (`[`, `!`, `]`) inside it is just literal text and must never be held or
+/// rewritten by the image/link start check.
+bool _isInsideCodeContext(String s) {
+  var inFence = false;
+  var codeOpen = false;
+  for (final line in s.split('\n')) {
+    if (line.trimLeft().startsWith('```')) {
+      inFence = !inFence;
+      codeOpen = false;
+      continue;
+    }
+    if (inFence) continue;
+    var i = 0;
+    final n = line.length;
+    while (i < n) {
+      final c = line[i];
+      if (c == '\\' && i + 1 < n) {
+        i += 2;
+        continue;
+      }
+      if (c == '`') {
+        codeOpen = !codeOpen;
+        i++;
+        continue;
+      }
+      i++;
+    }
+  }
+  return inFence || codeOpen;
 }
 
 final RegExp _openImage = RegExp(r'!\[[^\]]*\]\([^)]*$');

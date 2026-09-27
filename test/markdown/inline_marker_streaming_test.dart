@@ -20,7 +20,8 @@ import '../support/frames.dart';
 /// All plain text currently on screen, caret sentinel stripped.
 String _visible(WidgetTester tester) {
   final parts = <String>[];
-  for (final element in find.byType(RichText).evaluate()) {
+  for (final element
+      in find.byWidgetPredicate((w) => w is RichText).evaluate()) {
     final text = (element.widget as RichText).text.toPlainText();
     if (text.trim().isNotEmpty) parts.add(text);
   }
@@ -43,7 +44,8 @@ bool _anyItalic(WidgetTester tester) {
     }
   }
 
-  for (final element in find.byType(RichText).evaluate()) {
+  for (final element
+      in find.byWidgetPredicate((w) => w is RichText).evaluate()) {
     visit((element.widget as RichText).text, null);
   }
   return found;
@@ -102,6 +104,35 @@ Future<void> _streamTypewriter(
     await tester.pump(frameInterval);
     onFrame(tester, _visible(tester));
   }
+  await pumpFrames(tester, 40);
+  onFrame(tester, _visible(tester));
+}
+
+/// Same as [_streamDefault] but explicit `RevealMode.wordFade` - B1F1
+/// round 3's report calls this mode out by name alongside smooth/typewriter
+/// for the table-header leak.
+Future<void> _streamWordFade(
+  WidgetTester tester,
+  String source,
+  void Function(WidgetTester tester, String visible) onFrame,
+) async {
+  final controller = StreamController<String>();
+  await tester.pumpWidget(
+    _host(
+      StreamingText(
+        text: '',
+        stream: controller.stream,
+        markdownEnabled: true,
+        revealMode: RevealMode.wordFade,
+      ),
+    ),
+  );
+  for (var i = 0; i < source.length; i++) {
+    controller.add(source[i]);
+    await tester.pump(frameInterval);
+    onFrame(tester, _visible(tester));
+  }
+  await controller.close();
   await pumpFrames(tester, 40);
   onFrame(tester, _visible(tester));
 }
@@ -345,4 +376,186 @@ void main() {
     });
     expect(sawBareDigitRun, isFalse);
   });
+
+  // --- B1F1 round 3 BLOCKER: table header hold when it's not the first ---
+  // --- thing in the document -----------------------------------------------
+  // The hold used to run only after `settledSplitOffset`, so a paragraph
+  // (or list, or heading) before the table got the table row "settled"
+  // right along with it, and the raw pipe-delimited row leaked through -
+  // in every reveal mode, since none of them route around `mend`.
+  for (final mode in ['smooth', 'typewriter', 'wordFade']) {
+    Future<void> stream(
+      WidgetTester tester,
+      String source,
+      void Function(WidgetTester, String) onFrame,
+    ) {
+      switch (mode) {
+        case 'smooth':
+          return _streamDefault(tester, source, onFrame);
+        case 'typewriter':
+          return _streamTypewriter(tester, source, onFrame);
+        default:
+          return _streamWordFade(tester, source, onFrame);
+      }
+    }
+
+    testWidgets(
+      'a header-only table row after a paragraph never renders raw ($mode)',
+      (tester) async {
+        const source =
+            'Here:\n\n| Name | Age |\n|---|---|\n| Bob | 42 |\n\n'
+            'Done with it. ';
+        final sepCompleteAt = source.indexOf('|---|---|') + '|---|---|'.length;
+        var charsPushed = 0;
+        var sawRawPipeBeforeSeparator = false;
+        await stream(tester, source, (t, visible) {
+          charsPushed++;
+          if (charsPushed < sepCompleteAt && visible.contains('|')) {
+            sawRawPipeBeforeSeparator = true;
+          }
+        });
+        expect(sawRawPipeBeforeSeparator, isFalse);
+      },
+    );
+
+    testWidgets(
+      'a partial separator after a paragraph never renders raw ($mode)',
+      (tester) async {
+        const source =
+            'Some text first.\n\n| Name | Age |\n|--\nmore filler text. ';
+        // The separator here never actually completes (it's cut off by
+        // "more filler text" instead of a second `|---|`) - the header
+        // must stay held for as long as the separator remains incomplete,
+        // and once it's clear it never will complete, both the header and
+        // the partial separator simply render as ordinary literal text
+        // (still no CRASH, no stray raw mid-resolution artifact). What
+        // matters here is that nothing shows a bare, dangling pipe row
+        // while the separator is still actively ambiguous.
+        final headerTypedAt =
+            source.indexOf('| Name | Age |') + '| Name | Age |'.length;
+        var charsPushed = 0;
+        var sawRawHeaderAlone = false;
+        await stream(tester, source, (t, visible) {
+          charsPushed++;
+          if (charsPushed == headerTypedAt + 1 && visible.contains('Name')) {
+            // +1 char is exactly the newline right after the header, with
+            // no separator typed yet at all - must still be held.
+            sawRawHeaderAlone = true;
+          }
+        });
+        expect(sawRawHeaderAlone, isFalse);
+      },
+    );
+  }
+
+  testWidgets('a header after a preceding list never renders raw (default)', (
+    tester,
+  ) async {
+    const source = '- one\n- two\n\n| Name | Age |\n|---|---|\n\nDone. ';
+    final sepCompleteAt = source.indexOf('|---|---|') + '|---|---|'.length;
+    var charsPushed = 0;
+    var sawRawPipeBeforeSeparator = false;
+    await _streamDefault(tester, source, (t, visible) {
+      charsPushed++;
+      if (charsPushed < sepCompleteAt && visible.contains('|')) {
+        sawRawPipeBeforeSeparator = true;
+      }
+    });
+    expect(sawRawPipeBeforeSeparator, isFalse);
+  });
+
+  testWidgets(
+    'a header after a preceding heading never renders raw (default)',
+    (tester) async {
+      const source = '## Section\n\n| Name | Age |\n|---|---|\n\nDone. ';
+      final sepCompleteAt = source.indexOf('|---|---|') + '|---|---|'.length;
+      var charsPushed = 0;
+      var sawRawPipeBeforeSeparator = false;
+      await _streamDefault(tester, source, (t, visible) {
+        charsPushed++;
+        if (charsPushed < sepCompleteAt && visible.contains('|')) {
+          sawRawPipeBeforeSeparator = true;
+        }
+      });
+      expect(sawRawPipeBeforeSeparator, isFalse);
+    },
+  );
+
+  // --- B1F1 round 3, non-blocking item 1: don't hold inside code ----------
+  testWidgets('vec![1 inside inline code is never mistaken for an image start '
+      '(typewriter)', (tester) async {
+    const source = 'Use `vec![1, 2, 3]` to build a vector quickly here. ';
+    // Once the source has actually typed the '!' inside the inline code
+    // span, the visible (code-styled) text must keep it - the old
+    // (pre-guard) code truncated "vec![1" down to just "vec" the moment
+    // "![1" appeared, since it read as an image-alt in progress, even
+    // though it's plainly inside an open inline code span where `!`/`[`/
+    // `]` are just literal characters.
+    final bangTypedAt = source.indexOf('!') + 1;
+    var charsPushed = 0;
+    var sawStrayTruncation = false;
+    await _streamTypewriter(tester, source, (t, visible) {
+      charsPushed++;
+      if (charsPushed >= bangTypedAt &&
+          visible.contains('vec') &&
+          !visible.contains('vec!')) {
+        sawStrayTruncation = true;
+      }
+    });
+    expect(sawStrayTruncation, isFalse);
+  });
+
+  testWidgets(
+    'vec![1 inside a fenced code block is never mistaken for an image '
+    'start (typewriter)',
+    (tester) async {
+      const source = 'Code:\n\n```rust\nlet v = vec![1, 2, 3];\n```\nDone. ';
+      final frames = <String>[];
+      await _streamTypewriter(tester, source, (t, visible) {
+        frames.add(visible);
+      });
+      expect(frames.last.contains('vec![1, 2, 3]'), isTrue);
+    },
+  );
+
+  // --- B1F1 round 3, non-blocking item 2: backtick flash inside a fence --
+  testWidgets(
+    'a trailing lone backtick on its own line inside an open fence never '
+    'flashes (typewriter, 1-char chunks)',
+    (tester) async {
+      const source =
+          'Code:\n\n```dart\nvoid main() {\n  print(1);\n}\n```\nAfter. ';
+      final frames = <String>[];
+      final calls = <String>[];
+      await tester.pumpWidget(
+        _host(
+          StreamingTextMarkdown.typewriter(
+            text: source,
+            markdownEnabled: true,
+            typingSpeed: frameInterval,
+            codeBuilder: (context, name, code, closed) {
+              calls.add(code);
+              return Text('[$name:$closed]\n$code');
+            },
+          ),
+        ),
+      );
+      for (var i = 0; i <= source.length; i++) {
+        await tester.pump(frameInterval);
+        frames.add(_visible(tester));
+      }
+      await pumpFrames(tester, 40);
+      // The closing fence is typed one backtick at a time - at the instant
+      // exactly one (or two) backticks of the closing ``` have landed, the
+      // code content must not show a stray trailing backtick that doesn't
+      // belong to the actual code.
+      for (final code in calls) {
+        expect(
+          code.endsWith('`') && !code.endsWith('```'),
+          isFalse,
+          reason: 'a stray partial-closer backtick leaked into code: "$code"',
+        );
+      }
+    },
+  );
 }

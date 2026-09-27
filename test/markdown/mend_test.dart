@@ -243,49 +243,89 @@ void main() {
     });
   });
 
-  group(
-    'mend: table header held until its separator completes (non-blocking)',
-    () {
-      test('table_header_only has no separator yet - held entirely', () {
-        expect(mend('| Name | Age |', isComplete: false), '');
-      });
+  group('mend: table header held until its separator completes', () {
+    test('table_header_only has no separator yet - held entirely', () {
+      expect(mend('| Name | Age |', isComplete: false), '');
+    });
 
-      // B1F1 round 2: the row-like check used to require a trailing `|`
-      // too, so a header missing its closing pipe leaked through raw. Any
-      // line starting with `|` (after optional indentation) must hold now.
-      test('a header with no closing pipe is held just the same', () {
-        expect(mend('| Name | Age', isComplete: false), '');
-      });
+    // B1F1 round 3 BLOCKER: the hold only ran on the tail AFTER
+    // `settledSplitOffset`, which - unlike `_holdImageOrLinkStart` -
+    // meant a table that isn't the very first thing in the document
+    // leaked raw. `gpt_markdown`'s own settled/unsettled split has no
+    // notion of "might still become a table", so a paragraph (or a list,
+    // or a heading) before it got `settled` right along with the table
+    // row that followed it.
+    test('a header after a preceding paragraph is held, not just a header '
+        'that starts the document', () {
+      expect(mend('Here:\n\n| Name |', isComplete: false), 'Here:\n\n');
+    });
 
-      test('a header partial with no closing pipe is held (typewriter)', () {
-        expect(mend('| Nam', isComplete: false), '');
-      });
+    test('a header after a preceding paragraph, no closing pipe', () {
+      expect(mend('Here:\n\n| Name | Age', isComplete: false), 'Here:\n\n');
+    });
 
-      test(
-        'table_sep_partial - a still-typing separator holds the header too',
-        () {
-          expect(mend('| Name | Age |\n|---', isComplete: false), '');
-        },
+    test('a partial separator after a preceding paragraph is held too', () {
+      expect(
+        mend('Here:\n\n| Name | Age |\n|---', isComplete: false),
+        'Here:\n\n',
       );
+    });
 
-      test('a header committed with nothing after it yet is held', () {
-        expect(mend('| Name | Age |\n', isComplete: false), '');
-      });
+    test('a header after a preceding list is held', () {
+      expect(
+        mend('- one\n- two\n\n| Name | Age |', isComplete: false),
+        '- one\n- two\n\n',
+      );
+    });
 
-      test('a completed separator lets the header through', () {
-        const text = '| Name | Age |\n|---|---|\n';
+    test('a header after a preceding heading is held', () {
+      expect(
+        mend('## Section\n\n| Name | Age |', isComplete: false),
+        '## Section\n\n',
+      );
+    });
+
+    test('a completed separator after a preceding paragraph lets the table '
+        'through', () {
+      const text = 'Here:\n\n| Name | Age |\n|---|---|\n';
+      expect(mend(text, isComplete: false), text);
+    });
+
+    // B1F1 round 2: the row-like check used to require a trailing `|`
+    // too, so a header missing its closing pipe leaked through raw. Any
+    // line starting with `|` (after optional indentation) must hold now.
+    test('a header with no closing pipe is held just the same', () {
+      expect(mend('| Name | Age', isComplete: false), '');
+    });
+
+    test('a header partial with no closing pipe is held (typewriter)', () {
+      expect(mend('| Nam', isComplete: false), '');
+    });
+
+    test(
+      'table_sep_partial - a still-typing separator holds the header too',
+      () {
+        expect(mend('| Name | Age |\n|---', isComplete: false), '');
+      },
+    );
+
+    test('a header committed with nothing after it yet is held', () {
+      expect(mend('| Name | Age |\n', isComplete: false), '');
+    });
+
+    test('a completed separator lets the header through', () {
+      const text = '| Name | Age |\n|---|---|\n';
+      expect(mend(text, isComplete: false), text);
+    });
+
+    test(
+      'table_row_partial (separator already complete) is untouched here',
+      () {
+        const text = '| Name | Age |\n|---|---|\n| Bob | 4';
         expect(mend(text, isComplete: false), text);
-      });
-
-      test(
-        'table_row_partial (separator already complete) is untouched here',
-        () {
-          const text = '| Name | Age |\n|---|---|\n| Bob | 4';
-          expect(mend(text, isComplete: false), text);
-        },
-      );
-    },
-  );
+      },
+    );
+  });
 
   group('mend: links and images are rewritten/held (probe12)', () {
     test('link_text_open drops the bracket', () {

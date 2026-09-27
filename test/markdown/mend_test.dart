@@ -219,6 +219,59 @@ void main() {
     });
   });
 
+  // B1F1 round 4 BLOCKER-FEEDING: mend held a bare '-' but passed a
+  // trailing '- ' (marker plus a space, no content yet) straight through.
+  // gpt_markdown then transiently rendered the whole list as one
+  // '@\n@\n\n-' paragraph, triggering a fade flash. Every marker + trailing
+  // whitespace-only combination must be held exactly like the bare marker.
+  group('mend: marker + trailing space (no content yet) is held too', () {
+    test('bulleted "- " is held', () {
+      expect(mend('Steps:\n\n- ', isComplete: false), 'Steps:\n\n');
+    });
+
+    test('bulleted "* " is held', () {
+      expect(mend('Steps:\n\n* ', isComplete: false), 'Steps:\n\n');
+    });
+
+    test('bulleted "+ " is held', () {
+      expect(mend('Steps:\n\n+ ', isComplete: false), 'Steps:\n\n');
+    });
+
+    test('numbered "1. " is held', () {
+      expect(mend('Steps:\n\n1. ', isComplete: false), 'Steps:\n\n');
+    });
+
+    test('numbered "1) " is held', () {
+      expect(mend('Steps:\n\n1) ', isComplete: false), 'Steps:\n\n');
+    });
+
+    test('blockquote "> " is held', () {
+      expect(mend('Quote:\n\n> ', isComplete: false), 'Quote:\n\n');
+    });
+
+    test('heading "## " is held', () {
+      expect(mend('Intro\n\n## ', isComplete: false), 'Intro\n\n');
+    });
+
+    test('nested "  - " keeps the outer item, holds the nested marker', () {
+      expect(mend('- a\n  - ', isComplete: false), '- a\n');
+    });
+
+    test('a bulleted item WITH real content after the space is not held', () {
+      expect(
+        mend('Steps:\n\n- do the thing', isComplete: false),
+        'Steps:\n\n- do the thing',
+      );
+    });
+
+    test('a numbered item with real content after the space is not held', () {
+      expect(
+        mend('Steps:\n\n1. do the thing', isComplete: false),
+        'Steps:\n\n1. do the thing',
+      );
+    });
+  });
+
   group('mend: fences (probe12 + fence semantics)', () {
     test('an open fence with a committed opener line passes through', () {
       const text = 'Code:\n\n```dart\nvoid main() {';
@@ -288,6 +341,24 @@ void main() {
     test('a completed separator after a preceding paragraph lets the table '
         'through', () {
       const text = 'Here:\n\n| Name | Age |\n|---|---|\n';
+      expect(mend(text, isComplete: false), text);
+    });
+
+    // B1F1 round 4, non-blocking item 2: a partial separator with no
+    // newline yet used to leak raw once it happened to already satisfy the
+    // minimal separator grammar (e.g. "|---|-" technically parses as one
+    // pipe-dash-pipe-dash sequence) - it must stay held until an actual
+    // newline lands, since the typist may still be adding columns.
+    test('"|---|-" (no newline yet) is still held, not "complete"', () {
+      expect(mend('| Name | Age |\n|---|-', isComplete: false), '');
+    });
+
+    test('"|---|---" (no newline yet) is still held too', () {
+      expect(mend('| Name | Age |\n|---|---', isComplete: false), '');
+    });
+
+    test('once the newline lands, the same separator renders', () {
+      const text = '| Name | Age |\n|---|---|\n';
       expect(mend(text, isComplete: false), text);
     });
 

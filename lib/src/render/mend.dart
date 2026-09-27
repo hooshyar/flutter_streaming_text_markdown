@@ -203,9 +203,6 @@ _FenceCheck _mendFence(String tail) {
 // when the line happened to end in `|` let a bare `| Name | Age` (no
 // trailing pipe) leak straight through as raw text.
 final RegExp _tableRowLike = RegExp(r'^[ \t]*\|');
-final RegExp _tableSepComplete = RegExp(
-  r'^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$',
-);
 final RegExp _tableSepChars = RegExp(r'^[|:\- \t]*$');
 
 /// Holds back a table header row until its separator row is fully typed -
@@ -239,9 +236,13 @@ String? _holdIncompleteTableHeader(String tail) {
       // The line right above is ALSO row-shaped - the partial line reads as
       // a separator-in-progress under it, unless it already has non-
       // separator content (then it's an ordinary data row of an
-      // already-settled table, not our concern).
-      if (_tableSepChars.hasMatch(partial) &&
-          !_tableSepComplete.hasMatch(partial.trim())) {
+      // already-settled table, not our concern). A separator-shaped partial
+      // is held REGARDLESS of whether it already satisfies the minimal
+      // separator grammar (e.g. "|---|-" technically parses as one, but the
+      // typist may still be adding more columns) - without a trailing
+      // newline it is never truly finished (B1F1 round 4, non-blocking
+      // item 2: "|---|-"/"|---|---" used to leak raw for a frame or two).
+      if (_tableSepChars.hasMatch(partial)) {
         final cut = tail.length - partial.length - 1 - linePreceding.length;
         return tail.substring(0, cut < 0 ? 0 : cut);
       }
@@ -267,14 +268,22 @@ String? _holdIncompleteTableHeader(String tail) {
   return null;
 }
 
-final RegExp _headingMarkerOnly = RegExp(r'^#{1,6}$');
-final RegExp _bulletMarkerOnly = RegExp(r'^[-*+]$');
-final RegExp _orderedMarkerOnly = RegExp(r'^\d+\.$');
-// A bare digit run with no `.` yet - one more digit or a `.` could still
-// turn this into an ordered-list marker (`1` -> `12` -> `12.`), so it's held
-// back exactly like the already-dotted `_orderedMarkerOnly` case.
+// Each of these also matches the marker followed by nothing but trailing
+// whitespace (`- `, `* `, `+ `, `1. `, `1) `, `> `, `## `) - not just the
+// bare marker with no space at all. Without that, `mend` held a bare `-`
+// but passed `- ` (marker plus a space, no content yet) straight through,
+// and `gpt_markdown` would transiently render the whole list as a single
+// `@\n@\n\n-` paragraph, triggering a fade flash (B1F1 round 4 BLOCKER).
+// Nested/indented markers are handled upstream - [_holdMarkerOnlyLine]
+// already strips leading indentation before matching.
+final RegExp _headingMarkerOnly = RegExp(r'^#{1,6}[ \t]*$');
+final RegExp _bulletMarkerOnly = RegExp(r'^[-*+][ \t]*$');
+final RegExp _orderedMarkerOnly = RegExp(r'^\d+[.)][ \t]*$');
+// A bare digit run with no `.`/`)` yet - one more digit or a `.`/`)` could
+// still turn this into an ordered-list marker (`1` -> `12` -> `12.`), so
+// it's held back exactly like the already-dotted `_orderedMarkerOnly` case.
 final RegExp _digitRunOnly = RegExp(r'^\d+$');
-final RegExp _quoteMarkerOnly = RegExp(r'^>+$');
+final RegExp _quoteMarkerOnly = RegExp(r'^>+[ \t]*$');
 final RegExp _setextOrHrRun = RegExp(r'^[-=]{1,}$');
 
 /// Holds back a trailing marker-only line (heading/list/quote/setext/hr)

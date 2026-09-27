@@ -219,6 +219,65 @@ void main() {
     });
   });
 
+  // B1F1 round 6, item 1 (regression vs base 627e72d): a thematic-break
+  // line (`***`, `---`, `___`, `* * *`) is a structural horizontal rule,
+  // never emphasis. `mend` used to scan `***` as an unterminated
+  // bold-italic opener and append a synthetic closing `***` at the very
+  // end of the tail, corrupting unrelated text much later in the stream
+  // (`mend('A.\n\n***\n\nFinal', isComplete:false)` returned
+  // '...Final***'). `---`/`___`/`* * *` never actually toggled anything in
+  // the old scanner either (`-`/`_` single chars aren't tracked, and
+  // spaced-out `* * *` never forms a `***` run) - covered here anyway so a
+  // future change to how those characters are scanned doesn't reintroduce
+  // this class of bug silently.
+  group(
+    'mend: a thematic break line is never treated as an emphasis opener',
+    () {
+      test('*** does not get a synthetic closing *** appended', () {
+        expect(
+          mend('A.\n\n***\n\nFinal', isComplete: false),
+          'A.\n\n***\n\nFinal',
+        );
+      });
+
+      test('--- is untouched', () {
+        expect(
+          mend('A.\n\n---\n\nFinal', isComplete: false),
+          'A.\n\n---\n\nFinal',
+        );
+      });
+
+      test('___ is untouched', () {
+        expect(
+          mend('A.\n\n___\n\nFinal', isComplete: false),
+          'A.\n\n___\n\nFinal',
+        );
+      });
+
+      test('spaced-out * * * is untouched', () {
+        expect(
+          mend('A.\n\n* * *\n\nFinal', isComplete: false),
+          'A.\n\n* * *\n\nFinal',
+        );
+      });
+
+      test('an in-progress *** (still the last line) is left literal', () {
+        expect(mend('A.\n\n***', isComplete: false), 'A.\n\n***');
+      });
+
+      test('setext "--" (heading underline) hold still works', () {
+        expect(mend('Title\n--', isComplete: false), 'Title\n');
+      });
+
+      test(
+        'a genuine inline ***bold-italic*** (not its own line) still closes',
+        () {
+          expect(mend('Mixed ***str', isComplete: false), 'Mixed ***str***');
+        },
+      );
+    },
+  );
+
   // B1F1 round 4 BLOCKER-FEEDING: mend held a bare '-' but passed a
   // trailing '- ' (marker plus a space, no content yet) straight through.
   // gpt_markdown then transiently rendered the whole list as one

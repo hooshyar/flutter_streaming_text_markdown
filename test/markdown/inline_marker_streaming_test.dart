@@ -718,4 +718,70 @@ void main() {
       assertNoOrphanFrame(frames);
     },
   );
+
+  // --- B1F1 round 6, item 1: thematic-break line never emphasis-opened ---
+  // mend used to scan a whole-line `***` as an unterminated bold-italic
+  // opener and append a synthetic `***` at the very end of the tail once
+  // the stream reached the LAST character - so the corruption only showed
+  // up once "Final" (the text after the thematic break) had fully landed,
+  // not at the break itself. Covers `***`, `---`, `___` and `* * *` mid-
+  // document, 16ms per character.
+  for (final marker in ['***', '---', '___', '* * *']) {
+    testWidgets(
+      '$marker mid-document never gets a synthetic marker appended to '
+      'later text (default)',
+      (tester) async {
+        final source = 'A.\n\n$marker\n\nFinal words after the break. ';
+        final frames = <String>[];
+        await _streamDefault(tester, source, (t, visible) {
+          frames.add(visible);
+        });
+        final finalVisible = frames.last;
+        expect(
+          finalVisible.contains('Final words after the break.'),
+          isTrue,
+          reason: 'expected the trailing text intact, got: "$finalVisible"',
+        );
+        // The bug appended the break's own marker onto the very end of the
+        // whole tail, so it would show up stuck onto unrelated text after
+        // the break, not immediately after the break's own line.
+        expect(
+          finalVisible.endsWith(marker) ||
+              finalVisible.contains('break. $marker') ||
+              finalVisible.contains('break.$marker'),
+          isFalse,
+          reason:
+              'a synthetic "$marker" leaked onto unrelated text: '
+              '"$finalVisible"',
+        );
+      },
+    );
+
+    testWidgets(
+      '$marker mid-document never gets a synthetic marker appended to '
+      'later text (typewriter)',
+      (tester) async {
+        final source = 'A.\n\n$marker\n\nFinal words after the break. ';
+        final frames = <String>[];
+        await _streamTypewriter(tester, source, (t, visible) {
+          frames.add(visible);
+        });
+        final finalVisible = frames.last;
+        expect(
+          finalVisible.contains('Final words after the break.'),
+          isTrue,
+          reason: 'expected the trailing text intact, got: "$finalVisible"',
+        );
+        expect(
+          finalVisible.endsWith(marker) ||
+              finalVisible.contains('break. $marker') ||
+              finalVisible.contains('break.$marker'),
+          isFalse,
+          reason:
+              'a synthetic "$marker" leaked onto unrelated text: '
+              '"$finalVisible"',
+        );
+      },
+    );
+  }
 }

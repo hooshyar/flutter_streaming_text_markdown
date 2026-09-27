@@ -445,6 +445,17 @@ _MathRewrite _rewriteOpenMath(String s) {
   return _MathRewrite('$before`$inner`', isFence: false);
 }
 
+// A CommonMark thematic break (horizontal rule): optionally-indented,
+// three or more of the SAME `*`/`-`/`_` character, each optionally followed
+// by spaces/tabs, and nothing else on the line. Deliberately three separate
+// same-char alternatives rather than a backreference - simpler and just as
+// correct here, since a thematic break never mixes marker characters.
+final RegExp _thematicBreakLine = RegExp(
+  r'^[ \t]{0,3}(?:\*[ \t]*){3,}$'
+  r'|^[ \t]{0,3}(?:-[ \t]*){3,}$'
+  r'|^[ \t]{0,3}(?:_[ \t]*){3,}$',
+);
+
 bool _isWordChar(String c) {
   if (c.isEmpty) return false;
   final unit = c.codeUnitAt(0);
@@ -513,6 +524,18 @@ String _closeOrHoldInlineMarkers(String s) {
       continue;
     }
     if (atLineStart) {
+      final lineEnd = s.indexOf('\n', i);
+      final lineEndExclusive = lineEnd == -1 ? n : lineEnd;
+      if (_thematicBreakLine.hasMatch(s.substring(i, lineEndExclusive))) {
+        // A thematic break (`***`, `---`, `___`, `* * *`, ...) is a
+        // structural horizontal rule, never emphasis - skip the whole line
+        // without toggling any marker state (B1F1 round 6: `***` used to
+        // toggle `boldItalicOpen`, so mend appended a synthetic trailing
+        // `***` to "close" it, corrupting unrelated text much later in the
+        // stream).
+        i = lineEndExclusive;
+        continue;
+      }
       var j = i;
       while (j < n && (s[j] == ' ' || s[j] == '\t')) {
         j++;

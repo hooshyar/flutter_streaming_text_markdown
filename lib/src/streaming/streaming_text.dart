@@ -589,6 +589,7 @@ class _StreamingTextState extends State<StreamingText>
   bool get _instantReveal =>
       _reducedMotion ||
       !widget.animationsEnabled ||
+      widget.revealMode == RevealMode.instant ||
       _effectiveInterval() == Duration.zero;
 
   /// Reveals as much as can be shown right now with no animation.

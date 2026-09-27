@@ -94,6 +94,29 @@ class WordPolicy extends UnitPolicy {
       return inputClosed ? source.length : from;
     }
 
+    // 1.5. Unspaced CJK (Han/Kana) text has no whitespace to delimit
+    // words, so treat it as its own unit: advance up to 2 graphemes at a
+    // time. Unlike the latin word run below, this never has to wait on
+    // [inputClosed] - each grapheme is already a complete, self-delimiting
+    // character that the next chunk can't retroactively merge into a
+    // bigger unit - so it can never stall while input is open.
+    if (range.moveNext()) {
+      final first = range.currentCharacters.string;
+      if (_isCjk(first)) {
+        var cjkPos = pos + first.length;
+        if (range.moveNext()) {
+          final second = range.currentCharacters.string;
+          if (_isCjk(second)) {
+            cjkPos += second.length;
+          } else {
+            range.moveBack();
+          }
+        }
+        return cjkPos;
+      }
+      range.moveBack();
+    }
+
     // 2. The word itself: a maximal non-whitespace run.
     var wordClosed = false;
     while (range.moveNext()) {
@@ -125,3 +148,22 @@ class WordPolicy extends UnitPolicy {
 }
 
 bool _isWhitespace(String grapheme) => grapheme.trim().isEmpty;
+
+/// Whether [grapheme]'s base code point falls in a Han (CJK ideograph) or
+/// Kana (hiragana/katakana) Unicode block. Used to detect unspaced CJK
+/// text, which has no whitespace to delimit word units.
+bool _isCjk(String grapheme) {
+  if (grapheme.isEmpty) return false;
+  final cp = grapheme.runes.first;
+  // Hiragana, Katakana (incl. phonetic extensions).
+  if (cp >= 0x3040 && cp <= 0x30FF) return true;
+  // Halfwidth Katakana.
+  if (cp >= 0xFF65 && cp <= 0xFF9F) return true;
+  // CJK Unified Ideographs + Extension A + Compatibility Ideographs.
+  if (cp >= 0x4E00 && cp <= 0x9FFF) return true;
+  if (cp >= 0x3400 && cp <= 0x4DBF) return true;
+  if (cp >= 0xF900 && cp <= 0xFAFF) return true;
+  // CJK Unified Ideographs Extension B and beyond (supplementary plane).
+  if (cp >= 0x20000 && cp <= 0x2FFFF) return true;
+  return false;
+}

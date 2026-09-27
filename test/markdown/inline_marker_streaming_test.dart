@@ -14,8 +14,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpt_markdown/custom_widgets/unordered_ordered_list.dart';
 
 import '../support/frames.dart';
+
+/// The number of rendered list-item widgets (bulleted or numbered) on
+/// screen right now - used to assert a list never transiently collapses
+/// into a single paragraph mid-stream (B1F1 round 4 BLOCKER-FEEDING).
+int _listItemWidgetCount(WidgetTester tester) {
+  return find
+      .byWidgetPredicate((w) => w is UnorderedListView || w is OrderedListView)
+      .evaluate()
+      .length;
+}
 
 /// All plain text currently on screen, caret sentinel stripped.
 String _visible(WidgetTester tester) {
@@ -556,6 +567,155 @@ void main() {
           reason: 'a stray partial-closer backtick leaked into code: "$code"',
         );
       }
+    },
+  );
+
+  // --- B1F1 round 4 BLOCKER-FEEDING: marker + trailing space held --------
+  // mend held a bare '-' but passed a trailing '- ' straight through, so
+  // gpt_markdown transiently rendered the whole list as one raw paragraph -
+  // a fade flash. Covers bulleted, numbered and nested lists, 16ms
+  // token-paced (one character per 16ms frame, same as every other
+  // streamed test in this file), and asserts the list-item widget count
+  // never decreases between frames (a decrease is exactly what "the whole
+  // list collapsed into one paragraph" looks like).
+  for (final mode in ['default', 'typewriter']) {
+    Future<void> stream(
+      WidgetTester tester,
+      String source,
+      void Function(WidgetTester, String) onFrame,
+    ) {
+      return mode == 'default'
+          ? _streamDefault(tester, source, onFrame)
+          : _streamTypewriter(tester, source, onFrame);
+    }
+
+    testWidgets(
+      'a bulleted list never collapses into a raw paragraph mid-stream '
+      '($mode)',
+      (tester) async {
+        const source =
+            'Steps:\n\n- one\n- two\n- three\n\nDone with the list. ';
+        var maxSeen = 0;
+        var sawRawMarkerLine = false;
+        await stream(tester, source, (t, visible) {
+          final count = _listItemWidgetCount(t);
+          expect(
+            count,
+            greaterThanOrEqualTo(maxSeen),
+            reason:
+                'list-item widget count decreased ($count < $maxSeen) - the '
+                'list collapsed into a raw paragraph for a frame',
+          );
+          maxSeen = count;
+          for (final line in visible.split('\n')) {
+            if (RegExp(r'^[-*+]\s*$').hasMatch(line.trim())) {
+              sawRawMarkerLine = true;
+            }
+          }
+        });
+        expect(sawRawMarkerLine, isFalse);
+      },
+    );
+
+    testWidgets(
+      'a numbered list never collapses into a raw paragraph mid-stream '
+      '($mode)',
+      (tester) async {
+        const source =
+            'Steps:\n\n1. one\n2. two\n3. three\n\nDone with the list. ';
+        var maxSeen = 0;
+        var sawRawMarkerLine = false;
+        await stream(tester, source, (t, visible) {
+          final count = _listItemWidgetCount(t);
+          expect(
+            count,
+            greaterThanOrEqualTo(maxSeen),
+            reason:
+                'list-item widget count decreased ($count < $maxSeen) - the '
+                'list collapsed into a raw paragraph for a frame',
+          );
+          maxSeen = count;
+          for (final line in visible.split('\n')) {
+            if (RegExp(r'^\d+[.)]\s*$').hasMatch(line.trim())) {
+              sawRawMarkerLine = true;
+            }
+          }
+        });
+        expect(sawRawMarkerLine, isFalse);
+      },
+    );
+
+    testWidgets('a nested list never collapses into a raw paragraph mid-stream '
+        '($mode)', (tester) async {
+      const source =
+          '- a\n  - nested one\n  - nested two\n- b\n\nDone with it. ';
+      var maxSeen = 0;
+      var sawRawMarkerLine = false;
+      await stream(tester, source, (t, visible) {
+        final count = _listItemWidgetCount(t);
+        expect(
+          count,
+          greaterThanOrEqualTo(maxSeen),
+          reason:
+              'list-item widget count decreased ($count < $maxSeen) - the '
+              'list collapsed into a raw paragraph for a frame',
+        );
+        maxSeen = count;
+        for (final line in visible.split('\n')) {
+          if (RegExp(r'^[-*+]\s*$').hasMatch(line.trim())) {
+            sawRawMarkerLine = true;
+          }
+        }
+      });
+      expect(sawRawMarkerLine, isFalse);
+    });
+  }
+
+  // --- B1F1 round 4, non-blocking item 3: asterisk flash consistency ------
+  // 'a*b' never closes (intraword `*`, per B1F1 round 1) and legitimately
+  // shows a raw '*' in its final render - that alone is fine. What matters
+  // is that no intermediate frame shows a transient state that matches
+  // NEITHER the previous frame NOR the final render (a "flash" like the
+  // old "* *" bug: a spurious insertion that then reverts).
+  void assertNoOrphanFrame(List<String> frames) {
+    final finalText = frames.last;
+    for (var i = 1; i < frames.length; i++) {
+      final starCount = '*'.allMatches(frames[i]).length;
+      final prevStarCount = '*'.allMatches(frames[i - 1]).length;
+      final finalStarCount = '*'.allMatches(finalText).length;
+      if (starCount != prevStarCount && starCount != finalStarCount) {
+        fail(
+          'frame $i has $starCount "*" - neither the previous frame '
+          '($prevStarCount) nor the final render ($finalStarCount): '
+          '"${frames[i]}"',
+        );
+      }
+    }
+  }
+
+  testWidgets(
+    'a*b: no frame\'s "*" count differs from both the previous frame and '
+    'the final render (default)',
+    (tester) async {
+      const source = 'Use a*b + c for the sum and then we are done. ';
+      final frames = <String>[];
+      await _streamDefault(tester, source, (t, visible) {
+        frames.add(visible);
+      });
+      assertNoOrphanFrame(frames);
+    },
+  );
+
+  testWidgets(
+    r'escaped \*: no frame differs from both the previous frame and the '
+    'final render (typewriter)',
+    (tester) async {
+      const source = r'Price 5\* and more text follows right after it. ';
+      final frames = <String>[];
+      await _streamTypewriter(tester, source, (t, visible) {
+        frames.add(visible);
+      });
+      assertNoOrphanFrame(frames);
     },
   );
 }

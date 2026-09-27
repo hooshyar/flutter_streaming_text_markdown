@@ -21,8 +21,9 @@
 // This is a wall-clock benchmark, not a correctness test - it is the one
 // sanctioned wall-clock assertion in the suite (acceptance criterion 11) and
 // is tagged `benchmark` (see dart_test.yaml) so it's excluded from the
-// default `flutter test` run and only executed on demand
-// (`flutter test --tags benchmark`) or in the dedicated CI job.
+// default `flutter test` run and only executed on demand:
+// `flutter test --no-dds --tags benchmark --run-skipped` (the tag's skip
+// stays in effect unless `--run-skipped` is passed).
 //
 // Numbers observed on this machine, before and after the Phase C caret fix,
 // are recorded in doc/BENCHMARKS.md.

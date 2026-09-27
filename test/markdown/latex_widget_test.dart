@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
@@ -368,6 +369,61 @@ Block math:
 
       expect(find.textContaining('Control'), findsOneWidget);
       expect(find.textContaining('example'), findsOneWidget);
+    });
+
+    // Regression: `_dollarOpensMath` used to treat ANY `$<digits>-` as a
+    // currency range, so `$1-p$` etc. never reached `Math.tex` and showed
+    // raw. `-` is only a currency boundary when it starts a `-$` range.
+    for (final text in <String>[r'$1-p$', r'$2k-1$', r'$1-\alpha$', r'$0-1$']) {
+      testWidgets('"$text" renders a Math widget, not raw text', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: StreamingTextMarkdown(
+                text: text,
+                markdownEnabled: true,
+                latexEnabled: true,
+                animationsEnabled: false,
+              ),
+            ),
+          ),
+        );
+
+        // Wait for completion with timeout protection
+        for (int i = 0; i < 10; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+
+        expect(find.byType(Math), findsOneWidget);
+        expect(find.textContaining(text), findsNothing);
+      });
+    }
+
+    testWidgets(r'"$10-$20" stays a currency range (no Math widget)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              text: r'Costs $10-$20 total',
+              markdownEnabled: true,
+              latexEnabled: true,
+              animationsEnabled: false,
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.byType(Math), findsNothing);
+      expect(find.textContaining(r'$10-$20'), findsOneWidget);
     });
 
     testWidgets('StreamingTextMarkdown handles RTL text with LaTeX', (

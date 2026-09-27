@@ -37,7 +37,9 @@ class AtomicSpan {
 /// must be immediately followed by a non-space character, a closing `$`
 /// must be immediately preceded by a non-space character and NOT followed
 /// by a digit, and a `$` immediately followed by a run of digits and then
-/// whitespace/punctuation (`$5`, `$10 - $20`, `$ alone`) is currency, never
+/// whitespace/punctuation (`$5`, `$10 - $20`, `$ alone`) - or a `-` that
+/// itself starts a `-$` currency range (`$10-$20`, `$10k-$20k`), but NOT
+/// a `-` heading into real math (`$1-p$`, `$2k-1$`) - is currency, never
 /// an opening delimiter. Without this, `latexEnabled` on an open (still
 /// streaming) source would treat a bare `$5` as an unclosed span and freeze
 /// the reveal right before it, since more input could - as far as the
@@ -226,8 +228,17 @@ class AtomicSpanDetector {
         }
         after = source[j];
       }
-      if (_isSpace(after) || _isPunctuation(after) || after == '-') {
-        return false; // `$5 `, `$10-`, `$10k-`, ... : currency.
+      if (_isSpace(after) || _isPunctuation(after)) {
+        return false; // `$5 `, `$2B,`, ... : currency.
+      }
+      if (after == '-' &&
+          (j + 1 >= source.length || source[j + 1] == _dollar)) {
+        // A `-` right after the digits is only a currency boundary when it
+        // starts a currency RANGE - immediately followed by another `$`
+        // (`$10-$20`, `$10k-$20k`). `-$` anywhere else is real math
+        // (`$1-p$`, `$2k-1$`, `$1-\alpha$`). A trailing `-` with nothing
+        // after it yet is still ambiguous while streaming: don't hold.
+        return false;
       }
     }
     return true;

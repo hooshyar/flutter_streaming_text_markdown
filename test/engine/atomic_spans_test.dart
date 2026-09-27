@@ -123,6 +123,79 @@ void main() {
     }
   });
 
+  group('digit-minus math is not mistaken for a currency range', () {
+    // Regression: `after == '-'` used to make ANY `$<digits>-...` currency,
+    // so `$1-p$`, `$2k-1$`, `$1-\alpha$`, `$3m-2$`, `$0-1$` all showed raw.
+    // `-` only counts as a boundary when it starts a `-$` currency range.
+    for (final text in <String>[
+      r'$1-p$',
+      r'$2k-1$',
+      r'$1-\alpha$',
+      r'$3m-2$',
+      r'$0-1$',
+    ]) {
+      test('"$text" produces a closed math span', () {
+        final spans = detector.spans(text);
+        expect(spans, hasLength(1));
+        expect(spans.single.closed, isTrue);
+        expect(text.substring(spans.single.start, spans.single.end), text);
+      });
+    }
+
+    for (final text in <String>[
+      r'$10-$20',
+      r'$10k-$20k',
+      r'Range: $10 - $20 done',
+    ]) {
+      test('"$text" stays currency (no spans)', () {
+        expect(detector.spans(text), isEmpty);
+        expect(detector.rewriteDollarDelimiters(text), text);
+      });
+    }
+
+    test('a lone trailing "-" with nothing after it yet does not hold '
+        '(still streaming)', () {
+      // `$10-` mid-stream could still become `$10-$20`: ambiguous, so the
+      // same don't-hold rule as a bare trailing `$5` applies.
+      expect(detector.spans(r'Costs $10-'), isEmpty);
+    });
+  });
+
+  group('existing currency and math cases still hold', () {
+    for (final text in <String>[
+      r'$5',
+      r'$5 and $10',
+      r'$10 - $20',
+      r'$10-$20',
+      r'$10k-$20k',
+      r'$5M',
+      r'$2B,',
+      r'Price: $5',
+    ]) {
+      test('"$text" produces no spans', () {
+        expect(detector.spans(text), isEmpty);
+      });
+    }
+
+    for (final text in <String>[
+      r'$k$',
+      r'$M$',
+      r'$x_k$',
+      r'$2k+1$',
+      r'$10k$',
+      r'$x^2$',
+      r'$1-p$',
+      r'$2k-1$',
+      r'$1-\alpha$',
+      r'$3m-2$',
+      r'$0-1$',
+    ]) {
+      test('"$text" produces a math span', () {
+        expect(detector.spans(text), isNotEmpty);
+      });
+    }
+  });
+
   group('an unclosed span is bounded to the current paragraph', () {
     test('a stray, never-closed \$ does not hold once its paragraph ends', () {
       const text = 'First \$paragraph never closes.\n\nSecond paragraph.';

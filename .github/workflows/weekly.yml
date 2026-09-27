@@ -26,6 +26,22 @@ jobs:
       - name: Run tests
         run: flutter test
 
+  fade-matrix:
+    name: markdown fade invariant matrix (exhaustive, tag-gated)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run the exhaustive markdown-fade invariant matrix
+        run: flutter test --no-dds --tags fade_matrix --run-skipped
+
   pub-downgrade:
     name: pub downgrade + analyze (SDK floor)
     runs-on: ubuntu-latest

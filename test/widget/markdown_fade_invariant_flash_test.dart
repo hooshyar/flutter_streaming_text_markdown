@@ -48,6 +48,7 @@ void main() {
             gap: gap,
             allowPops: _knownPopGap(d.key, caret),
           ),
+          tags: const ['fade_matrix'],
         );
       }
       for (final gap in [2, 4]) {
@@ -62,6 +63,7 @@ void main() {
             mode: 'chat',
             allowPops: _knownPopGap(d.key, caret),
           ),
+          tags: const ['fade_matrix'],
         );
       }
       testWidgets(
@@ -74,6 +76,7 @@ void main() {
           mode: 'chunk',
           allowPops: _knownPopGap(d.key, caret),
         ),
+        tags: const ['fade_matrix'],
       );
     }
   }

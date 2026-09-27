@@ -62,6 +62,7 @@ void main() {
           // regardless of this flag).
           allowPops: d.key.contains('table'),
         ),
+        tags: const ['fade_matrix'],
       );
     }
   }
@@ -79,6 +80,7 @@ void main() {
           build: (s, text) => _build(preset, s, text),
           buildBare: (text) => _buildBare(preset, text),
         ),
+        tags: const ['fade_matrix'],
       );
     }
   }

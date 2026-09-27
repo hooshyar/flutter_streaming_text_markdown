@@ -13,3 +13,16 @@ tags:
     skip: >-
       Wall-clock benchmark, excluded from the default run. Run explicitly
       with `flutter test --no-dds --tags benchmark --run-skipped`.
+  # The exhaustive B1-S6 markdown-fade invariant matrix
+  # (test/widget/markdown_fade_invariant_*_test.dart): every doc x mode x
+  # gap x caret combination, each real-16ms-frame-paced. Thorough but slow
+  # (took the default suite from ~40s to ~5min) - a small representative
+  # smoke subset stays in the default run
+  # (test/widget/markdown_fade_invariant_smoke_test.dart); the full matrix
+  # is skipped by default, same as `benchmark`. Run explicitly with
+  # `flutter test --no-dds --tags fade_matrix --run-skipped`.
+  fade_matrix:
+    skip: >-
+      Exhaustive markdown-fade invariant matrix, excluded from the default
+      run. Run explicitly with
+      `flutter test --no-dds --tags fade_matrix --run-skipped`.

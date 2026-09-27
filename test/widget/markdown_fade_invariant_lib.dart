@@ -372,3 +372,81 @@ Future<Result> go(
   await t.pumpWidget(const SizedBox());
   return r;
 }
+
+/// The epoch/reset invariant case: a brand new document (a new
+/// `_fadeEpoch`) replaces an in-flight stream outright - the render-tree
+/// equivalent of a non-prefix `setSource`. Shared by
+/// `markdown_fade_invariant_misc_test.dart` (the full `fade_matrix` case)
+/// and `markdown_fade_invariant_smoke_test.dart` (the default-run smoke
+/// copy) so the two never drift apart.
+Future<void> epochResetCase(WidgetTester t) async {
+  final sc = StreamController<String>();
+  await t.pumpWidget(
+    host(
+      StreamingText(
+        text: '',
+        stream: sc.stream,
+        markdownEnabled: true,
+        showCursor: false,
+      ),
+    ),
+  );
+  sc.add('Alpha bravo charlie delta echo settled words here. ');
+  var guard = 0;
+  while (t.binding.hasScheduledFrame && guard < 400) {
+    await frame(t);
+    guard++;
+  }
+  await frame(t);
+  unawaited(sc.close());
+
+  // Sample every frame: the new doc's own words must rise monotonically to
+  // their own final darkness, never pop in already dark, never dip once
+  // risen.
+  final words = {'Totally', 'brand', 'new', 'content', 'now'};
+  await t.pumpWidget(
+    host(
+      const StreamingText(
+        text: 'Totally brand new content now.',
+        markdownEnabled: true,
+        showCursor: false,
+      ),
+    ),
+  );
+
+  final frames = <Snap>[];
+  final rects = <Map<(String, int), List<Rect>>>[];
+  guard = 0;
+  while (guard < 400) {
+    await frame(t);
+    frames.add(await snap(t));
+    rects.add(occRects(t, words));
+    guard++;
+    if (guard > 20 && !t.binding.hasScheduledFrame) break;
+  }
+  final last = frames.last;
+  final lastRects = rects.last;
+  final r = analyse(frames, rects, last, lastRects);
+  expect(
+    r.dips,
+    0,
+    reason:
+        'settled text dipped after an epoch reset:\n'
+        '${r.details.join('\n')}',
+  );
+  expect(
+    r.pops,
+    0,
+    reason:
+        'the new document popped in unfaded after an epoch reset:\n'
+        '${r.details.join('\n')}',
+  );
+
+  final bare = await bareSnap(t, 'Totally brand new content now.');
+  expect(
+    pixDiff(last, bare),
+    '0',
+    reason: 'final render differs from bare instant after epoch reset',
+  );
+  await t.pumpWidget(const SizedBox());
+}

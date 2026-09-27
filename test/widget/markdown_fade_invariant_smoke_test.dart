@@ -9,12 +9,14 @@
 // Deliberately narrow coverage, one representative case per axis:
 // - the `chat` (growing `text:`) path at a coarse gap (4) for a `ul` and a
 //   `table` - the two doc shapes most likely to regress (see
-//   `markdown_fade_invariant_flash_test.dart`'s `_knownPopGap` doc);
+//   `markdown_fade_invariant_flash_test.dart`'s `_popCeiling` doc);
 // - a `stream` at gap 6 for an `ol`, via the `.chatGPT()` preset with the
 //   caret on - covers the preset wiring and caret path together;
 // - the `'- Yes'` x3 duplicate-content case;
 // - the epoch/reset case (a brand new document replacing an in-flight one);
-// - one heading/paragraph doc.
+// - one heading/paragraph doc;
+// - an H1 doc and a bold-heavy chat-path doc - B1F1 round 7's own two real
+//   bugs (see `markdown_fade_invariant_real_test.dart`'s file doc).
 @Timeout(Duration(seconds: 900))
 library;
 
@@ -45,7 +47,34 @@ void main() {
       caret: true,
       gap: 4,
       mode: 'chat',
-      allowPops: true,
+      maxPopFraction: 0.15,
+    ),
+  );
+
+  testWidgets(
+    'H1 heading stream g3',
+    (t) => go(
+      t,
+      'smoke.real.h1_long.stream.caret=false.gap3',
+      realDocs['h1_long']!,
+      gap: 3,
+      // See markdown_fade_invariant_real_test.dart's `_popCeiling` doc: a
+      // rare, sampling-granularity pop can occur even at gap 3 under
+      // real-frame timing variance (never a dip - unconditionally
+      // asserted at zero regardless).
+      maxPopFraction: 0.30,
+    ),
+  );
+
+  testWidgets(
+    'bold-heavy chat g4',
+    (t) => go(
+      t,
+      'smoke.real.para_bold.chat.caret=false.gap4',
+      realDocs['para_bold']!,
+      gap: 4,
+      mode: 'chat',
+      maxPopFraction: 0.20,
     ),
   );
 

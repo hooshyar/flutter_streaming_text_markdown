@@ -15,6 +15,106 @@ const int _objectReplacementChar = 0xFFFC;
 /// are never their own slot" doc.
 final RegExp _hasLetter = RegExp('[A-Za-z]');
 
+/// ASCII/Unicode whitespace code units treated as trimmable trailing
+/// fade-tracking-text noise - see [_growthPrefixLength].
+bool _isFadeSpace(int codeUnit) =>
+    codeUnit == 0x20 ||
+    codeUnit == 0x09 ||
+    codeUnit == 0x0A ||
+    codeUnit == 0x0D;
+
+/// Inline-markdown marker characters the caught-up widget can render RAW
+/// (visible in the fade-tracking text) before a still-streaming close makes
+/// `gpt_markdown` re-render the span styled - see [_growthPrefixLength].
+/// Code units for `*`, `_`, `` ` ``, `~`, `[`.
+const Set<int> _inlineMarkerCodeUnits = {0x2A, 0x5F, 0x60, 0x7E, 0x5B};
+
+/// When `oldText` itself is not a literal prefix of `newText` (round-6
+/// verify evidence, B1F1 round 7): tries a small, fixed set of
+/// STRUCTURALLY-MOTIVATED trims of `oldText`'s own trailing edge - never an
+/// arbitrary position - to see whether the remainder genuinely is a prefix
+/// of `newText`. Two real `gpt_markdown` shapes need this:
+///
+/// - **A heading's trailing divider-placeholder whitespace.** `gpt_markdown`
+///   renders `# Title` as `'Title\n'` plus a divider rendered as its own
+///   inline placeholder - once [_objectReplacementChar] is stripped from
+///   the fade-tracking text, that placeholder's presence/absence can shift
+///   trailing whitespace in a way that breaks a literal prefix match even
+///   though the heading's own words never changed. Trimming trailing
+///   whitespace from `oldText` before checking fixes this - H2/H3 never
+///   exhibit it (no divider), so they're untouched by this trim ever
+///   applying (the untrimmed check in case 2 above already covers them).
+/// - **An unresolved inline-markup marker.** The caught-up widget can
+///   render markup RAW (`'**bold'`, visible asterisks and all) while a
+///   `**`/`*`/`_`/`` ` ``/`[`/`~~` span is still open; once its close
+///   streams in, `gpt_markdown` re-renders the same span styled (the
+///   asterisks gone), which is a genuine, if small, rewrite rather than a
+///   literal prefix extension. Trimming `oldText` back to the START of its
+///   LAST occurrence of any of these marker characters - trying the
+///   rightmost (least-discarding) candidate first - catches this.
+///
+/// Both trims are tried against `oldText`'s OWN text only - this is still
+/// purely per-slot, zero cross-slot content matching. Returns the trimmed
+/// length to treat as "already shown" (case 2b arms only the genuinely new
+/// suffix beyond it) or `null` if neither trim makes the remainder a prefix
+/// of `newText` (a genuine rewrite - falls through to case 4 unchanged).
+///
+/// [settledLength] guards the MARKER trim only (never the whitespace trim -
+/// see below) against a real regression found in this design's own
+/// testing: an early draft scanned every marker character back to the
+/// START of `oldText`, and for a paragraph with an EARLIER, already-fully-
+/// settled `**bold span**`, `newText.startsWith(oldText.substring(0, i))`
+/// can trivially succeed at that much-earlier marker position too (a
+/// document's own already-typed beginning obviously never changes) - which
+/// then truncated/discarded the run covering everything after it,
+/// including long-settled words, and re-armed them from elapsed-zero (a
+/// real, visible dip - the opposite of this fix's entire purpose). Never
+/// considering a MARKER trim point BELOW [settledLength] - text this
+/// slot's own sweep has already confirmed fully faded - makes that
+/// structurally impossible: only the still-unsettled TAIL of `oldText` is
+/// ever eligible for a marker trim.
+///
+/// The whitespace trim is NEVER subject to this floor: whitespace has no
+/// glyph to dim in the first place, so discarding it can never itself
+/// cause a visible dip, regardless of whether it happens to already be
+/// counted as "settled" (a trailing newline can settle together with the
+/// word before it well before the NEXT real word streams in). The call
+/// site's own `start = max(trimmed, settledLength)` still protects any
+/// VISIBLE character regardless - this only affects whether the (always-
+/// safe) whitespace-boundary MATCH is accepted at all.
+///
+/// The returned `preserveTiming` flag tells the caller which of the two
+/// shapes matched: `false` for the whitespace trim (the suffix beyond it is
+/// genuinely brand new - arm it fresh, from `nowValue`, exactly like
+/// ordinary growth) and `true` for the marker trim (the suffix beyond it
+/// can include text that was ALREADY visibly mid-fade under its raw-markup
+/// form - the caller must continue that same timeline, never restart it at
+/// `nowValue`, or it would visibly DIP a word back down after it had
+/// already partially appeared).
+(int trimmedLength, bool preserveTiming)? _growthPrefixLength(
+  String oldText,
+  String newText,
+  int settledLength,
+) {
+  var trimmed = oldText.length;
+  while (trimmed > 0 && _isFadeSpace(oldText.codeUnitAt(trimmed - 1))) {
+    trimmed--;
+  }
+  if (trimmed < oldText.length &&
+      newText.length > trimmed &&
+      newText.startsWith(oldText.substring(0, trimmed))) {
+    return (trimmed, false);
+  }
+
+  for (var i = oldText.length - 1; i >= settledLength && i >= 1; i--) {
+    if (!_inlineMarkerCodeUnits.contains(oldText.codeUnitAt(i))) continue;
+    if (newText.length > i && newText.startsWith(oldText.substring(0, i))) {
+      return (i, true);
+    }
+  }
+  return null;
+}
+
 /// A cached `(span, plainText)` pair for one `RenderParagraph`, so a
 /// paragraph whose content hasn't changed since the last layout doesn't
 /// pay for `toPlainText()` again.
@@ -32,7 +132,11 @@ class _ParaCache {
 class _SlotRun {
   _SlotRun(this.start, this.end, this.revealedAt);
   final int start;
-  final int end;
+  // Mutable ONLY to be truncated DOWNWARD when the trailing text it once
+  // described is discarded by a trimmed-prefix growth match (case 2b) -
+  // see [_growthPrefixLength]. Never extended, and never used to lower an
+  // already-computed alpha.
+  int end;
   final Duration revealedAt;
 }
 
@@ -606,6 +710,60 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
                 : bs.settledLength;
         if (start < newText.length) {
           bs.runs.add(_SlotRun(start, newText.length, nowValue));
+        }
+        bs.text = newText;
+        bs.pendingText = null;
+        bs.pendingCount = 0;
+        continue;
+      }
+
+      // Case 2b: growth from a TRIMMED prefix of the old text - see
+      // [_growthPrefixLength]'s doc (a heading's trailing divider-
+      // placeholder whitespace, or an inline-markup marker the caught-up
+      // widget rendered raw before its close streamed in). Still per-slot,
+      // still zero cross-slot matching - this only ever looks at THIS
+      // slot's own old/new text.
+      final growthPrefix = _growthPrefixLength(
+        oldText,
+        newText,
+        bs.settledLength,
+      );
+      if (growthPrefix != null) {
+        final (trimmed, preserveTiming) = growthPrefix;
+        final start = trimmed > bs.settledLength ? trimmed : bs.settledLength;
+        // The discarded old suffix (`[trimmed, oldText.length)`) no longer
+        // corresponds to anything in `newText` - drop or truncate any run
+        // describing it; a run entirely within `[0, trimmed)` is unaffected
+        // (that prefix is unchanged, by construction of `trimmed`).
+        //
+        // For the MARKER trim only (`preserveTiming`), capture the EARLIEST
+        // `revealedAt` among the runs actually being discarded (if any)
+        // before discarding them - the raw markup this is replacing (e.g.
+        // `'**primary'`) can already have been mid-fade for real (a genuine
+        // prior growth step armed a run over it, same as any other text),
+        // and resetting to `nowValue` here would visibly DIP it back down
+        // despite it already having been partway visible - exactly the
+        // failure this fix exists to prevent, not reintroduce. Continuing
+        // the SAME timeline instead (the word is conceptually "the same
+        // one", merely re-styled) means a range already close to fully
+        // faded simply stays that way. The WHITESPACE trim never needs
+        // this - the suffix beyond a trailing newline is always genuinely
+        // brand new content, so it's armed fresh from `nowValue` exactly
+        // like ordinary growth.
+        Duration? preserveFrom;
+        for (final run in bs.runs) {
+          if (run.end <= trimmed) continue;
+          if (preserveTiming &&
+              (preserveFrom == null || run.revealedAt < preserveFrom)) {
+            preserveFrom = run.revealedAt;
+          }
+          run.end = trimmed;
+        }
+        bs.runs.removeWhere((r) => r.end <= r.start);
+        if (start < newText.length) {
+          bs.runs.add(
+            _SlotRun(start, newText.length, preserveFrom ?? nowValue),
+          );
         }
         bs.text = newText;
         bs.pendingText = null;

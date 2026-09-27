@@ -51,16 +51,14 @@ void main() {
           gap: 3,
           build: (s, text) => _build(preset, s, text),
           buildBare: (text) => _buildBare(preset, text),
-          // Known, documented gap for tables (B1-S6 round 6 "block-level
-          // simplification" - see doc/BENCHMARKS.md and the sibling gap
-          // documented in markdown_fade_verify3_test.dart/verify4_test.dart):
-          // a genuinely new tail slot's append can be deferred long enough,
-          // by an earlier slot's own case-4 hysteresis over the table's own
-          // structural churn, that the content is already fully exposed by
-          // the time it fires - so it pops instead of fades. The hard
-          // dip invariant is unaffected (`go()` asserts it unconditionally
-          // regardless of this flag).
-          allowPops: d.key.contains('table'),
+          // Known, documented gap for tables (B1F1 round 7's own per-type
+          // ceiling, ≤15% - see doc/BENCHMARKS.md): a genuinely new tail
+          // slot's append can be deferred long enough, by an earlier
+          // slot's own case-4 hysteresis over the table's own structural
+          // churn, that the content is already fully exposed by the time
+          // it fires - so it pops instead of fades. The hard dip invariant
+          // is unaffected (`go()` asserts it unconditionally regardless).
+          maxPopFraction: d.key.contains('table') ? 0.15 : 0.0,
         ),
         tags: const ['fade_matrix'],
       );
@@ -76,7 +74,7 @@ void main() {
           'preset.$preset.${d.key}',
           d.value,
           gap: 3,
-          allowPops: true,
+          maxPopFraction: 0.15,
           build: (s, text) => _build(preset, s, text),
           buildBare: (text) => _buildBare(preset, text),
         ),

@@ -108,3 +108,42 @@ const orphanDocs = {
       '| Key | Value |\n|---|---|\n| Speed | Fast |\n\nNotes:\n\n- Speed\n'
       '- Fast enough\n\nEnd. ',
 };
+
+/// Ported from B1F1 round 7's own 112-case realistic corpus
+/// (`scratchpad/stm/vb7/probes/inv7_real_test.dart`'s `realDocs`) - the
+/// evidence for two real bugs the round-6 matrix's own corpus never
+/// exercised: `# H1` headings (a `gpt_markdown`-rendered trailing divider
+/// placeholder broke the fade-tracking text's own prefix match once
+/// stripped) and inline-markup-heavy prose on the `text:` growing/chat path
+/// (the caught-up widget can render `**bold**`/`` `code` ``/`[link]` raw
+/// before a still-streaming close resolves it styled). See
+/// `markdown_fade_mask.dart`'s `_growthPrefixLength` doc for the fix and
+/// doc/BENCHMARKS.md's "block-level simplification" section for the
+/// measured per-type pop rates.
+const realDocs = {
+  'h1_long':
+      '# Quarterly revenue summary for northern regions\n\nSales grew '
+      'steadily across territories. ',
+  'h1_mid':
+      'Opening remarks here.\n\n# Detailed findings about customer '
+      'retention\n\nClosing thoughts appear. ',
+  'h2_long':
+      '## Quarterly revenue summary for northern regions\n\nSales grew '
+      'steadily across territories. ',
+  'h3_long':
+      '### Quarterly revenue summary for northern regions\n\nSales grew '
+      'steadily across territories. ',
+  'para_bold':
+      'The **primary reason** for failure was a **missing configuration** '
+      'value, which caused the **deployment pipeline** to halt '
+      'unexpectedly during nightly builds. ',
+  'para_code':
+      'Call `fetchUsers` before `renderTable` so that the `userCache` '
+      'stays warm across navigation events. ',
+  'llm_answer':
+      '# Deployment checklist\n\nBefore releasing, confirm the **build '
+      'number** and run `flutter analyze` locally.\n\n## Steps\n\n1. '
+      'Update the **changelog** entry\n2. Tag the release commit\n3. '
+      'Upload artifacts to storage\n\n- **Speed:** acceptable overall\n'
+      '- **Memory:** within budget\n\nThat completes everything needed. ',
+};

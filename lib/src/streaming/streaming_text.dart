@@ -13,6 +13,7 @@ import '../engine/reveal_scheduler.dart';
 import '../engine/unit_policy.dart';
 import '../render/caret_inline.dart';
 import '../render/fade_span.dart';
+import '../render/markdown_fade_mask.dart';
 import '../render/markdown_options.dart';
 import '../render/markdown_renderer.dart';
 import '../render/render_scope.dart';
@@ -798,6 +799,34 @@ class _StreamingTextState extends State<StreamingText>
       widget.trailingFadeEnabled &&
       (!_isComplete || _groupAnimationController.value < 1.0);
 
+  /// B1-S6: whether the cheap, paint-only markdown word-fade
+  /// ([MarkdownFadeMask]) is in effect. `gpt_markdown`'s own
+  /// `animation: fade` was rejected (see [markdownRevealFadeEnabled]'s
+  /// wiring in `_buildContent` and doc/BENCHMARKS.md) for blowing the
+  /// element-rebuild budget; this reuses the same [_engine] fade runs the
+  /// plain-text path already tracks, but applies them via a
+  /// [RenderProxyBox]-level paint mask instead of rebuilding
+  /// `GptMarkdown`'s span tree.
+  bool get _markdownFadeAllowed =>
+      widget.animationsEnabled &&
+      widget.markdownEnabled &&
+      !_reducedMotion &&
+      _modeFadeEnabled;
+
+  bool get _markdownFadeActive =>
+      _markdownFadeAllowed &&
+      hasActiveFade(
+        runs: _currentFadeRuns(),
+        now: _now(),
+        fadeDuration: _effectiveFadeDuration,
+      );
+
+  /// Notified every ticker frame while [_markdownFadeActive] might be true,
+  /// so [MarkdownFadeMask] repaints itself directly - never via `setState`,
+  /// which would rebuild the whole `GptMarkdown` subtree for no reason (the
+  /// exact cost this slice exists to avoid).
+  final _RepaintSignal _markdownFadeRepaint = _RepaintSignal();
+
   List<FadeRun> _currentFadeRuns() => _engine.runs
       .map(
         (r) => FadeRun(
@@ -830,7 +859,11 @@ class _StreamingTextState extends State<StreamingText>
   /// all of it to static frames (DESIGN.md section 7): no fade curve, no
   /// caret pulse.
   bool get _needsTicking =>
-      !_reducedMotion && (_scheduler.isRunning || _fadeActive || _caretVisible);
+      !_reducedMotion &&
+      (_scheduler.isRunning ||
+          _fadeActive ||
+          _markdownFadeActive ||
+          _caretVisible);
 
   void _syncTicker() {
     if (!mounted) return;
@@ -862,6 +895,14 @@ class _StreamingTextState extends State<StreamingText>
         _now(),
         reducedMotion: _reducedMotion,
       );
+    }
+
+    // Wake [MarkdownFadeMask] up directly (paint-only, no `setState`) so a
+    // fade can keep settling after the scheduler itself has gone idle -
+    // e.g. the last word of a burst still fading out after the stream
+    // paused - without re-running `gpt_markdown`'s segment cache.
+    if (widget.markdownEnabled) {
+      _markdownFadeRepaint.ping();
     }
 
     // Only reveal progress and fade settling actually change what
@@ -984,6 +1025,7 @@ class _StreamingTextState extends State<StreamingText>
     _scheduler.dispose();
     _ticker?.dispose();
     _groupAnimationController.dispose();
+    _markdownFadeRepaint.dispose();
     _caretOpacityNotifier?.dispose();
     widget.controller?.removeListener(_handleControllerChange);
     super.dispose();
@@ -1300,6 +1342,18 @@ class _StreamingTextState extends State<StreamingText>
             );
           },
         );
+        if (_markdownFadeAllowed) {
+          markdownContent = MarkdownFadeMask(
+            enabled: true,
+            runsOf: _currentFadeRuns,
+            engineLengthOf: () => _engine.cursor,
+            now: _now,
+            fadeDuration: _effectiveFadeDuration,
+            curve: _effectiveFadeCurve,
+            repaint: _markdownFadeRepaint,
+            child: markdownContent,
+          );
+        }
         markdownContent = _wrapTrailingFade(markdownContent);
         content = Directionality(
           textDirection: direction,
@@ -1398,4 +1452,12 @@ class _StreamingTextState extends State<StreamingText>
       ),
     );
   }
+}
+
+/// A [ChangeNotifier] that only ever exposes a public "wake up" ping -
+/// [MarkdownFadeMask] listens to it directly to repaint itself, without
+/// [StreamingText] needing `@protected` access to `notifyListeners` from
+/// outside a [ChangeNotifier] subclass.
+class _RepaintSignal extends ChangeNotifier {
+  void ping() => notifyListeners();
 }

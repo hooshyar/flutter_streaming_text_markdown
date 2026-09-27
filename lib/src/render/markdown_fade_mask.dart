@@ -1,9 +1,15 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
-import 'fade_span.dart';
+/// One still-fading range of the last [RenderParagraph]'s OWN rendered plain
+/// text (never source-text coordinates - see [RenderMarkdownFadeMask]'s doc
+/// for why that distinction is load-bearing).
+class _MaskRun {
+  const _MaskRun(this.start, this.end, this.revealedAt);
+  final int start;
+  final int end;
+  final Duration revealedAt;
+}
 
 /// Paints a cheap word-fade over the trailing text of the last
 /// [RenderParagraph] found in [child]'s subtree, without ever rebuilding or
@@ -20,26 +26,33 @@ import 'fade_span.dart';
 /// paint-time effect driven by [repaint] (typically the same ticker that
 /// already drives the caret/plain-text fade).
 ///
-/// **Coordinate mapping.** [runsOf] returns [FadeRun]s in the *reveal
-/// engine's* source-text coordinates (`RevealEngine.runs`/`.cursor`), not
-/// the rendered paragraph's plain text - `gpt_markdown` strips markdown
-/// syntax and `mend()` can hold back an incomplete trailing marker, so the
-/// two texts are not offset-for-offset identical. Both grow in lockstep at
-/// the *tail* while streaming though, which is the only place an active run
-/// can ever be (older runs are always already settled/opaque), so each run
-/// is mapped onto the rendered paragraph by *distance from the end*
-/// (`engineLength - run.start`/`.end`) rather than by absolute offset. A run
-/// whose distance-from-end exceeds the rendered paragraph's own length
-/// (i.e. `mend()` is still withholding it) is skipped outright rather than
-/// mis-painted near offset zero.
+/// **Coordinate mapping (fixed after a verify-round-2 pixel regression).**
+/// An earlier version of this mask mapped the reveal engine's fade runs
+/// (source-text coordinates) onto the rendered paragraph by *distance from
+/// the end*, assuming the source and rendered texts grow in lockstep at the
+/// tail. They don't: `gpt_markdown` strips markdown syntax entirely (a
+/// `**word**` source run is 4 characters longer than its rendered `word`;
+/// a `[text](url)` link can be dozens of characters longer than its
+/// rendered `text`), so appending one made the tail's "distance from the
+/// end" jump for every run behind it too, dimming already-settled words or
+/// (for a long link) an entire preceding line.
+///
+/// This version never looks at source-text coordinates at all. Every time
+/// [performLayout] observes the last [RenderParagraph]'s own
+/// `text.toPlainText().length` grow, it records a [_MaskRun] spanning
+/// exactly `[oldRenderedLength, newRenderedLength)` at the current time -
+/// i.e. purely in the paragraph's own coordinate space, using the
+/// paragraph's actual rendered growth as the signal instead of trying to
+/// re-derive it from the source. If the last paragraph's *identity* changes
+/// (a new block started), tracking resets instead of carrying stale offsets
+/// into an unrelated paragraph or fading anything in an older, already-
+/// settled one.
 class MarkdownFadeMask extends SingleChildRenderObjectWidget {
   /// Creates a markdown trailing-fade mask around [child].
   const MarkdownFadeMask({
     super.key,
     required Widget super.child,
     required this.enabled,
-    required this.runsOf,
-    required this.engineLengthOf,
     required this.now,
     required this.fadeDuration,
     required this.curve,
@@ -50,13 +63,7 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
   /// with zero extra cost.
   final bool enabled;
 
-  /// The reveal engine's current fade runs (source-text coordinates).
-  final List<FadeRun> Function() runsOf;
-
-  /// The reveal engine's current cursor (source-text length so far).
-  final int Function() engineLengthOf;
-
-  /// The shared fade clock (matches [FadeRun.revealedAt]'s units).
+  /// The shared fade clock (matches the reveal engine's own).
   final Duration Function() now;
 
   /// How long a run takes to reach full opacity.
@@ -73,8 +80,6 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
   RenderMarkdownFadeMask createRenderObject(BuildContext context) {
     return RenderMarkdownFadeMask(
       enabled: enabled,
-      runsOf: runsOf,
-      engineLengthOf: engineLengthOf,
       now: now,
       fadeDuration: fadeDuration,
       curve: curve,
@@ -89,8 +94,6 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
   ) {
     renderObject
       ..enabled = enabled
-      ..runsOf = runsOf
-      ..engineLengthOf = engineLengthOf
       ..now = now
       ..fadeDuration = fadeDuration
       ..curve = curve
@@ -104,8 +107,6 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
   /// Creates the render object. See [MarkdownFadeMask]'s fields.
   RenderMarkdownFadeMask({
     required bool enabled,
-    required this.runsOf,
-    required this.engineLengthOf,
     required this.now,
     required this.fadeDuration,
     required this.curve,
@@ -123,18 +124,12 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
     markNeedsPaint();
   }
 
-  // `paint` conditionally calls `context.pushLayer` (only on a frame with an
-  // active fade) - report compositing eligibility for the whole time
-  // masking is enabled, not just on frames that actually push a layer, so
-  // ancestors never see a mid-stream flip they weren't told about.
+  // `paint` conditionally calls `context.canvas.saveLayer` (only on a frame
+  // with an active fade) - report compositing eligibility for the whole
+  // time masking is enabled, not just on frames that actually use a layer,
+  // so ancestors never see a mid-stream flip they weren't told about.
   @override
   bool get alwaysNeedsCompositing => _enabled;
-
-  /// See [MarkdownFadeMask.runsOf].
-  List<FadeRun> Function() runsOf;
-
-  /// See [MarkdownFadeMask.engineLengthOf].
-  int Function() engineLengthOf;
 
   /// See [MarkdownFadeMask.now].
   Duration Function() now;
@@ -156,7 +151,8 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
   }
 
   RenderParagraph? _lastParagraph;
-  int _paragraphTextLength = 0;
+  int _lastParagraphLength = 0;
+  final List<_MaskRun> _pendingRuns = <_MaskRun>[];
 
   @override
   void attach(PipelineOwner owner) {
@@ -176,56 +172,81 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
     _refreshLastParagraph();
   }
 
-  /// Finds the last (paint-order) [RenderParagraph] in [child]'s subtree.
+  /// Finds the last (paint-order) [RenderParagraph] in [child]'s subtree
+  /// and records any growth as a new [_MaskRun].
   ///
   /// Only run from [performLayout] - i.e. only when [child]'s actual
   /// content/shape changed - never from a ticker-only [paint] pass, so a
   /// pure fade-settling frame never re-walks the whole render tree.
   void _refreshLastParagraph() {
     final c = child;
-    if (c == null) {
-      _lastParagraph = null;
-      _paragraphTextLength = 0;
+    RenderParagraph? found;
+    if (c != null) {
+      void visit(RenderObject node) {
+        if (node is RenderParagraph) found = node;
+        node.visitChildren(visit);
+      }
+
+      visit(c);
+    }
+
+    if (!identical(found, _lastParagraph)) {
+      // The last paragraph's very IDENTITY changed - either this is the
+      // very FIRST paragraph this mask has ever seen (nothing to protect;
+      // its whole initial content is genuinely brand new, exactly like the
+      // very first revealed word of plain text), or a new block started /
+      // `gpt_markdown` rebuilt this region's render objects mid-stream
+      // (there COULD be a lot of already-settled text folded into the new
+      // paragraph object, e.g. a restructured table - fading all of that
+      // on a bare identity swap is exactly the "flash-refades settled
+      // content" failure mode this file was rewritten to avoid, so that
+      // case starts tracking fresh with NO run instead).
+      //
+      // Either way, offsets never carry across unrelated `RenderParagraph`s
+      // (their coordinate spaces have nothing to do with each other), and
+      // an older paragraph is never touched again once it stops being
+      // `_lastParagraph`.
+      final isFirstParagraphEver = _lastParagraph == null;
+      _lastParagraph = found;
+      _pendingRuns.clear();
+      final newLength = found?.text.toPlainText().length ?? 0;
+      if (isFirstParagraphEver && newLength > 0) {
+        _pendingRuns.add(_MaskRun(0, newLength, now()));
+      }
+      _lastParagraphLength = newLength;
       return;
     }
-    RenderParagraph? found;
-    void visit(RenderObject node) {
-      if (node is RenderParagraph) found = node;
-      node.visitChildren(visit);
-    }
 
-    visit(c);
-    _lastParagraph = found;
-    _paragraphTextLength = found?.text.toPlainText().length ?? 0;
+    final newLength = found?.text.toPlainText().length ?? 0;
+    if (newLength > _lastParagraphLength) {
+      _pendingRuns.add(_MaskRun(_lastParagraphLength, newLength, now()));
+    }
+    // A shrink (e.g. the caret's trailing placeholder character disappearing
+    // on completion) is never treated as a fade - just re-baseline silently.
+    _lastParagraphLength = newLength;
+
+    // Prune runs that can no longer be active, so a long-running stream
+    // never accumulates an unbounded backlog of settled runs.
+    final cutoff = now() - fadeDuration;
+    _pendingRuns.removeWhere((r) => r.revealedAt <= cutoff);
   }
 
-  /// Every still-fading run's local-to-[paragraph] rect(s) and alpha, oldest
-  /// run first. Exposed (read-only) purely so tests can assert the fade
-  /// curve directly - without screenshots - instead of only through
-  /// [paint]'s side effects. Not used by [paint] itself for the rect union
-  /// (see [_dimsIn]), only for the paragraph/total-length pair it shares.
+  /// Every still-fading run's local-to-this-render-object rect(s) and
+  /// alpha, oldest run first. Exposed (read-only) purely so tests can
+  /// assert the fade curve directly - without screenshots - instead of only
+  /// through [paint]'s side effects.
   @visibleForTesting
   List<(Rect rect, double alpha)> debugActiveDims() {
     final paragraph = _lastParagraph;
     if (paragraph == null || !paragraph.attached) return const [];
-    return _dimsIn(paragraph, _paragraphTextLength);
+    return _dims(paragraph);
   }
 
-  List<(Rect rect, double alpha)> _dimsIn(
-    RenderParagraph paragraph,
-    int total,
-  ) {
-    if (total <= 0) return const [];
+  List<(Rect rect, double alpha)> _dims(RenderParagraph paragraph) {
+    if (_pendingRuns.isEmpty) return const [];
     final nowValue = now();
-    final engineLength = engineLengthOf();
-
-    // Collect every still-fading run's (rect, alpha) pair FIRST, across the
-    // whole run list, and apply them in a single paint pass below. Painting
-    // [child] once per run (each a fresh, fully-opaque paint) would make
-    // each later pass overwrite the dimming an earlier pass applied
-    // elsewhere - it must be painted exactly once per frame.
     final dims = <(Rect, double)>[];
-    for (final run in runsOf()) {
+    for (final run in _pendingRuns) {
       final elapsed = nowValue - run.revealedAt;
       if (elapsed >= fadeDuration) continue;
       final t =
@@ -237,25 +258,12 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
       final progress = curve.transform(t.clamp(0.0, 1.0)).clamp(0.0, 1.0);
       if (progress >= 1.0) continue;
 
-      final suffixEnd = engineLength - run.start;
-      final suffixStart = engineLength - run.end;
-      if (suffixEnd <= 0) {
-        // This run has already scrolled entirely past the paragraph
-        // boundary into an already-settled earlier block.
-        continue;
-      }
-      // `suffixEnd` can legitimately exceed `total` by a character or two -
-      // e.g. a trailing space `mend()`/`gpt_markdown` collapse out of the
-      // rendered plain text entirely while the engine still counts it -
-      // without that meaning the run is unrendered; clamp it down to "the
-      // very end of what's actually there" instead of skipping the run.
-      final clampedSuffixEnd = suffixEnd > total ? total : suffixEnd;
-      final renderStart = (total - clampedSuffixEnd).clamp(0, total);
-      final renderEnd = (total - suffixStart).clamp(0, total);
-      if (renderEnd <= renderStart) continue;
+      final start = run.start.clamp(0, _lastParagraphLength);
+      final end = run.end.clamp(start, _lastParagraphLength);
+      if (end <= start) continue;
 
       final boxes = paragraph.getBoxesForSelection(
-        TextSelection(baseOffset: renderStart, extentOffset: renderEnd),
+        TextSelection(baseOffset: start, extentOffset: end),
       );
       for (final box in boxes) {
         dims.add((box.toRect(), progress));
@@ -280,62 +288,29 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
       return;
     }
 
-    final dims = _dimsIn(paragraph, _paragraphTextLength);
+    final dims = _dims(paragraph);
     if (dims.isEmpty) {
       context.paintChild(c, offset);
       return;
     }
 
     final transform = paragraph.getTransformTo(this);
-    final mapped = [
-      for (final (box, progress) in dims)
-        (MatrixUtils.transformRect(transform, box).shift(offset), progress),
-    ];
-    _paintNested(context, offset, c, mapped, 0);
-  }
-
-  /// Paints [c] wrapped in one nested [ShaderMaskLayer] per entry in
-  /// [dims], each localized (via its own `maskRect`) to a single fading
-  /// run's box. [c] itself is only ever painted once, at the innermost
-  /// level - the outer layers are cheap compositing wrappers around that
-  /// one paint, not repeated traversals of [c]'s subtree.
-  ///
-  /// Deliberately goes through [PaintingContext.pushLayer] (rather than
-  /// raw `canvas.saveLayer`/`restore`) so a repaint boundary anywhere in
-  /// [c]'s subtree is handled by the framework's own layer plumbing instead
-  /// of risking an orphaned mid-picture canvas.
-  void _paintNested(
-    PaintingContext context,
-    Offset offset,
-    RenderBox c,
-    List<(Rect, double)> dims,
-    int index,
-  ) {
-    if (index >= dims.length) {
-      context.paintChild(c, offset);
-      return;
+    // One full paint of [c] (same cost as bare), then dim each fading box
+    // in place, all within a SINGLE compositing layer - not one nested
+    // layer per box (up to ~32, one per `RevealEngine` run kept), which is
+    // what an earlier version of this file did and what made verify flag
+    // it as unnecessarily heavy compositing.
+    context.canvas.saveLayer(offset & size, Paint());
+    context.paintChild(c, offset);
+    for (final (box, progress) in dims) {
+      final mapped = MatrixUtils.transformRect(transform, box).shift(offset);
+      context.canvas.drawRect(
+        mapped,
+        Paint()
+          ..color = Color.fromRGBO(0, 0, 0, progress)
+          ..blendMode = BlendMode.dstIn,
+      );
     }
-    final (maskRect, progress) = dims[index];
-    final color = Color.fromRGBO(0, 0, 0, progress);
-    // A uniform (both stops equal) gradient: it's just a flat `progress`
-    // alpha over the whole `maskRect`, not a directional fade - only the
-    // rect's *bounds* matter for localizing the effect. Per [ShaderMaskLayer
-    // .shader]'s doc, the shader's own coordinate origin is `maskRect`'s
-    // top-left, not the canvas origin.
-    final layer =
-        ShaderMaskLayer()
-          ..shader = ui.Gradient.linear(
-            Offset.zero,
-            Offset(maskRect.width, maskRect.height),
-            [color, color],
-          )
-          ..maskRect = maskRect
-          ..blendMode = BlendMode.dstIn;
-    context.pushLayer(
-      layer,
-      (innerContext, innerOffset) =>
-          _paintNested(innerContext, innerOffset, c, dims, index + 1),
-      offset,
-    );
+    context.canvas.restore();
   }
 }

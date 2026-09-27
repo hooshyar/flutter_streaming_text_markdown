@@ -354,3 +354,68 @@ test/perf/stream_benchmark_test.dart`.
 off - the same gate `_modeFadeEnabled` already used for plain text.
 `markdownRevealFadeEnabled` (the `gpt_markdown`-hybrid path rejected in
 B1-S5) is untouched and stays `false`.
+
+### B1 final-verify round 2 correction: source-offset mapping mis-dimmed settled text
+
+The version above mapped the reveal engine's fade runs (in *source-text*
+coordinates - `RevealEngine.runs`/`.cursor`) onto the rendered paragraph by
+**distance from the end**, on the assumption that the source and rendered
+texts grow in lockstep at the tail. Verify round 2's pixel-level probe
+(`scratchpad/stm/vb2/probes/pix_test.dart`/`mono_test.dart`) proved that
+assumption false: `gpt_markdown` strips markdown syntax entirely, so
+appending `**boldword**` (12 source characters, 8 rendered) or a link like
+`[docs](https://example.com/...)` (dozens of source characters, 4 rendered)
+made every OLDER run's "distance from the end" jump too, since that distance
+is measured against the ever-growing *source* length while the *rendered*
+text grew by a different amount. Reported failures:
+
+- appending `**boldword**` dropped the previous word from alpha 1.0 to 0.00;
+- a markdown link dropped the whole preceding line to 0.06;
+- inline code and images did the same;
+- realistic prose streamed in 3/12/40-char chunks made already-settled words
+  dip by 0.95-1.00 and then re-fade.
+
+**The fix** (`lib/src/render/markdown_fade_mask.dart`): stop looking at
+source-text coordinates at all. `RenderMarkdownFadeMask.performLayout` now
+records a run directly from the *rendered* paragraph's own growth: every
+time `text.toPlainText().length` increases from `oldLen` to `newLen`, that
+exact `[oldLen, newLen)` range (in the paragraph's OWN coordinate space) is
+timestamped and queued for `paint` to fade in - no source-text distance
+math anywhere. If the last paragraph's *identity* changes (a new block
+started, or `gpt_markdown` rebuilt the region), tracking resets - the very
+first paragraph this mask ever sees still fades its initial content (like
+plain text's first revealed word), but a later identity swap starts fresh
+with no run at all, so a restructured block can never flash-refade content
+that's already settled elsewhere.
+
+This also uncovered a second, narrower bug during the fix: the shared
+ticker's "keep going" decision (`StreamingText._markdownFadeActive`) still
+needs to ask something that updates the instant a reveal step happens - the
+render object's OWN tracking only updates one build/layout cycle later (it
+can only observe what `performLayout` sees), which is late enough that a
+burst that reveals-and-idles within a single `RevealScheduler` tick could
+have the ticker stop before the mask's just-created run ever gets a chance
+to animate. Fixed by padding the *ticking* decision's window with a 64ms
+safety margin over the engine's own fade-duration check (`_markdownFadeActive`
+in `streaming_text.dart`) - the render object's own `paint`-time math is
+unaffected; a padded ticking window only risks a few harmless idle frames,
+never a stuck fade.
+
+**Non-blocking cleanup also done:** `paint` used to nest one full-bounds
+`ShaderMaskLayer` per still-fading box (up to ~32, one per `RevealEngine`
+run kept) - replaced with a single `canvas.saveLayer` plus one
+`BlendMode.dstIn` `drawRect` per box, matching the doc comment's original
+claim of "one extra full paint... plus one dstIn rect draw per run".
+
+**New pixel-level regression test**
+(`test/widget/markdown_fade_pixel_test.dart`, adapted from the verifier's
+own probes): streams the verifier's bold/link/inline-code prose at 3/12/40
+character chunks and samples real `RepaintBoundary.toImage()` snapshots
+every frame (not `debugActiveDims` - the actual pixel output verify's probe
+flagged). Confirmed to FAIL against the pre-fix code (checked out from
+integration HEAD `daeceac`) and PASS after the fix, all three chunk sizes.
+
+Re-run `test/perf/stream_benchmark_test.dart` after the fix: 0.48x-0.69x
+time (shared-machine noise, still comfortably "faster than bare" on this
+metric), 1.71x-1.82x rebuilds - unchanged from the original B1-S6 numbers
+above and still well inside the 1.8x/6x budget.

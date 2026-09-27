@@ -803,22 +803,47 @@ class _StreamingTextState extends State<StreamingText>
   /// ([MarkdownFadeMask]) is in effect. `gpt_markdown`'s own
   /// `animation: fade` was rejected (see [markdownRevealFadeEnabled]'s
   /// wiring in `_buildContent` and doc/BENCHMARKS.md) for blowing the
-  /// element-rebuild budget; this reuses the same [_engine] fade runs the
-  /// plain-text path already tracks, but applies them via a
-  /// [RenderProxyBox]-level paint mask instead of rebuilding
-  /// `GptMarkdown`'s span tree.
+  /// element-rebuild budget; this instead tracks the *rendered* paragraph's
+  /// own growth (see `markdown_fade_mask.dart`'s doc for why - a verify
+  /// round flagged the original source-offset mapping as mis-dimming
+  /// settled words whenever markdown syntax made the rendered text shorter
+  /// than the source) and applies it via a [RenderProxyBox]-level paint
+  /// mask instead of rebuilding `GptMarkdown`'s span tree.
   bool get _markdownFadeAllowed =>
       widget.animationsEnabled &&
       widget.markdownEnabled &&
       !_reducedMotion &&
       _modeFadeEnabled;
 
+  /// A generous safety margin added on top of [_effectiveFadeDuration] only
+  /// for the "should the shared ticker keep running" decision below - never
+  /// for [MarkdownFadeMask]'s own paint-time alpha math.
+  ///
+  /// [MarkdownFadeMask] times its runs from when the *rendered* paragraph's
+  /// text actually grows, which is only ever observed from `performLayout`
+  /// - i.e. one build/layout cycle AFTER the reveal engine's own
+  /// [_engine.runs] entry was created (the engine updates synchronously
+  /// inside [RevealScheduler]'s `Timer` callback; the render object only
+  /// finds out once that triggers a rebuild). If the ticking decision used
+  /// the engine's un-padded fade window, a scheduler tick that both reveals
+  /// AND immediately idles within one `Timer` callback (a short burst that
+  /// finishes in a single step - exactly this single-word smooth_fade
+  /// scenario) could have the ticker's OWN `_onTick` observe
+  /// `_scheduler.isRunning == false` and the not-yet-laid-out mask's
+  /// `_engine`-based window already expired in the very same frame the
+  /// paragraph's fade run is about to be created in - stopping the ticker
+  /// before the mask ever gets a chance to animate at all. Padding the
+  /// window with a couple of frames' worth of slack costs nothing (idle
+  /// frames are cheap; [MarkdownFadeMask] itself is still the one deciding
+  /// exactly what and how much to dim) and closes that race.
+  static const Duration _markdownTickingSlack = Duration(milliseconds: 64);
+
   bool get _markdownFadeActive =>
       _markdownFadeAllowed &&
       hasActiveFade(
         runs: _currentFadeRuns(),
         now: _now(),
-        fadeDuration: _effectiveFadeDuration,
+        fadeDuration: _effectiveFadeDuration + _markdownTickingSlack,
       );
 
   /// Notified every ticker frame while [_markdownFadeActive] might be true,
@@ -1345,8 +1370,6 @@ class _StreamingTextState extends State<StreamingText>
         if (_markdownFadeAllowed) {
           markdownContent = MarkdownFadeMask(
             enabled: true,
-            runsOf: _currentFadeRuns,
-            engineLengthOf: () => _engine.cursor,
             now: _now,
             fadeDuration: _effectiveFadeDuration,
             curve: _effectiveFadeCurve,

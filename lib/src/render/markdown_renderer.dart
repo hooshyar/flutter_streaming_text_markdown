@@ -4,7 +4,7 @@ import 'package:gpt_markdown/gpt_markdown.dart';
 
 import '../engine/atomic_spans.dart';
 import 'markdown_options.dart';
-import 'render_text_transform.dart';
+import 'mend.dart';
 
 /// The single place a `GptMarkdown` widget is built.
 ///
@@ -43,11 +43,11 @@ class StreamingMarkdownView extends StatelessWidget {
     this.inlineComponents,
   });
 
-  /// The full (unwithheld) source text. [withholdOpenFence] is applied
-  /// internally before this reaches `GptMarkdown`.
+  /// The full (unmended) source text. [mend] is applied internally before
+  /// this reaches `GptMarkdown`.
   final String text;
 
-  /// Whether the reveal is finished. Forwarded to [withholdOpenFence] and to
+  /// Whether the reveal is finished. Forwarded to [mend] and to
   /// `GptMarkdown.isStreaming` (inverted).
   final bool isComplete;
 
@@ -182,7 +182,7 @@ class StreamingMarkdownView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final opts = options;
-    final withheldText = withholdOpenFence(text, isComplete: isComplete);
+    final withheldText = mend(text, isComplete: isComplete);
     // Only forward `useDollarSignsForLatex` to gpt_markdown when the caller
     // set it explicitly - that opts into gpt_markdown's own naive, code-
     // oblivious `$...$` rewrite on purpose. Otherwise, when latexEnabled is

@@ -901,53 +901,39 @@ corpus, ported into `markdown_fade_invariant_docs.dart`'s `realDocs` and
    2b: if `oldText.trimRight()` is a genuine prefix of `newText`, treat it
    as growth from the trimmed length instead of falling through to case 4.
 2. **Inline-markup-heavy prose on the growing `text:`/chat path popped
-   6.4-22% of its words.** The caught-up widget can render markup RAW
-   (`'**bold'`, asterisks and all) while a `**`/`*`/`_`/`` ` ``/`[`/`~~`
-   span is still open; once its close streams in, `gpt_markdown` re-renders
-   the same span styled (the raw markers gone) - a genuine small rewrite,
-   not a literal prefix extension, so it also landed in case 4. **Fixed**
-   by extending case 2b: if `oldText` minus everything from its LAST
-   unresolved marker character onward is a prefix of `newText`, treat it as
-   growth from that trimmed length - with a HARD invariant of its own: the
-   marker trim is never considered below the slot's OWN `settledLength`
-   (an early draft that scanned unconditionally re-triggered a genuine DIP,
-   discarding and re-arming an EARLIER, already-settled bold span purely
-   because a document's own unchanged beginning trivially satisfies
+   6.4-22% of its words**, still residually up to 15.8% after round 7's own
+   fix below (round 7's fix reduced, but did not fully close, this one -
+   see round 8 below for the actual close). The caught-up widget can
+   render markup RAW (`'**bold'`, asterisks and all) while a
+   `**`/`*`/`_`/`` ` ``/`[`/`~~` span is still open; once its close streams
+   in, `gpt_markdown` re-renders the same span styled (the raw markers
+   gone) - a genuine small rewrite, not a literal prefix extension, so it
+   also landed in case 4. **Round 7 fixed part of this** by extending case
+   2b: if `oldText` minus everything from its LAST unresolved marker
+   character onward is a prefix of `newText`, treat it as growth from that
+   trimmed length - with a HARD invariant of its own: the marker trim is
+   never considered below the slot's OWN `settledLength` (an early draft
+   that scanned unconditionally re-triggered a genuine DIP, discarding and
+   re-arming an EARLIER, already-settled bold span purely because a
+   document's own unchanged beginning trivially satisfies
    `newText.startsWith(...)` at almost any position - caught by this
    slice's own invariant probes before it ever shipped). The discarded
-   run's own `revealedAt` timestamp is preserved (never reset to `nowValue`)
-   for this specific trim, so continuing the same fade timeline - not
-   restarting it - is what keeps this fix from ever turning a pop into a
-   dip.
+   run's own `revealedAt` timestamp is preserved (never reset to
+   `nowValue`) for this specific trim, so continuing the same fade
+   timeline - not restarting it - is what keeps this fix from ever turning
+   a pop into a dip.
 
-**Test integrity, corrected.** An earlier draft of this fix accidentally
-weakened `expect(r.pops, 0)` in `markdown_fade_verify3_test.dart` (7
-asserts), `markdown_fade_verify4_test.dart`, `markdown_fade_verify5_test.dart`
-and `markdown_fade_invariant_lib.dart` to
-`lessThanOrEqualTo(r.words)`/`lessThanOrEqualTo(words.length)` - an
-assertion that can never fail, caught in round 7 review. That is never
-acceptable regardless of how genuine the underlying limitation is; it has
-been reverted to real, measured, per-category bounds (`go()`'s
-`maxPopFraction` parameter, default `0.0` - exactly zero unless a call site
-explicitly documents a real, measured ceiling):
-
-| doc type (representative)          | stream | chat  | chunk |
-|-------------------------------------|-------:|------:|------:|
-| paragraph, H2, H3, flat ul/ol, code  |    0%  |   0%  |   0%  |
-| H1 (`h1_long`/`h1_mid`)              |  0-4.5%|   0%  |   n/a |
-| inline-markup prose (`para_bold`)    |    0%  | 0-15.8%|  n/a |
-| mixed heading + inline (`llm_answer`)|    0%  | 0-3.6%|  n/a |
-| `nested` (sub-list attaching)        |    0%  | 0-7.7%|   0%  |
-| `table` (row/cell construction)      | 0-6.8% | 0-3.1%|0-10.9%|
-| `stale` corpus (genuine case-4 reflow: table collapse, mixed blocks, setext, hr) | up to 40% (designed-poppable by construction) |||
-
-Ceilings in the test suite are set with a small margin above these
-measured worst cases (H1 30%, inline-markup 20%, mixed heading+inline 5%,
-nested 10%, table 15% on `stream`/`chat` and 45% on the far coarser,
-synthetic `chunk` mode, `stale` corpus 45%) - every OTHER doc/path/caret
-combination in the matrix (the overwhelming majority) is asserted at
-EXACTLY zero pops, not a tolerance. Dips remain at exactly zero, no
-exception, everywhere, always.
+**Test integrity - NOT actually corrected until round 8, despite round 7's
+own commit claiming otherwise.** An earlier draft of the round-7 fix
+accidentally weakened `expect(r.pops, 0)` in
+`markdown_fade_verify3_test.dart` (7 asserts), `markdown_fade_verify4_test.dart`,
+`markdown_fade_verify5_test.dart` (2 more asserts, one of them on a 4-word
+doc) to `lessThanOrEqualTo(r.words)`/`lessThanOrEqualTo(words.length)`/
+`lessThanOrEqualTo(4)` - assertions that can never fail. Round 7's own
+commit message claimed this had been "reverted...to real, measured,
+per-category bounds", but that revert never actually happened - the
+vacuous asserts were still present, unchanged, at the start of round 8. See
+round 8 below for the real fix and the real, measured numbers.
 
 **Numbers.** `_refresh`'s own per-layout cost (`refresh walk` micro-
 benchmark, ported from the round-6/7 verifier's `cost6_test.dart`, run from
@@ -997,3 +983,108 @@ time of its delay (via a real `Stopwatch`) and pumps the widget tree by
 that exact duration, instead of assuming the delay took precisely 16ms -
 keeping the widget tree's virtual clock in sync with the real `Stopwatch`
 the fade math itself uses, regardless of machine load.
+
+### B1F1 round 8: the case-2b marker-trim leak, and the vacuous asserts actually reverted
+
+Round 7's own commit message claimed the vacuous `expect(r.pops, ...)`
+asserts it introduced mid-development had been reverted to real bounds -
+they had NOT. `markdown_fade_verify3_test.dart` still had 7
+`lessThanOrEqualTo(r.words)` asserts, `markdown_fade_verify4_test.dart`
+still had `lessThanOrEqualTo(words.length)`, and
+`markdown_fade_verify5_test.dart` still had `lessThanOrEqualTo(words.length)`
+plus `lessThanOrEqualTo(4)` on a 4-word doc - every one of these can never
+fail regardless of how badly the mask regresses. Round 8 fixes both the
+tests (below) and a real bug in round 7's own case 2b fix that the vacuous
+asserts had been hiding.
+
+**The bug case 2b's marker trim left behind.** Round 7's marker-trim split
+(`lib/src/render/markdown_fade_mask.dart`, case 2b) correctly identified
+`trimmed` - the point up to which `oldText`'s unresolved-marker tail should
+be discarded - but then armed the ENTIRE remainder `[start, newText.length)`
+at the single `preserveFrom` timestamp (the discarded run's own earliest
+`revealedAt`, meant for the re-styled remnant of the SAME characters). If a
+whole new word streamed in together with the closing marker (e.g. `'**pri'`
+completing to `'**primary reason'` in one step), that new word inherited
+the OLD span's timestamp too - popping in already ~87% faded instead of
+starting its own fade from `nowValue`. **Fixed** by computing `k`, the
+common-prefix length between the discarded old tail (marker characters
+stripped) and the corresponding slice of `newText`, and splitting the arm
+in two: `[start, trimmed+k)` keeps `preserveFrom` (the genuinely re-styled
+remnant), `[trimmed+k, newText.length)` arms fresh at `nowValue` (genuinely
+new content). Verified against ~740 synthetic probe cases plus this repo's
+own real-doc corpus: 0 inline pops, 0 dips.
+
+**The vacuous asserts, actually reverted this time**, to real, measured,
+per-category bounds (`go()`'s `maxPopFraction` parameter, default `0.0` -
+exactly zero unless a call site explicitly documents a real, measured
+ceiling):
+
+| doc type (representative)             | stream | chat   | chunk  |
+|----------------------------------------|-------:|-------:|-------:|
+| paragraph, H2, H3, flat ul/ol, code     |    0%  |    0%  |    0%  |
+| H1 (`h1_long`/`h1_mid`)                 | at most 1 word (sampling-granularity, not a real pop) |||
+| inline-markup prose (`para_bold`, every `para_*` doc) | 0% | 0% | n/a |
+| mixed heading + inline (`llm_answer`)   |    0%  |    0%  |  n/a   |
+| `nested` (sub-list attaching)           |    0%  | 0-7.7% |   0%   |
+| `table` (row/cell construction)         | 0-6.8% | 0-3.1% | 0-10.9%|
+| `stale` corpus: `tbl2` (two separate tables in one doc) | 0-27% | 0-13% | 0-33% |
+| `stale` corpus: `tbl2adj`/`tblThenList` (one table reflow) | 0-18% | 0-9% | 0-27% |
+| `stale` corpus: `mixed` (heading+list+table+code+quote)   | 0% | 0% | 0-4% |
+| `stale` corpus: `listThenPara`/`olThenUl`/`setext`/`hrs` (no table) | 0% | 0% | 0% |
+
+The previous "up to 40%, designed-poppable by construction" claim covering
+the WHOLE `stale` corpus was false: only the three table-reflow docs
+(`tbl2`, `tbl2adj`, `tblThenList`) ever pop - `listThenPara`, `olThenUl`,
+`setext` and `hrs` measured EXACTLY 0% across every path/mode/caret
+combination, because none of them ever touch a table cell (the actual
+source of the deferred-append collision - see
+`markdown_fade_mask.dart`'s `_pendingExposedLength` doc). `mixed` contains
+one table cell alongside its list/quote/code content, so it inherits a
+small table-shaped ceiling ONLY in `chunk` mode (measured up to 4%,
+ceiling 15%); on the realistic `stream`/`chat` paths it is 0% like the
+other non-table-reflow docs.
+
+Exact test ceilings set (each with a small margin above its own measured
+worst case on this machine, re-verified over 5+ repeated runs):
+
+- `markdown_fade_verify3_test.dart`: all 7 asserts at `0`, except "a table
+  cell, and text after the table, caret=true" at `lessThanOrEqualTo(caret ?
+  3 : 0)` (measured 1-5 pops/7 words across repeated runs; caret=false
+  stays `0`).
+- `markdown_fade_verify4_test.dart`: `0` for every doc/path/caret, except
+  `nested list` on the `text:`/growing path (both caret states) at `2`, and
+  `table` on the `stream` path with `caret=true` at `1`.
+- `markdown_fade_verify5_test.dart`: `0` everywhere (the "**" closing
+  rewrite case included - was `lessThanOrEqualTo(4)` on a 4-word doc,
+  i.e. vacuous; now genuinely asserted at zero and holds).
+- `markdown_fade_invariant_stale_test.dart`: `0` for `listThenPara`,
+  `olThenUl`, `setext`, `hrs`; `mixed` at `0` (`0.15` in `chunk` mode only);
+  `tbl2adj`/`tblThenList` at `0.15` (`0.40` in `chunk` mode); `tbl2` at
+  `0.40` in every mode (measurably noisier than the other two table docs
+  even on `stream`/`chat` - a real, reproducible number for THIS doc
+  shape, not a loosened blanket).
+- `markdown_fade_invariant_real_test.dart`: `h1_long`/`h1_mid` at `1/11`
+  (a literal single-word allowance, expressed as a fraction so `go()`'s
+  `(fraction * r.words).ceil()` resolves to exactly 1 regardless of the
+  doc's own word count) - was `0.30`; `llm_answer` unchanged at `0.05`;
+  every other doc (`h2_long`, `h3_long`, `para_bold`, `para_code`) at `0` -
+  was `0.20` for `para_bold`, vacuous nowhere in this file but looser than
+  measured.
+- `markdown_fade_invariant_smoke_test.dart`: the H1 smoke case at `1/11`
+  (same single-word allowance, was a blanket `0.30`); the bold-heavy chat
+  smoke case at `0` (was `0.20`).
+
+**Regression proof.** Checked out a scratch `git worktree add` at round 7's
+own commit (`97285a9`) with round 8's test files copied in: the smoke
+test's "bold-heavy chat g4" case (ceiling `0`) FAILED with `pops=3` (actual
+3, expected <=0), and 4 of `markdown_fade_invariant_real_test.dart`'s
+`para_bold` `chat`-path cases FAILED the same way (`3/19` pops each) -
+confirming both the test bound and the case-2b split-arm fix are real, not
+coincidentally already passing. The scratch worktree was removed after.
+
+**Numbers.** The full exhaustive `fade_matrix` suite
+(`markdown_fade_invariant_stale_test.dart`, 96 cases, and
+`markdown_fade_invariant_real_test.dart`, 112 cases) ran fully green after
+these changes; `markdown_fade_verify3_test.dart`/`4`/`5` and the default
+suite ran green across 3 consecutive runs (see the slice's own commit for
+exact timings on this machine).

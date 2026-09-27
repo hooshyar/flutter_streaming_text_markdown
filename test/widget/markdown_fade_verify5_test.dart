@@ -316,7 +316,7 @@ void main() {
               );
               expect(
                 r.pops,
-                lessThanOrEqualTo(words.length),
+                lessThanOrEqualTo(0),
                 reason: 'a repeated word popped in already-dark:\n${r.report}',
               );
               expect(
@@ -346,7 +346,7 @@ void main() {
           useGrowingText: false,
           gap: 2,
         );
-        expect(r.pops, lessThanOrEqualTo(4), reason: r.report);
+        expect(r.pops, lessThanOrEqualTo(0), reason: r.report);
         expect(r.worstDrop, lessThanOrEqualTo(0.05), reason: r.report);
       });
     }

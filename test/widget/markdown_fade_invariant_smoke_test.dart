@@ -61,8 +61,13 @@ void main() {
       // See markdown_fade_invariant_real_test.dart's `_popCeiling` doc: a
       // rare, sampling-granularity pop can occur even at gap 3 under
       // real-frame timing variance (never a dip - unconditionally
-      // asserted at zero regardless).
-      maxPopFraction: 0.30,
+      // asserted at zero regardless). A small word allowance, expressed
+      // as `2/wordCount` (this doc tracks 11 words) so `go()`'s
+      // `(fraction * r.words).ceil()` resolves to exactly 2 - matches
+      // `markdown_fade_invariant_real_test.dart`'s own ceiling for this
+      // doc, measured under the same full-`fade_matrix`-tag concurrent
+      // load.
+      maxPopFraction: 2 / 11,
     ),
   );
 
@@ -74,7 +79,6 @@ void main() {
       realDocs['para_bold']!,
       gap: 4,
       mode: 'chat',
-      maxPopFraction: 0.20,
     ),
   );
 

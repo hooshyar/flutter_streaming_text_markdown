@@ -296,27 +296,26 @@ void main() {
                   'settled content must stay within 5% of its final '
                   'darkness on every frame:\n${r.report}',
             );
-            // Known, documented gap (B1-S6 round 6 "block-level
-            // simplification" - see doc/BENCHMARKS.md's "block-level
-            // simplification" section for the full trade-off writeup): any
-            // doc can add a genuinely new tail slot while an EARLIER slot
-            // is itself mid case-4 hysteresis over its own structural churn
-            // (the caret's own extra paragraph shuffle, a nested sub-list
-            // attaching, a table row's own multi-cell construction); the
-            // new slot's append is correctly deferred (never dips -
-            // `worstDrop` above still holds unconditionally, with or
-            // without this gap, every doc, every run) but, if that content
-            // is ALREADY fully exposed (rendered unmasked while deferred)
-            // by the time the append finally fires, no run is armed and it
-            // pops rather than fades. This is bounded (never all-or-
-            // nothing) rather than asserted at exactly zero: real-frame
-            // timing variance under machine load changes exactly how many
-            // occurrences land in the exposed window, not whether the
-            // mechanism itself is broken - the DIP assertion above is the
-            // hard, unconditional gate.
+            // Measured, tolerated-category ceilings (B1-S6 round 6
+            // "block-level simplification" - see doc/BENCHMARKS.md): a
+            // nested list can add a genuinely new tail slot while an
+            // EARLIER slot is itself mid case-4 hysteresis over its own
+            // structural churn (a nested sub-list attaching, a table row's
+            // own multi-cell construction); the new slot's append is
+            // correctly deferred (never dips - `worstDrop` above still
+            // holds unconditionally, every doc, every run) but, if that
+            // content is ALREADY fully exposed (rendered unmasked while
+            // deferred) by the time the append finally fires, no run is
+            // armed and it pops rather than fades. Every other document in
+            // this matrix is asserted at exactly zero pops.
+            final ceiling = switch ((entry.key, path)) {
+              ('nested list', 'text') => 2,
+              ('table', 'stream') when caret => 1,
+              _ => 0,
+            };
             expect(
               r.pops,
-              lessThanOrEqualTo(words.length),
+              lessThanOrEqualTo(ceiling),
               reason: 'no word should pop in already-dark:\n${r.report}',
             );
           });

@@ -65,11 +65,21 @@ Widget _buildBare(String preset, String text) => switch (preset) {
 };
 
 /// Measured, documented per-doc ceilings (see doc/BENCHMARKS.md) - every
-/// doc not listed here is asserted at exactly zero pops.
+/// doc not listed here (including every `para_*` doc) is asserted at
+/// exactly zero pops. `h1_long`/`h1_mid` get a small word allowance (a
+/// sampling-granularity artifact against the 180ms fade window, not the
+/// pre-fix 36-45%-of-the-doc failure) rather than the old blanket 30%,
+/// expressed as `N/wordCount` so `go()`'s `(fraction * r.words).ceil()`
+/// resolves to exactly N regardless of the doc's own word count. A single
+/// word (1/11) holds when this file runs alone; running the FULL
+/// `fade_matrix` tag concurrently with every other invariant file adds
+/// enough real CPU contention (more frame-timing slop against the 180ms
+/// window) to occasionally land a second word in the same window at the
+/// widest gap (`stream g5`, `caret=true`) - a real, reproduced number
+/// under that specific load condition, not a loosened blanket.
 double _popCeiling(String doc) => switch (doc) {
-  'h1_long' => 0.30,
-  'h1_mid' => 0.30,
-  'para_bold' => 0.20,
+  'h1_long' => 2 / 11,
+  'h1_mid' => 2 / 11,
   'llm_answer' => 0.05,
   _ => 0.0,
 };

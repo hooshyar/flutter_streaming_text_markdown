@@ -760,10 +760,31 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
           run.end = trimmed;
         }
         bs.runs.removeWhere((r) => r.end <= r.start);
-        if (start < newText.length) {
-          bs.runs.add(
-            _SlotRun(start, newText.length, preserveFrom ?? nowValue),
+        // Only the re-styled remnant of the discarded old tail keeps the
+        // preserved timeline - it's the same characters, merely re-styled.
+        // Anything beyond that (e.g. a whole new word that streamed in
+        // alongside the closing marker) is genuinely new content and must
+        // arm fresh from `nowValue`, or it pops in already mid-fade.
+        var keepEnd = start;
+        if (preserveFrom != null) {
+          final oldTail = oldText.substring(trimmed);
+          final stripped = String.fromCharCodes(
+            oldTail.codeUnits.where((c) => !_inlineMarkerCodeUnits.contains(c)),
           );
+          var k = 0;
+          while (k < stripped.length &&
+              trimmed + k < newText.length &&
+              stripped.codeUnitAt(k) == newText.codeUnitAt(trimmed + k)) {
+            k++;
+          }
+          keepEnd = trimmed + k;
+        }
+        final split = keepEnd < start ? start : keepEnd;
+        if (preserveFrom != null && start < split) {
+          bs.runs.add(_SlotRun(start, split, preserveFrom));
+        }
+        if (split < newText.length) {
+          bs.runs.add(_SlotRun(split, newText.length, nowValue));
         }
         bs.text = newText;
         bs.pendingText = null;

@@ -284,7 +284,7 @@ void main() {
         final r = await _run(t, [prose], proseWords, caret: caret);
         expect(
           r.pops,
-          lessThanOrEqualTo(r.words),
+          lessThanOrEqualTo(0),
           reason: 'words popped in unfaded: caret=$caret\n${r.report}',
         );
         expect(r.worstDrop, lessThanOrEqualTo(0.05), reason: r.report);
@@ -300,7 +300,7 @@ void main() {
         );
         expect(
           r.pops,
-          lessThanOrEqualTo(r.words),
+          lessThanOrEqualTo(0),
           reason: 'gap-revealed words popped in: caret=$caret\n${r.report}',
         );
         expect(r.worstDrop, lessThanOrEqualTo(0.05), reason: r.report);
@@ -315,7 +315,7 @@ void main() {
         );
         expect(
           r.pops,
-          lessThanOrEqualTo(r.words),
+          lessThanOrEqualTo(0),
           reason: 'list items popped in: caret=$caret\n${r.report}',
         );
         expect(r.worstDrop, lessThanOrEqualTo(0.05), reason: r.report);
@@ -330,7 +330,7 @@ void main() {
         );
         expect(
           r.pops,
-          lessThanOrEqualTo(r.words),
+          lessThanOrEqualTo(0),
           reason: 'quote text popped in: caret=$caret\n${r.report}',
         );
         expect(r.worstDrop, lessThanOrEqualTo(0.05), reason: r.report);
@@ -368,8 +368,12 @@ void main() {
         // unconditionally either way.
         expect(
           r.pops,
-          lessThanOrEqualTo(r.words),
-          reason: 'table cells popped in: caret=$caret\n${r.report}',
+          // Table, caret on: measured up to 3 across repeated runs
+          // (tolerated category).
+          lessThanOrEqualTo(caret ? 3 : 0),
+          reason:
+              'table cells popped in: caret=$caret pops=${r.pops}\n'
+              '${r.report}',
         );
         expect(r.worstDrop, lessThanOrEqualTo(0.05), reason: r.report);
       });
@@ -388,7 +392,7 @@ void main() {
         );
         expect(
           r.pops,
-          lessThanOrEqualTo(r.words),
+          lessThanOrEqualTo(0),
           reason: 'code lines popped in: caret=$caret\n${r.report}',
         );
         expect(r.worstDrop, lessThanOrEqualTo(0.05), reason: r.report);
@@ -431,7 +435,7 @@ void main() {
       );
       expect(
         r.pops,
-        lessThanOrEqualTo(r.words),
+        lessThanOrEqualTo(0),
         reason: 'growing-text words popped in: ${r.report}',
       );
       expect(r.worstDrop, lessThanOrEqualTo(0.05), reason: r.report);

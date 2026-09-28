@@ -23,6 +23,8 @@ export 'src/theme/streaming_text_theme.dart';
 export 'src/controller/streaming_text_controller.dart';
 export 'src/presets/animation_presets.dart';
 export 'src/render/markdown_options.dart';
+export 'src/render/code/code_block_view.dart' show CodeBlockView;
+export 'src/theme/code_block_theme.dart' show CodeBlockTheme;
 export 'src/widgets/streaming_shimmer.dart' show StreamingShimmer;
 
 // Re-exported because they appear in [MarkdownRenderOptions]'s public

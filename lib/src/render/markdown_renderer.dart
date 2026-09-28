@@ -3,6 +3,7 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
 import '../engine/atomic_spans.dart';
+import 'code/code_block_view.dart';
 import 'markdown_options.dart';
 import 'mend.dart';
 
@@ -207,6 +208,20 @@ class StreamingMarkdownView extends StatelessWidget {
     );
   }
 
+  /// The default `codeBuilder` (PHASE-B2-LEAN.md S1) installed when the
+  /// caller didn't supply their own [codeBuilder]: a syntax-highlighted
+  /// [CodeBlockView]. `name` is `gpt_markdown`'s fence info string (the
+  /// language tag); `closed` is forwarded straight through so the copy
+  /// affordance stays disabled/hidden while the block is still streaming.
+  Widget _defaultCodeBuilder(
+    BuildContext context,
+    String name,
+    String code,
+    bool closed,
+  ) {
+    return CodeBlockView(code: code, language: name, closed: closed);
+  }
+
   @override
   Widget build(BuildContext context) {
     final opts = options;
@@ -284,7 +299,7 @@ class StreamingMarkdownView extends StatelessWidget {
       useDollarSignsForLatex: explicitUseDollarSigns ?? false,
       imageBuilder: effectiveImageBuilder,
       onLinkTap: onLinkTap,
-      codeBuilder: codeBuilder,
+      codeBuilder: codeBuilder ?? _defaultCodeBuilder,
       latexBuilder: effectiveLatexBuilder,
       inlineSourceTagBuilder: effectiveSourceTagBuilder,
       inlineCodeBuilder: effectiveInlineCodeBuilder,

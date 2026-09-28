@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 /// Controller for programmatically controlling StreamingText animations.
 ///
@@ -56,6 +57,15 @@ class StreamingTextController extends ChangeNotifier {
   /// if any. Cleared by [restart] and [stop].
   Object? _error;
 
+  /// The full source text of the bound widget (see [markdown]), mirrored so
+  /// the controller can serve copy requests even while a reveal is running.
+  String _markdown = '';
+
+  /// Whether the bound widget's input is closed (a `stream:` that has
+  /// emitted `done`, or static `text:` which is closed from the start).
+  /// `true` while detached so [isStreaming] falls back to state alone.
+  bool _inputClosed = true;
+
   /// Current state of the streaming animation
   StreamingTextState get state => _state;
 
@@ -73,6 +83,36 @@ class StreamingTextController extends ChangeNotifier {
 
   /// Whether the animation is currently running
   bool get isAnimating => _state == StreamingTextState.animating && !_isPaused;
+
+  /// Whether text is still arriving or still being revealed.
+  ///
+  /// `true` while a `stream:` input is open (more chunks may yet arrive,
+  /// even if the reveal is momentarily caught up), or while a reveal is in
+  /// progress or paused. `false` once the animation has completed, or after
+  /// [stop] returns the controller to [StreamingTextState.idle] with a
+  /// closed input. A controller that has never been attached to a widget
+  /// reports `false`.
+  bool get isStreaming =>
+      !_inputClosed ||
+      _state == StreamingTextState.animating ||
+      _state == StreamingTextState.paused;
+
+  /// The full source text of the bound widget, for copy.
+  ///
+  /// For a `stream:` source this is everything received so far; for static
+  /// `text:` input it is the widget's current text. Read this (rather than
+  /// the widget's `text` parameter) when you want the accumulated content —
+  /// e.g. behind a "copy" button, see [copyToClipboard].
+  ///
+  /// `''` until the controller is attached to a `StreamingText`.
+  String get markdown => _markdown;
+
+  /// Copies [markdown] to the system clipboard.
+  ///
+  /// Convenience for "copy response" buttons; equivalent to
+  /// `Clipboard.setData(ClipboardData(text: markdown))`.
+  Future<void> copyToClipboard() =>
+      Clipboard.setData(ClipboardData(text: _markdown));
 
   /// Speed multiplier for the animation
   double get speedMultiplier => _speedMultiplier;
@@ -168,6 +208,21 @@ class StreamingTextController extends ChangeNotifier {
   /// [skipToEnd]).
   void updateState(StreamingTextState newState) {
     _updateState(newState);
+  }
+
+  /// Internal method to publish the current source snapshot.
+  ///
+  /// For use by the `StreamingText` widget only; not part of the public
+  /// programmatic control surface. Called wherever the engine's source or
+  /// its open/closed state might have changed so [markdown] and
+  /// [isStreaming] stay truthful. Listeners are only notified when the
+  /// input-open state flips — ordinary source growth doesn't notify here
+  /// because the per-tick [updateProgress] notification already covers it.
+  void updateSource(String source, {required bool inputClosed}) {
+    final flipped = inputClosed != _inputClosed;
+    _markdown = source;
+    _inputClosed = inputClosed;
+    if (flipped) notifyListeners();
   }
 
   /// Internal method to update progress.

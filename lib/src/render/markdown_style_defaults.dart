@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
+import '../theme/code_block_theme.dart';
 import '../theme/streaming_tokens.dart';
 
 /// DESIGN.md section 6.5's default typography, heading scale and table look
@@ -13,15 +14,37 @@ import '../theme/streaming_tokens.dart';
 
 /// The default body text style (DESIGN.md 6.5: 16/25, weight 400, dark
 /// tracking +0.1) used when the caller didn't pass their own `style`.
+///
+/// Based on `DefaultTextStyle.of(context).style` — not `Theme.of(context)
+/// .textTheme.bodyLarge` — so an ancestor `DefaultTextStyle`'s colour and
+/// font family always carry through (`Theme.bodyLarge` often carries no
+/// explicit `color` at all under Material 3; the real colour comes from an
+/// ancestor `DefaultTextStyle`/`Material` widget instead, so basing on
+/// `bodyLarge` silently dropped it).
+///
+/// The DESIGN.md size/height/weight/tracking are then applied ONLY when the
+/// ancestor didn't already set that field explicitly (`fontSize`/`height`
+/// non-null on the ancestor style means a caller — or a `Material`/
+/// `Scaffold` text-theme default — already made a call here; DESIGN.md's
+/// opinion is a *default*, not an override, so it steps aside). This isn't
+/// just a style-precedence nicety: overriding an already-explicit ancestor
+/// `fontSize` feeds a *different* number into `GptMarkdown`'s own
+/// `blockGap()` (`(config.style?.fontSize ?? 14) * 1.15`, scaled) than the
+/// number the surrounding layout actually settled on, which measurably
+/// desynced this package's own trailing-fade mask from gpt_markdown's real
+/// block spacing for a handful of frames — the exact mechanism behind
+/// `fade_matrix`'s "mixed" doc rendering its code block ~7% darker before
+/// settling (bisected empirically: reverting only the `fontSize` override,
+/// with colour/height/weight/tracking untouched, was sufficient to make the
+/// invariant pass again; see `markdown_fade_invariant_stale_test.dart`).
 TextStyle defaultMarkdownBodyStyle(BuildContext context) {
-  final theme = Theme.of(context);
-  final base = theme.textTheme.bodyLarge ?? const TextStyle();
-  final isDark = theme.brightness == Brightness.dark;
+  final base = DefaultTextStyle.of(context).style;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
   return base.copyWith(
-    fontSize: 16,
-    height: 25 / 16,
-    fontWeight: FontWeight.w400,
-    letterSpacing: isDark ? 0.1 : 0,
+    fontSize: base.fontSize == null ? 16 : null,
+    height: base.height == null ? 25 / 16 : null,
+    fontWeight: base.fontWeight == null ? FontWeight.w400 : null,
+    letterSpacing: base.letterSpacing == null ? (isDark ? 0.1 : 0) : null,
   );
 }
 
@@ -37,15 +60,21 @@ GptMarkdownStyleSheet defaultMarkdownStyleSheet(BuildContext context) {
       theme.brightness == Brightness.dark ? tokens.borderStrong : tokens.border;
 
   return GptMarkdownStyleSheet(
-    // No divider under headings (DESIGN.md anti-pattern 11); the size scale
-    // itself lives in [defaultMarkdownHeadingBuilder] since `HeadingStyle`
-    // has one `textStyle` for every level.
+    // No divider under headings (DESIGN.md anti-pattern 11). DESIGN.md's
+    // per-level heading size scale is NOT applied here - see this file's
+    // heading-scale note below for why `HeadingStyle`/`GptMarkdownStyleSheet`
+    // can't express it and a `headingBuilder` can't retrofit it.
     heading: const HeadingStyle(showDivider: false),
     link: LinkStyle(color: accent, decoration: TextDecoration.underline),
     inlineCode: InlineCodeStyle(
-      // Reuses the S1 font family name; the actual font asset/family
-      // registration is added by the sibling code-block slice.
-      fontFamily: 'JetBrainsMono',
+      // Same family as fenced code blocks (`CodeBlockTheme.monoFontFamily`),
+      // sourced from gpt_markdown's own bundled asset - explicit here (not
+      // left to `InlineCodeStyle`'s own "defaults to gpt_markdown's bundled
+      // font while `fontFamily` is null" behaviour) only so this stays
+      // correct if a caller ever overrides `fontFamily` without also
+      // setting `fontFamilyPackage`.
+      fontFamily: CodeBlockTheme.monoFontFamily,
+      fontFamilyPackage: CodeBlockTheme.monoFontFamilyPackage,
       fontFamilyFallback: const ['monospace'],
       backgroundColor: tokens.inlineCodeBg,
     ),
@@ -77,45 +106,26 @@ GptMarkdownStyleSheet defaultMarkdownStyleSheet(BuildContext context) {
   );
 }
 
-/// Per-level size/weight/tracking from DESIGN.md 6.5. `h3`-`h6` share one row.
-class _HeadingScale {
-  const _HeadingScale(this.fontSize, this.lineHeight, this.tracking);
-  final double fontSize;
-  final double lineHeight;
-  final double tracking;
-}
-
-const _headingScales = <_HeadingScale>[
-  _HeadingScale(20, 28, -0.2), // h1
-  _HeadingScale(17.5, 26, -0.1), // h2
-  _HeadingScale(16, 24, 0), // h3
-  _HeadingScale(16, 24, 0), // h4
-  _HeadingScale(16, 24, 0), // h5
-  _HeadingScale(16, 24, 0), // h6
-];
-
-/// The default heading builder (DESIGN.md 6.5 scale + rhythm). Used only when
-/// the caller didn't supply their own `headingBuilder`.
-Widget defaultMarkdownHeadingBuilder(
-  BuildContext context,
-  int level,
-  Widget content,
-  HeadingStyle style,
-) {
-  final scale = _headingScales[(level - 1).clamp(0, _headingScales.length - 1)];
-  return Padding(
-    padding: const EdgeInsetsDirectional.only(top: 20, bottom: 8),
-    child: DefaultTextStyle.merge(
-      style: TextStyle(
-        fontSize: scale.fontSize,
-        height: scale.lineHeight / scale.fontSize,
-        fontWeight: FontWeight.w600,
-        letterSpacing: scale.tracking,
-      ),
-      child: content,
-    ),
-  );
-}
+// DESIGN.md 6.5's per-level heading size/weight/tracking scale (h1 20/28,
+// h2 17.5/26, h3-h6 16/24) was prototyped here as a `headingBuilder` that
+// wrapped gpt_markdown's rendered heading content in `DefaultTextStyle
+// .merge(...)`, then deliberately dropped, not shipped disabled-but-present:
+// `headingWidget` (gpt_markdown's `shared_render.dart`) already builds that
+// content's `TextSpan` tree with an explicit per-level `TextStyle` baked in
+// (`theme.h1`..`h6` off the ambient `GptMarkdownTheme`, merged with
+// `GptMarkdownStyleSheet.heading`'s single, level-agnostic `textStyle`)
+// before ever handing it to a `headingBuilder` - wrapping the already-built
+// widget in an outer `DefaultTextStyle` cannot reach spans that already
+// carry an explicit style, so the builder was silent dead code (confirmed:
+// an `h1` still measured gpt_markdown's own built-in 32px, unaffected,
+// after installing it). `GptMarkdownStyleSheet` has no `h1`-`h6` fields to
+// hook per-level sizing through either - only `GptMarkdownThemeData` does,
+// via its own separate `GptMarkdownTheme` ambient widget, which is a
+// bigger, apply-a-second-inherited-theme change than this default-supplying
+// file makes anywhere else. Left as a note for whoever picks this up next,
+// per this file's own header doc on `headingBuilder`/`tableBuilder`
+// resolution order: `StreamingMarkdownView.headingBuilder` stays whatever
+// the caller passes (or gpt_markdown's own default, unset).
 
 // A per-column width lock (DESIGN.md 6.3: "never shrink a column below its
 // previous max width during the stream") was prototyped here and then

@@ -37,27 +37,98 @@ void main() {
       expect(table.headerBackground, isNotNull);
     });
 
-    testWidgets('the default body text style is applied when style is null', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: StreamingText(
-              revealMode: null,
-              text: 'Hello world',
-              markdownEnabled: true,
-              animationsEnabled: false,
+    testWidgets(
+      'the default body weight/height apply when style is null, but an '
+      "ancestor's explicit fontSize is left alone",
+      (tester) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: StreamingText(
+                revealMode: null,
+                text: 'Hello world',
+                markdownEnabled: true,
+                animationsEnabled: false,
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      final markdown = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
-      expect(markdown.style?.fontSize, 16);
-      expect(markdown.style?.fontWeight, FontWeight.w400);
-    });
+        final markdown = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+        // `Scaffold`'s `Material` ancestor already sets an explicit
+        // `fontSize` (14, from the theme's body text style) before this
+        // widget ever runs - DESIGN.md's 16 is a *default*, not an
+        // override, so it steps aside for that already-explicit ancestor
+        // value (see `defaultMarkdownBodyStyle`'s doc for why: overriding
+        // an already-explicit ancestor `fontSize` here fed a different
+        // number into `gpt_markdown`'s own `blockGap()` than the rest of
+        // the layout had settled on, which desynced this package's
+        // trailing-fade mask for a few frames - the exact bug
+        // `markdown_fade_invariant_stale_test.dart`'s "mixed" doc caught).
+        // `fontWeight`/`height` aren't set by that ancestor, so DESIGN.md's
+        // defaults for those still apply.
+        expect(markdown.style?.fontSize, 14);
+        expect(markdown.style?.fontWeight, FontWeight.w400);
+      },
+    );
+
+    testWidgets(
+      "the ancestor's colour carries through, and DESIGN.md's 16/25 apply "
+      'when the ancestor sets no explicit fontSize/height at all',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: DefaultTextStyle(
+                style: const TextStyle(color: Color(0xFFFFFFFF)),
+                child: const StreamingText(
+                  revealMode: null,
+                  text: 'Hello world',
+                  markdownEnabled: true,
+                  animationsEnabled: false,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final markdown = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+        expect(markdown.style?.color, const Color(0xFFFFFFFF));
+        expect(markdown.style?.fontSize, 16);
+        expect(markdown.style?.height, 25 / 16);
+        expect(markdown.style?.fontWeight, FontWeight.w400);
+      },
+    );
+
+    testWidgets(
+      "DefaultTextStyle(color: white, fontSize: 13) keeps the colour white "
+      "and honours the ancestor's own fontSize (base 09853c5's own "
+      'behaviour, kept deliberately - see defaultMarkdownBodyStyle)',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: DefaultTextStyle(
+                style: const TextStyle(color: Color(0xFFFFFFFF), fontSize: 13),
+                child: const StreamingText(
+                  revealMode: null,
+                  text: 'Hello world',
+                  markdownEnabled: true,
+                  animationsEnabled: false,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final markdown = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+        expect(markdown.style?.color, const Color(0xFFFFFFFF));
+        expect(markdown.style?.fontSize, 13);
+      },
+    );
 
     testWidgets("the caller's styleSheet field wins over the default", (
       tester,
@@ -169,6 +240,105 @@ void main() {
         // (see LockedTableColumnWidth's doc comment).
         expect(markdown.tableBuilder, isNull);
         expect(find.byType(Table), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      "an ancestor GptMarkdownTheme's styleSheet is honoured over this "
+      "package's own DESIGN.md defaults (but still loses to the caller's "
+      'own styleSheet)',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: GptMarkdownTheme(
+                gptThemeData: GptMarkdownThemeData(
+                  brightness: Brightness.light,
+                  styleSheet: const GptMarkdownStyleSheet(
+                    link: LinkStyle(color: Color(0xFFFF0000)),
+                    blockQuote: BlockQuoteStyle(barWidth: 9),
+                  ),
+                ),
+                child: const StreamingText(
+                  revealMode: null,
+                  text: 'See [a link](https://x.y) now',
+                  markdownEnabled: true,
+                  animationsEnabled: false,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final markdown = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+        expect(markdown.styleSheet?.link?.color, const Color(0xFFFF0000));
+        expect(markdown.styleSheet?.blockQuote?.barWidth, 9);
+        // A field the ambient theme never set at all still gets this
+        // package's own DESIGN.md default (the theme fills gaps the caller
+        // left, our defaults fill gaps the theme left too).
+        expect(markdown.styleSheet?.table?.headerBackground, isNotNull);
+      },
+    );
+
+    testWidgets("the caller's own styleSheet field wins over an ambient "
+        'GptMarkdownTheme', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GptMarkdownTheme(
+              gptThemeData: GptMarkdownThemeData(
+                brightness: Brightness.light,
+                styleSheet: const GptMarkdownStyleSheet(
+                  link: LinkStyle(color: Color(0xFFFF0000)),
+                ),
+              ),
+              child: const StreamingText(
+                revealMode: null,
+                text: 'See [a link](https://x.y) now',
+                markdownEnabled: true,
+                animationsEnabled: false,
+                markdownOptions: MarkdownRenderOptions(
+                  styleSheet: GptMarkdownStyleSheet(
+                    link: LinkStyle(color: Color(0xFF00FF00)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final markdown = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      expect(markdown.styleSheet?.link?.color, const Color(0xFF00FF00));
+    });
+
+    testWidgets(
+      'with no ambient GptMarkdownTheme at all, this stays exactly the '
+      "package's own DESIGN.md look (no synthetic theme-derived styling "
+      'leaks in)',
+      (tester) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: StreamingText(
+                revealMode: null,
+                text: '`code`',
+                markdownEnabled: true,
+                animationsEnabled: false,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final markdown = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+        expect(markdown.styleSheet?.inlineCode?.fontFamily, 'JetBrainsMono');
+        expect(
+          markdown.styleSheet?.inlineCode?.fontFamilyPackage,
+          'gpt_markdown',
+        );
       },
     );
   });

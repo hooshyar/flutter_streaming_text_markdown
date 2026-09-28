@@ -6,8 +6,13 @@ import 'package:flutter/material.dart';
 /// WCAG-readable on their respective backgrounds. Use [CodeBlockTheme.of]
 /// to resolve a theme from ambient [Brightness].
 class CodeBlockTheme {
-  /// Font family bundled with this package (`fonts/JetBrainsMono-Regular.ttf`).
+  /// Font family, reused from `gpt_markdown`'s own bundled asset
+  /// (`packages/gpt_markdown/JetBrainsMono`) rather than shipping a second
+  /// ~152KB copy of the same font in this package.
   static const String monoFontFamily = 'JetBrainsMono';
+
+  /// The package [monoFontFamily] is shipped in — see [monoFontFamily].
+  static const String monoFontFamilyPackage = 'gpt_markdown';
 
   /// Platform monospace fallbacks used when the bundled font is unavailable.
   static const List<String> monoFontFallback = [
@@ -85,7 +90,7 @@ class CodeBlockTheme {
 
   static const TextStyle _baseLight = TextStyle(
     fontFamily: monoFontFamily,
-    package: 'flutter_streaming_text_markdown',
+    package: monoFontFamilyPackage,
     fontFamilyFallback: monoFontFallback,
     fontSize: 13.5,
     height: 1.48,
@@ -95,7 +100,7 @@ class CodeBlockTheme {
 
   static const TextStyle _baseDark = TextStyle(
     fontFamily: monoFontFamily,
-    package: 'flutter_streaming_text_markdown',
+    package: monoFontFamilyPackage,
     fontFamilyFallback: monoFontFallback,
     fontSize: 13.5,
     height: 1.48,

@@ -20,6 +20,10 @@ void main() {
   }
 
   testWidgets('styleSheet is forwarded to GptMarkdown', (tester) async {
+    // B2-S2: the caller's styleSheet is no longer forwarded verbatim - it is
+    // merged, field by field, with the DESIGN.md default sheet, so the
+    // caller's own field wins but fields it never set (e.g. `table`) still
+    // get a default rather than staying null. See markdown_style_defaults.dart.
     const sheet = GptMarkdownStyleSheet(
       blockQuote: BlockQuoteStyle(barWidth: 6),
     );
@@ -34,7 +38,8 @@ void main() {
       ),
     );
 
-    expect(markdown.styleSheet, same(sheet));
+    expect(markdown.styleSheet?.blockQuote?.barWidth, 6);
+    expect(markdown.styleSheet?.table, isNotNull);
   });
 
   testWidgets('GptMarkdown.components is null by default', (tester) async {

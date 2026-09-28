@@ -644,6 +644,16 @@ class _StreamingTextState extends State<StreamingText>
     }
   }
 
+  /// Pushes the engine's current source snapshot to the controller so its
+  /// `markdown`/`isStreaming` getters stay truthful (B2-S3). Cheap: the
+  /// controller only notifies its listeners when the input-open state flips.
+  void _syncControllerSource() {
+    widget.controller?.updateSource(
+      _engine.source,
+      inputClosed: _engine.inputClosed,
+    );
+  }
+
   void _initSource() {
     if (widget.stream != null) {
       _engine.setSource('', closed: false);
@@ -651,6 +661,7 @@ class _StreamingTextState extends State<StreamingText>
     } else {
       _engine.setSource(widget.text, closed: true);
     }
+    _syncControllerSource();
     _applyImmediateRevealIfNeeded();
     // Always move off `idle` once a reveal has actually started - including
     // when `animationsEnabled: false` reveals it instantly. Otherwise the
@@ -679,6 +690,7 @@ class _StreamingTextState extends State<StreamingText>
       _engine.append(chunk);
       _applyImmediateRevealIfNeeded();
     });
+    _syncControllerSource();
     _scheduler.wake();
     _syncTicker();
     widget.onTextChanged?.call();
@@ -695,6 +707,7 @@ class _StreamingTextState extends State<StreamingText>
       // no ticker running to reveal it later.
       _applyImmediateRevealIfNeeded();
     });
+    _syncControllerSource();
     _scheduler.wake();
     _syncTicker();
   }
@@ -814,6 +827,7 @@ class _StreamingTextState extends State<StreamingText>
       state = StreamingTextState.animating;
     }
     widget.controller?.updateState(state);
+    _syncControllerSource();
   }
 
   void _handleTap() {
@@ -1106,6 +1120,7 @@ class _StreamingTextState extends State<StreamingText>
       if (widget.text != oldWidget.text) {
         _resetArabicCache();
         _engine.setSource(widget.text, closed: true);
+        _syncControllerSource();
       }
     }
 

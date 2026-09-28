@@ -5,6 +5,7 @@ import 'package:gpt_markdown/gpt_markdown.dart';
 import '../engine/atomic_spans.dart';
 import 'code/code_block_view.dart';
 import 'markdown_options.dart';
+import 'markdown_style_defaults.dart';
 import 'mend.dart';
 
 /// The single place a `GptMarkdown` widget is built.
@@ -280,9 +281,21 @@ class StreamingMarkdownView extends StatelessWidget {
             )
             : opts?.inlineLinkBuilder;
 
+    // DESIGN.md 6.5/6.3 defaults, applied only where the caller left the
+    // corresponding field unset. `styleSheet` merges per field (the caller's
+    // sheet wins field by field, ours fills the gaps); `style`,
+    // `headingBuilder` and `tableBuilder` fall back to ours only when the
+    // caller passed none at all.
+    final effectiveStyleSheet = (opts?.styleSheet ??
+            const GptMarkdownStyleSheet())
+        .merge(defaultMarkdownStyleSheet(context));
+    final effectiveStyle = style ?? defaultMarkdownBodyStyle(context);
+    final effectiveHeadingBuilder =
+        opts?.headingBuilder ?? defaultMarkdownHeadingBuilder;
+
     return GptMarkdown(
       renderText,
-      style: style,
+      style: effectiveStyle,
       textDirection: textDirection ?? TextDirection.ltr,
       textAlign: textAlign,
       textScaler: textScaler,
@@ -304,6 +317,8 @@ class StreamingMarkdownView extends StatelessWidget {
       inlineSourceTagBuilder: effectiveSourceTagBuilder,
       inlineCodeBuilder: effectiveInlineCodeBuilder,
       inlineLinkBuilder: effectiveLinkBuilder,
+      headingBuilder: effectiveHeadingBuilder,
+      tableBuilder: opts?.tableBuilder,
       // Only ever non-null when the user supplied them directly — see the
       // field docs above for why gpt_markdown treats any non-null value
       // (even an empty list) as opting into its legacy pipeline.
@@ -311,10 +326,8 @@ class StreamingMarkdownView extends StatelessWidget {
       components: components,
       // ignore: deprecated_member_use
       inlineComponents: inlineComponents,
-      styleSheet: opts?.styleSheet,
+      styleSheet: effectiveStyleSheet,
       inlineCodeStyle: opts?.inlineCodeStyle,
-      headingBuilder: opts?.headingBuilder,
-      tableBuilder: opts?.tableBuilder,
       blockQuoteBuilder: opts?.blockQuoteBuilder,
       orderedListBuilder: opts?.orderedListBuilder,
       unOrderedListBuilder: opts?.unOrderedListBuilder,

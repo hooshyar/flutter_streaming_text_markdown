@@ -5,7 +5,6 @@ import 'package:gpt_markdown/gpt_markdown.dart';
 import '../engine/atomic_spans.dart';
 import 'code/code_block_view.dart';
 import 'markdown_options.dart';
-import 'markdown_style_defaults.dart';
 import 'mend.dart';
 
 /// The single place a `GptMarkdown` widget is built.
@@ -281,32 +280,9 @@ class StreamingMarkdownView extends StatelessWidget {
             )
             : opts?.inlineLinkBuilder;
 
-    // DESIGN.md 6.5/6.3 defaults, applied only where the caller left the
-    // corresponding field unset. `styleSheet` merges per field, narrowest
-    // first: the caller's own sheet wins field by field, then an EXPLICIT
-    // ambient `GptMarkdownTheme` (an app really set one - either a
-    // `GptMarkdownTheme` ancestor widget, or a `GptMarkdownThemeData`
-    // registered on `ThemeData.extensions`, see
-    // `_explicitAncestorGptMarkdownStyleSheet`'s doc) fills anything the
-    // caller didn't set, and only then do our own DESIGN.md defaults fill
-    // whatever neither of those set. Previously this skipped the ambient
-    // theme entirely (`callerSheet.merge(ourDefaults)`), so our defaults
-    // silently beat a caller's app-wide `GptMarkdownTheme` even though the
-    // caller never touched `styleSheet` on this specific widget.
-    // `style` falls back to ours only when the caller passed none at all.
-    // `headingBuilder`/`tableBuilder` have no default of ours to fall back
-    // to (see `markdown_style_defaults.dart`'s heading-scale note) - they
-    // stay whatever the caller passed, `null` otherwise.
-    final ambientSheet = _explicitAncestorGptMarkdownStyleSheet(context);
-    final effectiveStyleSheet = (opts?.styleSheet ??
-            const GptMarkdownStyleSheet())
-        .merge(ambientSheet)
-        .merge(defaultMarkdownStyleSheet(context));
-    final effectiveStyle = style ?? defaultMarkdownBodyStyle(context);
-
     return GptMarkdown(
       renderText,
-      style: effectiveStyle,
+      style: style,
       textDirection: textDirection ?? TextDirection.ltr,
       textAlign: textAlign,
       textScaler: textScaler,
@@ -337,7 +313,7 @@ class StreamingMarkdownView extends StatelessWidget {
       components: components,
       // ignore: deprecated_member_use
       inlineComponents: inlineComponents,
-      styleSheet: effectiveStyleSheet,
+      styleSheet: opts?.styleSheet,
       inlineCodeStyle: opts?.inlineCodeStyle,
       blockQuoteBuilder: opts?.blockQuoteBuilder,
       orderedListBuilder: opts?.orderedListBuilder,
@@ -359,33 +335,4 @@ class StreamingMarkdownView extends StatelessWidget {
       inlineDirectives: opts?.inlineDirectives,
     );
   }
-}
-
-/// The ambient `GptMarkdownStyleSheet` an app EXPLICITLY set — either via a
-/// `GptMarkdownTheme` ancestor widget, or a `GptMarkdownThemeData` registered
-/// on `ThemeData.extensions` — or `null` when neither is present.
-///
-/// Deliberately NOT `GptMarkdownTheme.of(context).styleSheet`: that method
-/// falls all the way back to `GptMarkdownThemeData._fromTheme(...)` when
-/// there is no explicit ancestor at all, synthesizing a full, non-null
-/// `GptMarkdownStyleSheet` (real `heading`/`link`/... values derived from
-/// `Theme.of(context)`) out of thin air. Merging THAT in ahead of this
-/// file's own DESIGN.md defaults meant an app with no `GptMarkdownTheme` of
-/// its own — the common case — silently got gpt_markdown's generic
-/// Material-derived look instead of this package's DESIGN.md one wherever
-/// the caller hadn't set a field either, and did so via a style built fresh
-/// (if value-stable) on every call, which measurably changed run-to-run
-/// paragraph styling enough to break this package's own trailing-fade mask
-/// invariants (`markdown_fade_invariant_smoke_test.dart`'s "bold-heavy chat"
-/// and `markdown_fade_verify3_test.dart`'s block-quote/code cases both
-/// regressed from this — bisected empirically). Only an app that actually
-/// opted in gets its ambient theme consulted; everyone else keeps exactly
-/// this package's own default look, as before.
-GptMarkdownStyleSheet? _explicitAncestorGptMarkdownStyleSheet(
-  BuildContext context,
-) {
-  final provider =
-      context.dependOnInheritedWidgetOfExactType<GptMarkdownTheme>();
-  if (provider != null) return provider.gptThemeData.styleSheet;
-  return Theme.of(context).extension<GptMarkdownThemeData>()?.styleSheet;
 }

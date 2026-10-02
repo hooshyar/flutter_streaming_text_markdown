@@ -219,12 +219,13 @@ Stream<String> anthropicChat(String prompt) async* {
 }
 ```
 
-> `fadeInEnabled` is safe for streams too — the per-character fade is driven
+> `fadeInEnabled` is safe for streams too: the per-character fade is driven
 > by a single `Ticker` (not one `AnimationController` per glyph), so it has
 > constant memory regardless of stream length. It only applies in
-> plain-text mode though; for markdown content (the common case for LLM
-> output) use `trailingFadeEnabled` for a bottom-edge gradient reveal
-> instead.
+> plain-text mode though; markdown content (the common case for LLM
+> output) already gets a paint-only per-word fade via `MarkdownFadeMask`
+> in the default `smoothFade`/`wordFade` reveal modes, and
+> `trailingFadeEnabled` can add a bottom-edge gradient on top.
 
 ### When to use which widget
 
@@ -326,7 +327,7 @@ than one of them (or calling one twice) never double-fires your callback.
 | `typingSpeed` | `Duration` | Speed of typing animation. Only meaningful with `revealMode: null`, `.typewriter()`, or an explicit `StreamPacing.fixed(...)`. |
 | `wordByWord` | `bool` | Whether to animate word by word. Ignored unless `revealMode: null` (`smoothFade`/`wordFade` always reveal word-by-word; `.typewriter()`/`.instant()` always reveal by `chunkSize`). |
 | `chunkSize` | `int` | Number of characters to reveal at once. Ignored in word-unit modes. |
-| `fadeInEnabled` | `bool` | Legacy per-character fade-in, opacity-only, driven by a single `Ticker` (constant memory). Only applies in plain-text mode (`markdownEnabled: false`), only takes effect with `revealMode: null`, and is suppressed for Arabic/RTL — use `revealMode: RevealMode.smoothFade` (the default) for a fade that also covers Arabic, or `trailingFadeEnabled` for markdown content. |
+| `fadeInEnabled` | `bool` | Legacy per-character fade-in, opacity-only, driven by a single `Ticker` (constant memory). Only applies in plain-text mode (`markdownEnabled: false`), only takes effect with `revealMode: null`, and is suppressed for Arabic/RTL. Use `revealMode: RevealMode.smoothFade` (the default) for a fade that also covers Arabic and markdown content (markdown fades paint-only, per word, via `MarkdownFadeMask`). |
 | `fadeInDuration` | `Duration` | Duration of fade-in animation (also used for trailing-fade dismiss) |
 | `trailingFadeEnabled` | `bool` | Bottom-edge gradient fade while streaming. Animates away on completion. Recommended for `Stream<String>` and markdown content. |
 | `textDirection` | `TextDirection?` | Text direction (LTR or RTL) |
@@ -353,17 +354,19 @@ than one of them (or calling one twice) never double-fires your callback.
 #### Choosing a fade for streaming content
 
 The default `revealMode: RevealMode.smoothFade` already fades plain text,
-`Stream<String>` input, AND Arabic/RTL content — a single `Ticker`
-regardless of how much text there is (at most 2 transient tickers). It does
-**not** currently fade markdown content (see `doc/BENCHMARKS.md`'s "B1-S5
-correction" for why); use `trailingFadeEnabled` there instead. The table
-below is for the legacy (`revealMode: null`) fade parameters:
+`Stream<String>` input, markdown content, AND Arabic/RTL content. Plain
+text fades via a single `Ticker` regardless of how much text there is (at
+most 2 transient tickers); markdown content gets a paint-only per-word
+fade via `MarkdownFadeMask` with no `GptMarkdown` rebuilds (disabled
+under reduced motion or when `animationsEnabled` is `false`). The table
+below compares the defaults with the legacy (`revealMode: null`) fade
+parameters:
 
 | Source | Recommended | Why |
 |--------|-------------|-----|
 | Static or streamed `text`, markdown off | `revealMode: RevealMode.smoothFade` (default) or `fadeInEnabled: true` with `revealMode: null` | Single-ticker fade, looks great |
 | Arabic/RTL content | `revealMode: RevealMode.smoothFade` (default) | The legacy `fadeInEnabled` (`revealMode: null`) is suppressed for Arabic (shaping risk); `smoothFade` isn't |
-| Markdown-enabled content | `trailingFadeEnabled: true` | No per-word/per-character fade applies in markdown mode; use the bottom-edge gradient instead |
+| Markdown-enabled content | `revealMode: RevealMode.smoothFade` (default) | `MarkdownFadeMask` applies a paint-only per-word fade by default; add `trailingFadeEnabled: true` for a bottom-edge gradient on top |
 
 ## Markdown Support
 

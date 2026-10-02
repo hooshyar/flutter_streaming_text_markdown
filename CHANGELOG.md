@@ -116,6 +116,14 @@ Every W-numbered bug from the audit is fixed:
   single place new `gpt_markdown` forwards land going forward.
 * **`errorBuilder`** (`Widget Function(BuildContext, Object error)?`) on
   every constructor, called when `stream` emits an error (see W16 above).
+* `StreamingTextController` gains additive accessors for chat-style UIs:
+  `isStreaming` (`true` while a `stream:` input is still open or a reveal
+  is in progress or paused, `false` once completed or idle), `markdown`
+  (the bound widget's full accumulated source text, e.g. behind a "copy"
+  button), `copyToClipboard()` (copies `markdown` to the system
+  clipboard), and the public `updateSource()` method the bound widget
+  calls to publish its current source snapshot and open/closed state so
+  `markdown` and `isStreaming` stay truthful.
 * **Accessibility**: reduced-motion support (reveals instantly with a
   static caret and no fade), single-announcement semantics with mid-stream
   text excluded from the tree, `semanticsLabel`, and `selectable` (wraps
@@ -195,8 +203,10 @@ affect existing consumers (notably `flutter_gen_ai_chat_ui`):
 * **The per-character fade is opacity-only.** The old 10px translate
   alongside the opacity fade is gone; only opacity animates now.
 * **The per-character fade now applies to streams too**, not just static
-  text — it's markdown mode (use `trailingFadeEnabled` there) and
-  Arabic/RTL where it's unavailable/suppressed, not stream vs. static text.
+  text: it is markdown mode (which gets its own paint-only per-word fade
+  via `MarkdownFadeMask`, see the `smoothFade` bullet below) and
+  Arabic/RTL where it is unavailable/suppressed, not stream vs. static
+  text.
 * **Config changes apply in place.** Changing `typingSpeed`, `chunkSize`,
   or `wordByWord` no longer restarts the reveal from the beginning — it
   keeps the current position and applies the new setting going forward.
@@ -212,9 +222,17 @@ affect existing consumers (notably `flutter_gen_ai_chat_ui`):
   `.claude()` (see Added above): word-unit reveal with a 180ms fade,
   applying to plain text AND markdown streams, AND Arabic content (no
   longer suppressed there, unlike the legacy per-character fade). Markdown
-  reveals word-paced but currently has no `gpt_markdown` alpha animation
-  layered on top — see the Performance note below for why. Pass
-  `revealMode: null` to keep the exact pre-2.0 behaviour.
+  content fades too: `MarkdownFadeMask` applies a cheap paint-only
+  per-word fade in `smoothFade`/`wordFade` modes, without rebuilding the
+  `GptMarkdown` span tree (disabled under reduced motion or when
+  `animationsEnabled` is `false`). Pass `revealMode: null` to keep the
+  exact pre-2.0 behaviour.
+* **Fenced code blocks now render through the built-in `CodeBlockView`**
+  (exported from the package barrel): a syntax-highlighted block themed by
+  `CodeBlockTheme`, with a language-label header and a copy affordance that
+  stays hidden but space-reserved while the block is still streaming.
+  Passing your own `codeBuilder` opts out and keeps your own rendering,
+  unchanged.
 * **`Stream<String>` input reveals faster by default** (catch-up pacing —
   see Added above) instead of at a fixed `typingSpeed`-per-unit rate. Pass
   `pacing: StreamPacing.fixed(typingSpeed)` to keep the old rate.
@@ -239,13 +257,14 @@ affect existing consumers (notably `flutter_gen_ai_chat_ui`):
   stream tick (both from the audit's `_containsArabic`/StringBuffer
   findings).
 * A `gpt_markdown` "hybrid" reveal (letting `GptMarkdown` fade-paint the
-  head our engine reveals) was prototyped and measured in isolation at
-  ~1.4x bare, but wiring it into the real default (caret + engine +
-  catch-up pacer together) instead cost ~2.3x time and ~12.9x
-  element-rebuilds — over both budgets. It was rejected for the shipped
-  default; `smoothFade` markdown reveals word-paced with no `gpt_markdown`
-  alpha instead, keeping the real default at ~1.2x-1.5x bare across both
-  perf suites. See `doc/BENCHMARKS.md`'s "B1-S5 correction".
+  head our engine reveals) was prototyped and rejected: it measured ~1.4x
+  bare in isolation, but ~2.3x time and ~12.9x element-rebuilds once wired
+  into the real default (caret + engine + catch-up pacer together), over
+  both budgets. The shipped default instead fades markdown in
+  `smoothFade`/`wordFade` via `MarkdownFadeMask`: a paint-only, per-word
+  mask over the rendered paragraphs that repaints without rebuilding
+  `GptMarkdown`'s span tree, keeping the real default at ~1.2x-1.5x bare
+  across both perf suites. See `doc/BENCHMARKS.md`'s "B1-S5 correction".
 
 ## 1.10.1
 

@@ -1,7 +1,7 @@
 ---
 id: TASK-017
 title: 'Long-stream perf benchmark vs bare GptMarkdown 1.3 (12KB / 50KB)'
-status: To Do
+status: Done
 priority: medium
 labels:
   - improvement-plan-2026-09
@@ -17,3 +17,7 @@ We rebuild the full GptMarkdown tree on every typing tick. gpt_markdown 1.3 clai
 - [ ] Benchmark (test or integration_test traceAction) records avg + p90 frame build time at 12KB and 50KB for our widget vs bare GptMarkdown on the same stream
 - [ ] Results written to docs/ and summarized in README
 - [ ] Any >2x overhead vs bare GptMarkdown gets a follow-up fix task filed; evaluate an opt-in sliver/lazy mode for very long docs
+
+## Final Summary
+
+Benchmarks live in `doc/BENCHMARKS.md` and `test/perf/*` (tag `benchmark`), shipped with 1.11.0.

@@ -1,7 +1,7 @@
 ---
 id: TASK-018
 title: 'Forward gpt_markdown 1.3 style sheet + structural builders (per-element styling)'
-status: To Do
+status: Done
 priority: high
 labels:
   - improvement-plan-2026-09
@@ -19,3 +19,7 @@ The most frequent issue theme (#5, #10, #13, #17) is styling. gpt_markdown 1.3 e
 - [ ] Required gpt_markdown types re-exported so users don't need a direct gpt_markdown import
 - [ ] One widget test per builder/style proving it is applied
 - [ ] README "Per-element styling" section with example; comment on issue #13 with the new API
+
+## Final Summary
+
+`markdownOptions` forwards `blockComponents`, `inlinePatterns`, style sheet and builders; covered by `test/markdown/forwarding_test.dart` and `test/api/forwarding_test.dart` (1.11.0).

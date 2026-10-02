@@ -1,5 +1,5 @@
 name: flutter_streaming_text_markdown
-description: A Flutter package for beautiful LLM text streaming with markdown support. Perfect for ChatGPT-like interfaces with typing animations, RTL support, and customizable effects.
+description: Stream LLM output (ChatGPT, Claude, Gemini) into Flutter as live markdown with typewriter and fade reveal, LaTeX, RTL and pause/skip control.
 version: 1.11.0
 homepage: https://github.com/hooshyar/flutter_streaming_text_markdown
 repository: https://github.com/hooshyar/flutter_streaming_text_markdown

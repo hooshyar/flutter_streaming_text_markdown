@@ -1,7 +1,7 @@
 ---
 id: TASK-015
 title: 'Restore 160/160 pub points: migrate off gpt_markdown 1.3.0 deprecations'
-status: To Do
+status: Done
 priority: high
 labels:
   - improvement-plan-2026-09
@@ -20,3 +20,7 @@ pub.dev re-analysed with gpt_markdown 1.3.0 (released 2026-09-20) and dropped us
 - [ ] New pass-throughs `blockComponents`, `inlinePatterns`, `inlineDirectives` on StreamingTextMarkdown/StreamingText/presets; our `components`/`inlineComponents` marked @Deprecated pointing at them
 - [ ] `flutter pub upgrade && flutter analyze` clean; `flutter pub downgrade && flutter analyze` clean; `pana .` = 160/160
 - [ ] `flutter test` all green; CHANGELOG entry; release 1.11.0 by tag; pub.dev shows 160/160
+
+## Final Summary
+
+Shipped in 1.11.0: gpt_markdown 1.3, deprecations migrated, live pub score 160/160.

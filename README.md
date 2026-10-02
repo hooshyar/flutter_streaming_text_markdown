@@ -1,6 +1,6 @@
 # Flutter Streaming Text Markdown
 
-**Perfect for LLM Applications!** A Flutter package optimized for beautiful AI text streaming with ChatGPT and Claude-style animations.
+**Perfect for LLM applications.** A Flutter package optimized for beautiful AI text streaming with ChatGPT and Claude-style animations.
 
 [![pub package](https://img.shields.io/pub/v/flutter_streaming_text_markdown.svg)](https://pub.dev/packages/flutter_streaming_text_markdown)
 [![CI](https://github.com/hooshyar/flutter_streaming_text_markdown/actions/workflows/ci.yml/badge.svg)](https://github.com/hooshyar/flutter_streaming_text_markdown/actions/workflows/ci.yml)
@@ -32,6 +32,18 @@ Full-quality video: [doc/demo.mp4](https://github.com/hooshyar/flutter_streaming
 ▶️ **[Try the live web demo](https://hooshyar.github.io/flutter_streaming_text_markdown/)** — or run it locally: `cd example && flutter run`
 
 The example app walks through every feature: presets (ChatGPT / Claude / typewriter), live `Stream<String>` input, markdown & LaTeX rendering, RTL/Arabic, theming, and the animation controller.
+
+## When to use this package
+
+Use `flutter_streaming_text_markdown` when text arrives token by token from an LLM and you want it to appear smoothly: a pacer that catches up with the stream, a fade or typewriter reveal, and a markdown renderer that tolerates half-finished syntax (`**bol`, an open code fence, a partial table row) without flashing raw markers.
+
+| You have | Reach for |
+|---|---|
+| A `Stream<String>` from ChatGPT, Claude, Gemini or any LLM that must render live as markdown | this package |
+| Static markdown that never streams | [`flutter_markdown_plus`](https://pub.dev/packages/flutter_markdown_plus) or [`gpt_markdown`](https://pub.dev/packages/gpt_markdown) directly |
+| A full chat screen (bubbles, composer, scroll handling) | [`flutter_gen_ai_chat_ui`](https://pub.dev/packages/flutter_gen_ai_chat_ui), which builds on this package |
+
+Under the hood the markdown is rendered by `gpt_markdown`; this package adds the streaming engine, reveal animations, pause/resume/skip control and accessibility on top.
 
 ## Installation
 

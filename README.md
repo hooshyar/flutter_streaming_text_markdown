@@ -37,7 +37,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_streaming_text_markdown: ^1.10.1
+  flutter_streaming_text_markdown: ^1.11.0
 ```
 
 ## 🚀 Quick Start

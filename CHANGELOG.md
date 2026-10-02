@@ -1,10 +1,25 @@
 # Changelog
 
-## Unreleased
+## 1.11.0
 
 A ground-up correctness and architecture pass. No public API was removed
-and the version stays at 1.10.1 in this changeset — see `doc/MIGRATION.md`
-for upgrade notes.
+or renamed, so this is a zero-breaking-change release; see
+`doc/MIGRATION.md` for upgrade notes.
+
+Summary of the release (details in the sections below):
+
+* **Added:** pure-Dart `RevealEngine` core with a catch-up pacer and a
+  `smoothFade` reveal mode; a built-in syntax-highlighted `CodeBlockView`
+  and `CodeBlockTheme` as the default code renderer (both exported from the
+  package barrel); additive `StreamingTextController` accessors
+  (`isStreaming`, `markdown`, `copyToClipboard`); accessibility support
+  (reduced motion, semantics, selectable text).
+* **Changed:** migrated to `gpt_markdown` 1.3; redesigned the markdown fade
+  as a cheap paint-only per-word fade; performance work (incremental `mend()`
+  scan cache, fade repaint gating).
+* **Fixed:** pub score static analysis (`dart analyze --fatal-infos` is
+  clean on the latest stable Flutter), plus every W-numbered bug from the
+  audit.
 
 ### Fixed
 

@@ -7,6 +7,7 @@
 [![pub points](https://img.shields.io/pub/points/flutter_streaming_text_markdown)](https://pub.dev/packages/flutter_streaming_text_markdown/score)
 [![likes](https://img.shields.io/pub/likes/flutter_streaming_text_markdown)](https://pub.dev/packages/flutter_streaming_text_markdown/score)
 [![downloads](https://img.shields.io/pub/dm/flutter_streaming_text_markdown)](https://pub.dev/packages/flutter_streaming_text_markdown/score)
+[![coverage](https://img.shields.io/badge/lib%20coverage-95%25-brightgreen)](https://github.com/hooshyar/flutter_streaming_text_markdown/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/LICENSE)
 
 ## ✨ Features

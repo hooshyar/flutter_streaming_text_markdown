@@ -33,3 +33,5 @@ doc/
 # Planning docs and backlog stay in the repo, not the package.
 docs/
 backlog/
+
+/coverage/

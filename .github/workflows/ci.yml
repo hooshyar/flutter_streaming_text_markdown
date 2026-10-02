@@ -49,8 +49,19 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Run tests
-        run: flutter test
+      - name: Run tests with coverage
+        run: flutter test --no-dds --coverage --exclude-tags benchmark
+
+      - name: Coverage floor
+        # Prints lib/ line coverage and fails below the floor. Raise the floor
+        # as tests are added; never lower it to make a red run green.
+        run: dart run tool/check_coverage.dart 90
+
+      - name: Upload lcov
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov
+          path: coverage/lcov.info
 
       - name: Reset any SDK auto-migrated analysis_options.yaml
         # `flutter pub get` on newer SDKs can silently rewrite

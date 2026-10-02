@@ -1,5 +1,271 @@
 # Changelog
 
+## 1.11.0
+
+A ground-up correctness and architecture pass. No public API was removed
+or renamed, so this is a zero-breaking-change release; see
+`doc/MIGRATION.md` for upgrade notes.
+
+Summary of the release (details in the sections below):
+
+* **Added:** pure-Dart `RevealEngine` core with a catch-up pacer and a
+  `smoothFade` reveal mode; a built-in syntax-highlighted `CodeBlockView`
+  and `CodeBlockTheme` as the default code renderer (both exported from the
+  package barrel); additive `StreamingTextController` accessors
+  (`isStreaming`, `markdown`, `copyToClipboard`); accessibility support
+  (reduced motion, semantics, selectable text).
+* **Changed:** migrated to `gpt_markdown` 1.3; redesigned the markdown fade
+  as a cheap paint-only per-word fade; performance work (incremental `mend()`
+  scan cache, fade repaint gating).
+* **Fixed:** pub score static analysis (`dart analyze --fatal-infos` is
+  clean on the latest stable Flutter), plus every W-numbered bug from the
+  audit.
+
+### Fixed
+
+Every W-numbered bug from the audit is fixed:
+
+* **W1** — word-by-word mode no longer rewrites whitespace; code
+  indentation inside a streamed markdown code block is preserved exactly,
+  and `codeBuilder` receives indented code verbatim.
+* **W2** — appending text in word-by-word mode after completion no longer
+  drops spaces between words.
+* **W3** — tapping the widget after it's already complete is now a no-op
+  (previously it could re-fire `onComplete`); a tap mid-animation reliably
+  reaches the completed state.
+* **W4** — Arabic character mode no longer mutates the text (no more
+  tripled spaces) and the controller now reaches `completed`.
+* **W5/W6** — pause/resume during Arabic or LaTeX content never shrinks the
+  revealed text or drops characters; the end state always equals the
+  source.
+* **W7** — auto-detected RTL direction is now honored in markdown mode
+  instead of being silently overridden to LTR.
+* **W8** — a style or `Brightness` change after completion now updates the
+  rendered output immediately (the stale per-text style cache is gone).
+* **W9** — a config change (`typingSpeed`/`chunkSize`/`wordByWord`/
+  `markdownEnabled`) mid-stream, or a plain rebuild with no change at all,
+  applies in place and never throws `StateError: Stream has already been
+  listened to` — including when the caller reads `stream:
+  controller.stream` directly inside `build()` instead of caching the
+  `Stream` in a field. (`StreamController.stream` returns a new,
+  `==`-equal-but-not-`identical` wrapper object on every access, so the
+  stream-swap check now compares by value, not identity.)
+* **W10** — `latexEnabled: true` no longer throws away markdown rendering:
+  headings, lists, and links keep rendering correctly alongside LaTeX. See
+  W11 for how `$...$`/`$$...$$` math is now handled.
+* **W11** — shell-style `$VARS` inside fenced or inline code are no longer
+  misdetected as LaTeX and reach `codeBuilder` verbatim. `latexEnabled`
+  rewrites `$...$`/`$$...$$` to `gpt_markdown`'s native `\(...\)`/`\[...\]`
+  syntax itself, skipping fenced/inline code, instead of forwarding
+  `useDollarSignsForLatex` to `gpt_markdown` (whose own rewrite runs before
+  it knows what is code). A `$` is only ever treated as LaTeX when it looks
+  like real math rather than currency: `$5`, `Cost $10 - $20`, and `$
+  alone` are left as plain text, on both a closed source and mid-stream
+  (previously an open stream could freeze right before a bare `$5` while
+  waiting for a closing delimiter that would never come).
+* **W15** — controller `pause`/`resume`/`stop`/`restart` all work correctly
+  in stream mode (previously `pause` was ignored for streams, and
+  `stop`/`restart` were ignored in every mode).
+* **W16** — a stream error now sets the controller's `error` state (via the
+  new `markError`) and renders through the new `errorBuilder`, or a themed
+  default view, instead of a hard-coded red error message — the text
+  revealed so far always stays on screen.
+* **W21** — markdown content inside an unbounded-width parent (e.g. a
+  `Row`) no longer throws; width is only forced when the incoming
+  constraint is actually bounded.
+* **W22** — swapping the `controller` instance now correctly unbinds the
+  old controller and binds the new one, instead of leaking a listener and
+  leaving both controllers dead.
+* **W23** — `animationsEnabled: false` no longer fires `onComplete` on
+  every text update.
+* **W24** — a non-append text change (anything that isn't a pure suffix
+  addition) now keeps the common prefix and continues from there, instead
+  of restarting the whole reveal from zero.
+* **W25** — `controller.onCompleted` fires **exactly once** per
+  revealing→complete transition, no matter which of `updateProgress(1.0)`,
+  `markCompleted()`, or `skipToEnd()` triggered it (previously it could
+  fire twice).
+* **W26** — `.instant(stream:)` and `animationsEnabled: false` with a
+  stream now display chunks as they arrive and complete exactly once when
+  the stream closes, instead of rendering nothing.
+* Arabic text no longer forces `TextAlign.right`; a user's `textAlign` is
+  honored, including for Arabic content.
+* `_effectiveTheme` now reacts to `widget.theme` changes instead of
+  ignoring them after the first build.
+* No more per-tick `RegExp` compilation for Arabic detection, and no more
+  O(n) `StringBuffer.toString()` buffer copies per stream tick.
+
+### Removed
+
+* The hand-rolled LaTeX renderer and `LaTeXProcessor`/`TextSegment` regex
+  pipeline are deleted. Neither was ever exported, so this is non-breaking.
+  LaTeX rendering now goes through `gpt_markdown` 1.3 (its native
+  `\(...\)`/`\[...\]` syntax — see W11 for how `$...$`/`$$...$$` reach it)
+  plus `flutter_math_fork` for the default renderer.
+* Internal dead code removed: `_cursorController`, `_markdownCache`,
+  `_completeMarkdownCache`, `_isAnimationActive`,
+  `_resumeWordByWordTypingFromOldText`, `_safeSetState`, the unbounded
+  `_rtlGroupCache`, and the five-plus duplicated `Timer.periodic` bodies
+  (replaced by one `RevealScheduler` with exactly one `Timer.periodic`).
+
+### Added
+
+* **`MarkdownRenderOptions`** bundles every `gpt_markdown` 1.3 pass-through
+  that doesn't have its own top-level parameter (style sheet, block/inline
+  builders, autolink config, `useDollarSignsForLatex`, and more) — the
+  single place new `gpt_markdown` forwards land going forward.
+* **`errorBuilder`** (`Widget Function(BuildContext, Object error)?`) on
+  every constructor, called when `stream` emits an error (see W16 above).
+* `StreamingTextController` gains additive accessors for chat-style UIs:
+  `isStreaming` (`true` while a `stream:` input is still open or a reveal
+  is in progress or paused, `false` once completed or idle), `markdown`
+  (the bound widget's full accumulated source text, e.g. behind a "copy"
+  button), `copyToClipboard()` (copies `markdown` to the system
+  clipboard), and the public `updateSource()` method the bound widget
+  calls to publish its current source snapshot and open/closed state so
+  `markdown` and `isStreaming` stay truthful.
+* **Accessibility**: reduced-motion support (reveals instantly with a
+  static caret and no fade), single-announcement semantics with mid-stream
+  text excluded from the tree, `semanticsLabel`, and `selectable` (wraps
+  output in a `SelectionArea`).
+* **`showCursor`** (`bool?`, `null` resolves to `stream != null`) and
+  `cursorColor` — an 8px pulsing dot caret shown while revealing, hidden on
+  completion.
+* `StreamingShimmer` and `MarkdownRenderOptions` are now exported from the
+  barrel file, along with a curated re-export of the `gpt_markdown` types
+  used in `MarkdownRenderOptions`'s public signatures (`MarkdownComponent`,
+  `GptMarkdownStyleSheet`, the `*Builder` typedefs, `InlinePattern`,
+  `InlineDirective`, ...), so consumers no longer need a direct
+  `gpt_markdown` dependency just to use it.
+* `doc/BENCHMARKS.md` — published frame-budget numbers for streaming
+  markdown vs. bare `GptMarkdown` (see Performance below).
+* `doc/MIGRATION.md` and a weekly CI job (`pub upgrade` + test,
+  `pub downgrade` + analyze, and `pana --exit-code-threshold 0`).
+* `tool/check_coverage.dart` — parses `coverage/lcov.info` and enforces a
+  minimum coverage threshold.
+
+* **`RevealMode`** (`{smoothFade, wordFade, typewriter, instant}`, exported)
+  and a `revealMode` parameter on `StreamingText` and every
+  `StreamingTextMarkdown` constructor. `smoothFade` (word-unit reveal, a
+  180ms opacity-only fade on `Cubic(0.2, 0, 0, 1)`) is the new default on
+  `StreamingText`, the default `StreamingTextMarkdown` constructor,
+  `.chatGPT()` and `.claude()`; `.typewriter()`/`.instant()` default to
+  their own matching mode. Pass `revealMode: null` explicitly to opt out
+  entirely and keep the pre-2.0 behaviour driven by the legacy
+  `wordByWord`/`fadeInEnabled`/`fadeInDuration`/`fadeInCurve`/`chunkSize`/
+  `typingSpeed` parameters — see `doc/MIGRATION.md`.
+* **`StreamPacing`** (`StreamPacing.catchUp(...)` / `StreamPacing.fixed(...)`)
+  and a `pacing` parameter alongside `revealMode`. `Stream<String>` input
+  now defaults to catch-up pacing (a bursty-token-smoothing pacer: reveals
+  a backlog-proportional share every ~50ms, floors at 30 chars/s, and
+  drains fully within 400ms of the stream closing) instead of one fixed
+  unit per `typingSpeed` tick; static `text` input keeps the fixed,
+  `typingSpeed`-driven pacer. An explicit `pacing:` always overrides the
+  default, on either input kind.
+* `StreamingRenderScope` — an internal `InheritedWidget` seam (carrying
+  `isStreaming`/`isComplete`/the caret builder) wrapped around the markdown
+  view, for a future block-level renderer to read instead of having those
+  threaded through by hand. Not part of the public API surface yet.
+
+### Deprecated
+
+* `components` / `inlineComponents` on all 6 constructors — use
+  `markdownOptions.blockComponents` / `markdownOptions.inlinePatterns`.
+  Passing either (even an empty list) drops `gpt_markdown`'s incremental
+  segment cache; `markdownOptions` doesn't have that cost.
+* `initialText` — never displayed; has no effect.
+* `latexFadeInEnabled` (widget-level and `StreamingTextTheme`-level) — a
+  no-op now that LaTeX is delegated to `gpt_markdown`, which has no
+  per-run fade hook of its own. Use a `latexBuilder` instead.
+* `StreamingTextTheme.blockLatexStyle` and `.latexScale` — no-ops at the
+  theme level now; use a `latexBuilder` and the widget-level `latexScale`.
+* `StreamingTextTheme.markdownStyle` — use `markdownStyleSheet`.
+* `StreamProvider` / `DefaultStreamProvider` (and the types around them) —
+  never wired to any widget. Pass a `Stream<String>` directly to
+  `StreamingTextMarkdown.stream` instead. Will be removed in 2.0.0.
+
+All deprecations point to their replacement and are scheduled for removal
+in 2.0.0; nothing is removed in this release.
+
+### Changed — SDK floor
+
+* `sdk: '>=3.7.0 <4.0.0'`, `flutter: '>=3.32.0'` (raised from `>=3.0.0` /
+  `>=3.10.0`) — required by the `gpt_markdown ^1.3.0` upgrade.
+
+### Changed — behavior
+
+These are visible behavior changes, listed explicitly since they can
+affect existing consumers (notably `flutter_gen_ai_chat_ui`):
+
+* **The caret is on by default while revealing.** `showCursor` defaults to
+  `null`, which resolves to `stream != null` — a live stream now shows a
+  pulsing caret unless you explicitly pass `showCursor: false`.
+* **The per-character fade is opacity-only.** The old 10px translate
+  alongside the opacity fade is gone; only opacity animates now.
+* **The per-character fade now applies to streams too**, not just static
+  text: it is markdown mode (which gets its own paint-only per-word fade
+  via `MarkdownFadeMask`, see the `smoothFade` bullet below) and
+  Arabic/RTL where it is unavailable/suppressed, not stream vs. static
+  text.
+* **Config changes apply in place.** Changing `typingSpeed`, `chunkSize`,
+  or `wordByWord` no longer restarts the reveal from the beginning — it
+  keeps the current position and applies the new setting going forward.
+* **`onComplete`/`onCompleted` fire exactly once per revealing→complete
+  transition**, from whichever path reaches completion first (see W25
+  above). A rebuild with an unchanged source never re-fires them.
+* **An open stream's last grapheme is held back** until the next chunk
+  arrives or the stream closes — this is what allows `setSource`/`append`
+  to never split a surrogate pair or grapheme cluster at the streaming
+  edge.
+* **The default reveal is now `RevealMode.smoothFade`** on `StreamingText`,
+  the default `StreamingTextMarkdown` constructor, `.chatGPT()` and
+  `.claude()` (see Added above): word-unit reveal with a 180ms fade,
+  applying to plain text AND markdown streams, AND Arabic content (no
+  longer suppressed there, unlike the legacy per-character fade). Markdown
+  content fades too: `MarkdownFadeMask` applies a cheap paint-only
+  per-word fade in `smoothFade`/`wordFade` modes, without rebuilding the
+  `GptMarkdown` span tree (disabled under reduced motion or when
+  `animationsEnabled` is `false`). Pass `revealMode: null` to keep the
+  exact pre-2.0 behaviour.
+* **Fenced code blocks now render through the built-in `CodeBlockView`**
+  (exported from the package barrel): a syntax-highlighted block themed by
+  `CodeBlockTheme`, with a language-label header and a copy affordance that
+  stays hidden but space-reserved while the block is still streaming.
+  Passing your own `codeBuilder` opts out and keeps your own rendering,
+  unchanged.
+* **`Stream<String>` input reveals faster by default** (catch-up pacing —
+  see Added above) instead of at a fixed `typingSpeed`-per-unit rate. Pass
+  `pacing: StreamPacing.fixed(typingSpeed)` to keep the old rate.
+
+### Performance
+
+* A plain fade over 5k characters now uses at most 2 transient tickers
+  (previously one `AnimationController` per character — 500+ concurrent
+  tickers at 5k chars in the old implementation).
+* A 20k-character markdown stream now runs within ~1.0x-1.3x of bare
+  `GptMarkdown` 1.3 (budget: 1.8x), down from roughly 2.1x against
+  `gpt_markdown` 1.2.1 in the pre-rewrite implementation — see
+  `doc/BENCHMARKS.md` for the full methodology and numbers:
+
+  | Run | ours median | bare median | ratio |
+  |---|---|---|---|
+  | 1 | 3697us | 3698us | 1.000x |
+  | 2 | 4438us | 4337us | 1.023x |
+  | 3 | 4146us | 4176us | 0.993x |
+
+* No more per-tick `RegExp` compilation and no more O(n) buffer copies per
+  stream tick (both from the audit's `_containsArabic`/StringBuffer
+  findings).
+* A `gpt_markdown` "hybrid" reveal (letting `GptMarkdown` fade-paint the
+  head our engine reveals) was prototyped and rejected: it measured ~1.4x
+  bare in isolation, but ~2.3x time and ~12.9x element-rebuilds once wired
+  into the real default (caret + engine + catch-up pacer together), over
+  both budgets. The shipped default instead fades markdown in
+  `smoothFade`/`wordFade` via `MarkdownFadeMask`: a paint-only, per-word
+  mask over the rendered paragraphs that repaints without rebuilding
+  `GptMarkdown`'s span tree, keeping the real default at ~1.2x-1.5x bare
+  across both perf suites. See `doc/BENCHMARKS.md`'s "B1-S5 correction".
+
 ## 1.10.1
 
 ### Fixed

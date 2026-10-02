@@ -166,8 +166,9 @@ class StreamingTextConfig {
   /// Whether to reveal text word by word instead of character by character.
   final bool wordByWord;
 
-  /// The number of characters to reveal at once when not in word-by-word
-  /// mode.
+  /// The number of grapheme clusters to reveal at once when not in
+  /// word-by-word mode. Ignored in word-by-word mode. See
+  /// [StreamingTextMarkdown.chunkSize].
   final int chunkSize;
 
   /// Whether each character (or word) fades in as it is revealed.

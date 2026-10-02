@@ -2,7 +2,13 @@ import 'dart:async';
 import 'package:characters/characters.dart';
 import 'stream_provider.dart';
 
+// ignore_for_file: deprecated_member_use_from_same_package
+
 /// A professional default implementation of [StreamProvider].
+@Deprecated(
+  'Not wired to any widget; pass a Stream<String> to '
+  'StreamingTextMarkdown.stream. Removed in 2.0.',
+)
 class DefaultStreamProvider implements StreamProvider {
   /// The current stream controller.
   StreamController<StreamData>? _controller;
@@ -23,9 +29,8 @@ class DefaultStreamProvider implements StreamProvider {
   bool get isPaused => _isPaused;
 
   /// Creates a new [DefaultStreamProvider] instance.
-  DefaultStreamProvider({
-    StreamConfig? config,
-  }) : config = config ?? const StreamConfig();
+  DefaultStreamProvider({StreamConfig? config})
+    : config = config ?? const StreamConfig();
 
   @override
   Future<void> initialize() async {
@@ -53,24 +58,32 @@ class DefaultStreamProvider implements StreamProvider {
       config.timeoutDuration,
       onTimeout: (sink) {
         sink.addError(
-          const StreamException(
-            'Stream timeout',
-            code: 'STREAM_TIMEOUT',
-          ),
+          const StreamException('Stream timeout', code: 'STREAM_TIMEOUT'),
         );
         sink.close();
       },
     );
   }
 
+  /// Handles a stream processing error, retrying up to
+  /// [StreamConfig.retryAttempts] times before giving up.
+  ///
+  /// KNOWN BROKEN (not fixed here — this whole provider is deprecated):
+  /// the retry re-invokes [_processStream] on [_lastInput], the *entire*
+  /// original input, from the top — it does not resume from the chunk that
+  /// failed, so a retry re-emits everything already streamed. It also
+  /// races the `finally` block in [_processStream], which nulls out
+  /// [_controller] on every exit, including the one that's about to retry.
   void _handleError(dynamic error) {
     if (_controller == null || _controller!.isClosed) return;
 
     if (_retryCount < config.retryAttempts) {
       _retryCount++;
-      _controller!.add(StreamData.error(
-        'Error: ${error.toString()}. Retrying... (Attempt $_retryCount/${config.retryAttempts})',
-      ));
+      _controller!.add(
+        StreamData.error(
+          'Error: ${error.toString()}. Retrying... (Attempt $_retryCount/${config.retryAttempts})',
+        ),
+      );
       Future.delayed(config.retryDelay, () {
         // Retry the stream
         _processStream(_lastInput!).catchError(_handleError);
@@ -90,14 +103,16 @@ class DefaultStreamProvider implements StreamProvider {
       if (config.includeMetadata &&
           _controller != null &&
           !_controller!.isClosed) {
-        _controller!.add(StreamData.text(
-          '',
-          metadata: {
-            'timestamp': DateTime.now().toIso8601String(),
-            'chunkSize': config.maxChunkSize,
-            'totalLength': input.length,
-          },
-        ));
+        _controller!.add(
+          StreamData.text(
+            '',
+            metadata: {
+              'timestamp': DateTime.now().toIso8601String(),
+              'chunkSize': config.maxChunkSize,
+              'totalLength': input.length,
+            },
+          ),
+        );
       }
 
       // Process the input in chunks
@@ -115,16 +130,19 @@ class DefaultStreamProvider implements StreamProvider {
         await Future.delayed(Duration(milliseconds: config.chunkDelay));
 
         if (_controller != null && !_controller!.isClosed) {
-          _controller!.add(StreamData.text(
-            chunk,
-            metadata: config.includeMetadata && processedChunks % 10 == 0
-                ? {
-                    'progress': processedChunks / chunks.length,
-                    'processedChunks': processedChunks,
-                    'totalChunks': chunks.length,
-                  }
-                : null,
-          ));
+          _controller!.add(
+            StreamData.text(
+              chunk,
+              metadata:
+                  config.includeMetadata && processedChunks % 10 == 0
+                      ? {
+                        'progress': processedChunks / chunks.length,
+                        'processedChunks': processedChunks,
+                        'totalChunks': chunks.length,
+                      }
+                      : null,
+            ),
+          );
           processedChunks++;
         }
       }
@@ -132,21 +150,20 @@ class DefaultStreamProvider implements StreamProvider {
       // Signal completion if controller is still open
       if (_controller != null && !_controller!.isClosed) {
         if (config.includeMetadata) {
-          _controller!.add(StreamData.text(
-            '',
-            metadata: {
-              'status': 'complete',
-              'timestamp': DateTime.now().toIso8601String(),
-            },
-          ));
+          _controller!.add(
+            StreamData.text(
+              '',
+              metadata: {
+                'status': 'complete',
+                'timestamp': DateTime.now().toIso8601String(),
+              },
+            ),
+          );
         }
         _controller!.add(StreamData.completion());
       }
     } catch (e) {
-      throw StreamException(
-        e.toString(),
-        code: 'STREAM_PROCESSING_ERROR',
-      );
+      throw StreamException(e.toString(), code: 'STREAM_PROCESSING_ERROR');
     } finally {
       if (_controller != null && !_controller!.isClosed) {
         await _controller!.close();
@@ -161,10 +178,7 @@ class DefaultStreamProvider implements StreamProvider {
     if (config.includeMetadata &&
         _controller != null &&
         !_controller!.isClosed) {
-      _controller!.add(StreamData.text(
-        '',
-        metadata: {'status': 'paused'},
-      ));
+      _controller!.add(StreamData.text('', metadata: {'status': 'paused'}));
     }
   }
 
@@ -174,10 +188,7 @@ class DefaultStreamProvider implements StreamProvider {
     if (config.includeMetadata &&
         _controller != null &&
         !_controller!.isClosed) {
-      _controller!.add(StreamData.text(
-        '',
-        metadata: {'status': 'resumed'},
-      ));
+      _controller!.add(StreamData.text('', metadata: {'status': 'resumed'}));
     }
   }
 
@@ -185,10 +196,7 @@ class DefaultStreamProvider implements StreamProvider {
   Future<void> stopStream() async {
     if (_controller != null && !_controller!.isClosed) {
       if (config.includeMetadata) {
-        _controller!.add(StreamData.text(
-          '',
-          metadata: {'status': 'stopped'},
-        ));
+        _controller!.add(StreamData.text('', metadata: {'status': 'stopped'}));
       }
       await _controller!.close();
     }
@@ -208,9 +216,10 @@ class DefaultStreamProvider implements StreamProvider {
     final chars = input.characters;
 
     for (var i = 0; i < chars.length; i += config.maxChunkSize) {
-      final end = (i + config.maxChunkSize < chars.length)
-          ? i + config.maxChunkSize
-          : chars.length;
+      final end =
+          (i + config.maxChunkSize < chars.length)
+              ? i + config.maxChunkSize
+              : chars.length;
       chunks.add(chars.getRange(i, end).toString());
     }
 

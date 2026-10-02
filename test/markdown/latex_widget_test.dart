@@ -1,0 +1,471 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
+
+void main() {
+  group('LaTeX Widget Tests', () {
+    testWidgets('StreamingTextMarkdown renders with LaTeX disabled', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Hello \$x = 5\$ world',
+              latexEnabled: false,
+              markdownEnabled: false,
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      // Should find the text with dollar signs intact (not rendered as LaTeX)
+      expect(find.text('Hello \$x = 5\$ world'), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown renders with LaTeX enabled', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'The equation \$x = 5\$ is simple',
+              latexEnabled: true,
+              markdownEnabled: true,
+              typingSpeed: Duration.zero, // Instant for testing
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      // The LaTeX should be processed, so the raw text won't be found
+      expect(find.text('The equation \$x = 5\$ is simple'), findsNothing);
+      // Nor should the raw delimiters leak into any rendered run.
+      expect(find.textContaining('\$x = 5\$'), findsNothing);
+
+      // But we should find the regular text parts
+      expect(find.textContaining('The equation'), findsOneWidget);
+      expect(find.textContaining('is simple'), findsOneWidget);
+
+      // GptMarkdown delegation actually ran (not the plain-text fallback).
+      expect(find.byType(GptMarkdown), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown handles block LaTeX expressions', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text:
+                  'Matrix: \$\$\\begin{matrix} a & b \\\\ c & d \\end{matrix}\$\$ Done',
+              latexEnabled: true,
+              markdownEnabled: true,
+              typingSpeed: Duration.zero,
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      // Should process the block LaTeX, with no raw `$$` delimiters leaking.
+      expect(find.textContaining('Matrix:'), findsOneWidget);
+      expect(find.textContaining('Done'), findsOneWidget);
+      expect(find.textContaining('\$\$'), findsNothing);
+    });
+
+    testWidgets('StreamingTextMarkdown.chatGPT with LaTeX enabled', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown.chatGPT(
+              revealMode: null,
+              text: 'Formula: \$E = mc^2\$',
+              latexEnabled: true,
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      // Should find the text parts
+      expect(find.textContaining('Formula:'), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown.claude with LaTeX enabled', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown.claude(
+              revealMode: null,
+              text: 'The integral \$\\int_0^1 x dx = \\frac{1}{2}\$',
+              latexEnabled: true,
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining('The integral'), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown with custom LaTeX styling', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Styled \$x = y\$ equation',
+              latexEnabled: true,
+              markdownEnabled: true,
+              latexStyle: const TextStyle(color: Colors.blue, fontSize: 20),
+              latexScale: 1.5,
+              typingSpeed: Duration.zero,
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining('Styled'), findsOneWidget);
+      expect(find.textContaining('equation'), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown with mixed content', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: '''# Math Examples
+              
+Inline math: \$x + y = z\$
+
+Block math:
+\$\$
+\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}
+\$\$
+
+**Bold text** and *italic* text.''',
+              latexEnabled: true,
+              markdownEnabled: true,
+              typingSpeed: Duration.zero,
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      // Should find markdown headers and formatting, with the markdown
+      // syntax actually consumed rather than shown raw (W10: LaTeX used to
+      // force a fallback renderer that dropped markdown formatting).
+      expect(find.textContaining('Math Examples'), findsOneWidget);
+      expect(find.textContaining('Inline math:'), findsOneWidget);
+      expect(find.textContaining('Block math:'), findsOneWidget);
+      expect(find.textContaining('# Math Examples'), findsNothing);
+      expect(find.textContaining('**Bold text**'), findsNothing);
+    });
+
+    testWidgets('StreamingTextMarkdown handles LaTeX errors gracefully', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Invalid \$unclosed LaTeX',
+              latexEnabled: true,
+              markdownEnabled: true,
+              typingSpeed: Duration.zero,
+            ),
+          ),
+        ),
+      );
+
+      // Should not crash and should render the text
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.textContaining('Invalid'), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown respects LaTeX fade-in settings', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Equation \$a = b\$ here',
+              latexEnabled: true,
+              markdownEnabled: true,
+              latexFadeInEnabled: false,
+              fadeInEnabled: true,
+              typingSpeed: const Duration(milliseconds: 10),
+            ),
+          ),
+        ),
+      );
+
+      // Let animation run
+      await tester.pump(const Duration(milliseconds: 50));
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining('Equation'), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown theme integration', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Themed \$x = 1\$ text',
+              latexEnabled: true,
+              markdownEnabled: true,
+              theme: const StreamingTextTheme(
+                inlineLatexStyle: TextStyle(color: Colors.red),
+                latexScale: 1.2,
+              ),
+              typingSpeed: Duration.zero,
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.textContaining('Themed'), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown atomic LaTeX during streaming', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Start \$x = 5\$ middle \$\$y = 10\$\$ end',
+              latexEnabled: true,
+              markdownEnabled: true,
+              wordByWord: true,
+              typingSpeed: const Duration(milliseconds: 50),
+            ),
+          ),
+        ),
+      );
+
+      // Let some animation happen
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Check that we can find some partial content
+      final finder = find.byType(StreamingTextMarkdown);
+      expect(finder, findsOneWidget);
+
+      // Complete the animation
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining('Start'), findsOneWidget);
+      expect(find.textContaining('end'), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown character-by-character with LaTeX', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Hi \$x\$ ok',
+              latexEnabled: true,
+              markdownEnabled: true,
+              wordByWord: false,
+              typingSpeed: Duration.zero,
+            ),
+          ),
+        ),
+      );
+
+      // Complete the animation
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 15; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining('Hi'), findsOneWidget);
+      expect(find.textContaining('ok'), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown controller with LaTeX', (tester) async {
+      final controller = StreamingTextController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Control \$test = 1\$ example',
+              latexEnabled: true,
+              markdownEnabled: true,
+              controller: controller,
+              typingSpeed: Duration.zero,
+            ),
+          ),
+        ),
+      );
+
+      // Start animation
+      await tester.pump();
+
+      // Skip to end using controller
+      controller.skipToEnd();
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 15; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining('Control'), findsOneWidget);
+      expect(find.textContaining('example'), findsOneWidget);
+    });
+
+    // Regression: `_dollarOpensMath` used to treat ANY `$<digits>-` as a
+    // currency range, so `$1-p$` etc. never reached `Math.tex` and showed
+    // raw. `-` is only a currency boundary when it starts a `-$` range.
+    for (final text in <String>[r'$1-p$', r'$2k-1$', r'$1-\alpha$', r'$0-1$']) {
+      testWidgets('"$text" renders a Math widget, not raw text', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: StreamingTextMarkdown(
+                revealMode: null,
+                text: text,
+                markdownEnabled: true,
+                latexEnabled: true,
+                animationsEnabled: false,
+              ),
+            ),
+          ),
+        );
+
+        // Wait for completion with timeout protection
+        for (int i = 0; i < 10; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+
+        expect(find.byType(Math), findsOneWidget);
+        expect(find.textContaining(text), findsNothing);
+      });
+    }
+
+    testWidgets(r'"$10-$20" stays a currency range (no Math widget)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: r'Costs $10-$20 total',
+              markdownEnabled: true,
+              latexEnabled: true,
+              animationsEnabled: false,
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.byType(Math), findsNothing);
+      expect(find.textContaining(r'$10-$20'), findsOneWidget);
+    });
+
+    testWidgets('StreamingTextMarkdown handles RTL text with LaTeX', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'مرحبا \$x = 5\$ عالم',
+              latexEnabled: true,
+              markdownEnabled: true,
+              textDirection: TextDirection.rtl,
+              typingSpeed: Duration.zero,
+            ),
+          ),
+        ),
+      );
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining('مرحبا'), findsOneWidget);
+      expect(find.textContaining('عالم'), findsOneWidget);
+    });
+  });
+}

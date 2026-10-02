@@ -4,6 +4,10 @@ import 'dart:async';
 ///
 /// This provider manages the streaming of text, tool calls, and other data
 /// from AI models in a clean, efficient manner.
+@Deprecated(
+  'Not wired to any widget; pass a Stream<String> to '
+  'StreamingTextMarkdown.stream. Removed in 2.0.',
+)
 abstract class StreamProvider {
   /// Const constructor for subclasses.
   const StreamProvider();
@@ -42,11 +46,7 @@ class StreamData {
   final Map<String, dynamic>? metadata;
 
   /// Creates a new [StreamData] instance.
-  const StreamData({
-    required this.type,
-    required this.content,
-    this.metadata,
-  });
+  const StreamData({required this.type, required this.content, this.metadata});
 
   /// Creates a text stream data instance.
   factory StreamData.text(String text, {Map<String, dynamic>? metadata}) {
@@ -58,8 +58,10 @@ class StreamData {
   }
 
   /// Creates a tool call stream data instance.
-  factory StreamData.toolCall(Map<String, dynamic> toolCall,
-      {Map<String, dynamic>? metadata}) {
+  factory StreamData.toolCall(
+    Map<String, dynamic> toolCall, {
+    Map<String, dynamic>? metadata,
+  }) {
     return StreamData(
       type: StreamDataType.toolCall,
       content: toolCall,

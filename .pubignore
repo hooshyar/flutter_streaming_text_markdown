@@ -30,3 +30,6 @@ example/coverage/lcov.info
 # --- pub-only: keep the published archive lean ---
 # The demo GIF is referenced in the README via an absolute GitHub URL.
 doc/
+# Planning docs and backlog stay in the repo, not the package.
+docs/
+backlog/

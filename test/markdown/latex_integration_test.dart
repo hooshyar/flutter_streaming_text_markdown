@@ -1,0 +1,418 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
+
+void main() {
+  group('LaTeX Integration Tests', () {
+    testWidgets('Full LaTeX streaming animation cycle', (tester) async {
+      bool animationCompleted = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Equation: \$E = mc^2\$ is famous',
+              latexEnabled: true,
+              markdownEnabled: true,
+              wordByWord: true,
+              typingSpeed: const Duration(milliseconds: 100),
+              onComplete: () {
+                animationCompleted = true;
+              },
+            ),
+          ),
+        ),
+      );
+
+      // Initial state - no text should be visible yet
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Let some animation happen
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Should have some partial text
+      expect(find.textContaining('Equation'), findsOneWidget);
+
+      // Wait for animation to complete
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Animation should be complete
+      expect(animationCompleted, isTrue);
+      expect(find.textContaining('famous'), findsOneWidget);
+    });
+
+    testWidgets('LaTeX streaming with real-time stream', (tester) async {
+      final StreamController<String> controller = StreamController<String>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              revealMode: null,
+              text: '',
+              stream: controller.stream,
+              latexEnabled: true,
+              markdownEnabled: true,
+            ),
+          ),
+        ),
+      );
+
+      // Start with empty. gpt_markdown 1.3 renders an empty string as an
+      // empty Column (no Text('') leaf) rather than a literal empty Text —
+      // assert there's nothing rendered yet rather than pin that internal
+      // shape.
+      await tester.pump();
+      expect(find.textContaining('Formula'), findsNothing);
+
+      // Stream some text with LaTeX.
+      // Two things to account for per emitted chunk:
+      //  1. The stream is wrapped via `asBroadcastStream()` internally, adding
+      //     one extra microtask hop before the listener observes the event — so
+      //     two bare pumps let the received buffer update and the drain start.
+      //  2. As of v1.9.1 slice 2, streamed chunks no longer appear instantly:
+      //     the drain timer reveals them incrementally at `typingSpeed` (50ms
+      //     default, chunkSize 1). So we must also pump enough *elapsed time*
+      //     for the whole chunk to drain into the visible text before asserting.
+      Future<void> drain() async {
+        // Generously exceed the longest chunk's draining time (chars * 50ms).
+        for (var i = 0; i < 30; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+      }
+
+      controller.add('Formula: ');
+      await tester.pump();
+      await tester.pump();
+      await drain();
+      expect(find.textContaining('Formula:'), findsOneWidget);
+
+      controller.add('\$x = 5\$');
+      await tester.pump();
+      await tester.pump();
+      await drain();
+
+      controller.add(' and that is it');
+      await tester.pump();
+      await tester.pump();
+      await drain();
+
+      // Close the stream. The reveal engine intentionally withholds an open
+      // stream's final grapheme (the next chunk might still extend it), so
+      // the trailing "it" only fully lands once the stream actually closes.
+      await controller.close();
+      await tester.pump(const Duration(milliseconds: 200));
+      await drain();
+      expect(find.textContaining('and that is it'), findsOneWidget);
+    });
+
+    testWidgets('Mixed markdown and LaTeX content streaming', (tester) async {
+      const complexText = '''# Mathematical Concepts
+
+## Quadratic Formula
+The quadratic formula is: \$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\$
+
+## Matrix Multiplication
+Block formula:
+\$\$
+\\begin{pmatrix}
+a & b \\\\
+c & d
+\\end{pmatrix}
+\\begin{pmatrix}
+e & f \\\\
+g & h
+\\end{pmatrix}
+=
+\\begin{pmatrix}
+ae + bg & af + bh \\\\
+ce + dg & cf + dh
+\\end{pmatrix}
+\$\$
+
+This is **important** mathematics.''';
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StreamingTextMarkdown(
+                revealMode: null,
+                text: complexText,
+                latexEnabled: true,
+                markdownEnabled: true,
+                wordByWord: true,
+                typingSpeed: const Duration(milliseconds: 10),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Let animation progress
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Complete animation
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Should find markdown elements and text
+      expect(find.textContaining('Mathematical Concepts'), findsOneWidget);
+      expect(find.textContaining('Quadratic Formula'), findsOneWidget);
+      expect(find.textContaining('Matrix Multiplication'), findsOneWidget);
+      expect(find.textContaining('important'), findsOneWidget);
+
+      // W10 regression: latexEnabled must not drop out of markdown rendering.
+      // Before the gpt_markdown 1.3 delegation, the first closed `$...$`
+      // switched the whole widget onto a hand-rolled LaTeX-only renderer
+      // that emitted raw '#'/'**' markers instead of styled markdown, so a
+      // presence-only `textContaining` check for the heading/bold text
+      // passed either way. Assert the raw markers are gone instead.
+      expect(find.textContaining('# Mathematical Concepts'), findsNothing);
+      expect(find.textContaining('## Quadratic Formula'), findsNothing);
+      expect(find.textContaining('**important**'), findsNothing);
+    });
+
+    testWidgets('LaTeX animation with controller pause/resume', (tester) async {
+      final controller = StreamingTextController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Start \$a = b\$ middle \$\$c = d\$\$ end',
+              latexEnabled: true,
+              markdownEnabled: true,
+              controller: controller,
+              wordByWord: true,
+              typingSpeed: const Duration(milliseconds: 10),
+            ),
+          ),
+        ),
+      );
+
+      // Start animation
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Pause animation
+      controller.pause();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Resume animation
+      controller.resume();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Skip to end
+      controller.skipToEnd();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // skipToEnd should reveal the full surrounding prose, not just any Text.
+      expect(find.textContaining('Start'), findsWidgets);
+      expect(find.textContaining('middle'), findsWidgets);
+      expect(find.textContaining('end'), findsWidgets);
+    });
+
+    testWidgets('Character-by-character LaTeX streaming', (tester) async {
+      bool completed = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Hi \$x + y = z\$ bye',
+              latexEnabled: true,
+              markdownEnabled: true,
+              wordByWord: false,
+              chunkSize: 1,
+              typingSpeed: const Duration(milliseconds: 10),
+              fadeInEnabled: false,
+              onComplete: () {
+                completed = true;
+              },
+            ),
+          ),
+        ),
+      );
+
+      // Let animation run
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Should complete successfully
+      expect(
+        completed,
+        isTrue,
+        reason: 'LaTeX character-by-character animation should complete',
+      );
+
+      // Check the surrounding prose is actually displayed, not just any Text.
+      expect(find.textContaining('Hi'), findsWidgets);
+      expect(find.textContaining('bye'), findsWidgets);
+    });
+
+    testWidgets('LaTeX streaming with Arabic RTL text', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'مرحبا \$x = 5\$ بالعالم',
+              latexEnabled: true,
+              markdownEnabled: true,
+              textDirection: TextDirection.rtl,
+              wordByWord: true,
+              typingSpeed: const Duration(milliseconds: 10),
+            ),
+          ),
+        ),
+      );
+
+      // Let animation run with timeout protection
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining('مرحبا'), findsOneWidget);
+      expect(find.textContaining('بالعالم'), findsOneWidget);
+    });
+
+    testWidgets('LaTeX streaming with fade-in animations', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Fading \$a = b\$ text',
+              latexEnabled: true,
+              markdownEnabled: true,
+              fadeInEnabled: true,
+              fadeInDuration: const Duration(milliseconds: 200),
+              latexFadeInEnabled: false, // LaTeX should not fade
+              wordByWord: true,
+              typingSpeed: const Duration(milliseconds: 10),
+            ),
+          ),
+        ),
+      );
+
+      // Let animation run with timeout protection
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining('Fading'), findsOneWidget);
+      expect(find.textContaining('text'), findsOneWidget);
+    });
+
+    testWidgets('Multiple LaTeX expressions in streaming', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text:
+                  'First \$x = 1\$ then \$y = 2\$ and \$\$z = 3\$\$ finally \$w = 4\$',
+              latexEnabled: true,
+              markdownEnabled: true,
+              wordByWord: true,
+              typingSpeed: const Duration(milliseconds: 10),
+            ),
+          ),
+        ),
+      );
+
+      // Let animation progress through multiple expressions
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Wait for completion with timeout protection
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining('First'), findsOneWidget);
+      expect(find.textContaining('then'), findsOneWidget);
+      expect(find.textContaining('and'), findsOneWidget);
+      expect(find.textContaining('finally'), findsOneWidget);
+    });
+
+    testWidgets('LaTeX streaming performance with large text', (tester) async {
+      final largeText = '''# Large Document with LaTeX
+
+${List.generate(10, (i) => 'Section $i: Formula \$x_$i = ${i + 1}\$').join('\n\n')}
+
+## Final Formula
+\$\$
+\\sum_{i=1}^{10} x_i = ${List.generate(10, (i) => i + 1).join(' + ')}
+\$\$
+
+End of document.''';
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StreamingTextMarkdown(
+                revealMode: null,
+                text: largeText,
+                latexEnabled: true,
+                markdownEnabled: true,
+                wordByWord: true,
+                typingSpeed: const Duration(
+                  milliseconds: 1,
+                ), // Fast for testing
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Let some animation happen. No wall-clock assertion here: a
+      // runaway/infinite loop is caught by the test's own timeout
+      // (dart_test.yaml), not by a Stopwatch bound, which is flaky across
+      // machines and forbidden by the acceptance criteria except for the
+      // dedicated ratio benchmark.
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.textContaining('Large Document'), findsOneWidget);
+      expect(find.textContaining('Final Formula'), findsOneWidget);
+      expect(find.textContaining('End of document'), findsOneWidget);
+    });
+
+    testWidgets('LaTeX streaming with error handling', (tester) async {
+      // Test with intentionally malformed LaTeX
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingTextMarkdown(
+              revealMode: null,
+              text: 'Good \$x = 5\$ and bad \$unclosed and \$\$also unclosed',
+              latexEnabled: true,
+              markdownEnabled: true,
+              wordByWord: true,
+              typingSpeed: const Duration(milliseconds: 20),
+            ),
+          ),
+        ),
+      );
+
+      // Should not crash - just pump a few frames
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.textContaining('Good'), findsOneWidget);
+    });
+  });
+}

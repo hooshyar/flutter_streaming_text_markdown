@@ -1,0 +1,78 @@
+name: Weekly
+
+on:
+  schedule:
+    # 06:00 UTC every Monday.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  pub-upgrade:
+    name: pub upgrade + analyze + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Upgrade dependencies to their latest allowed versions
+        run: flutter pub upgrade
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+  fade-matrix:
+    name: markdown fade invariant matrix (exhaustive, tag-gated)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run the exhaustive markdown-fade invariant matrix
+        run: flutter test --no-dds --tags fade_matrix --run-skipped
+
+  pub-downgrade:
+    name: pub downgrade + analyze (SDK floor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.32.0
+
+      - name: Downgrade dependencies to the lowest versions this package allows
+        run: flutter pub downgrade
+
+      - name: Analyze
+        run: flutter analyze
+
+  pana:
+    name: pana (pub score)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Activate pana
+        run: dart pub global activate pana
+
+      - name: Run pana
+        run: dart pub global run pana --exit-code-threshold 0 .

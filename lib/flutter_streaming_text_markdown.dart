@@ -22,12 +22,43 @@ export 'src/streaming/streaming.dart';
 export 'src/theme/streaming_text_theme.dart';
 export 'src/controller/streaming_text_controller.dart';
 export 'src/presets/animation_presets.dart';
+export 'src/render/markdown_options.dart';
+export 'src/render/code/code_block_view.dart' show CodeBlockView;
+export 'src/theme/code_block_theme.dart' show CodeBlockTheme;
+export 'src/widgets/streaming_shimmer.dart' show StreamingShimmer;
+
+// Re-exported because they appear in [MarkdownRenderOptions]'s public
+// signatures (builders, style types); callers need these names in scope to
+// construct a [MarkdownRenderOptions] without a separate `gpt_markdown`
+// import.
+export 'package:gpt_markdown/gpt_markdown.dart'
+    show
+        MarkdownComponent,
+        GptMarkdownStyleSheet,
+        InlineCodeStyle,
+        HeadingBuilder,
+        TableBuilder,
+        BlockQuoteBuilder,
+        OrderedListBuilder,
+        UnOrderedListBuilder,
+        HrBuilder,
+        CheckboxBuilder,
+        RadioOptionBuilder,
+        MarkdownBlockComponent,
+        InlinePattern,
+        InlineDirective,
+        InlineCodeBuilder,
+        InlineLinkBuilder,
+        InlineSourceTagBuilder,
+        ImageBuilder;
 import 'package:flutter/material.dart';
 import 'package:gpt_markdown/gpt_markdown.dart' show MarkdownComponent;
 import 'src/streaming/streaming_text.dart';
+import 'src/streaming/reveal_mode.dart';
 import 'src/theme/streaming_text_theme.dart';
 import 'src/controller/streaming_text_controller.dart';
 import 'src/presets/animation_presets.dart';
+import 'src/render/markdown_options.dart';
 import 'src/widgets/streaming_shimmer.dart';
 
 /// A widget that displays streaming text with Markdown support.
@@ -42,9 +73,9 @@ import 'src/widgets/streaming_shimmer.dart';
 /// * Theme support through [StreamingTextTheme]
 ///
 /// Provide either [text] (static markdown string, the default) or [stream]
-/// (a `Stream<String>` of chunks from an LLM API). When [stream] is non-null,
-/// [text] is treated as the initial buffer and content is appended as the
-/// stream emits.
+/// (a `Stream<String>` of chunks from an LLM API). When [stream] is
+/// non-null, [text] is ignored entirely — the stream starts from an empty
+/// buffer and content is appended as it emits.
 ///
 /// Use [typingSpeed] to control how fast each character or word appears, and
 /// [wordByWord] to choose between character-by-character or word-by-word
@@ -52,15 +83,16 @@ import 'src/widgets/streaming_shimmer.dart';
 /// [fadeInEnabled] — per-character fades are auto-disabled when [stream] is
 /// set to avoid spawning one [AnimationController] per glyph.
 class StreamingTextMarkdown extends StatefulWidget {
-  /// The text to display. When [stream] is also provided, this acts as the
-  /// initial buffer and content from the stream is appended.
+  /// The text to display. Ignored when [stream] is also provided — the
+  /// stream starts from an empty buffer, not from [text].
   final String text;
 
   /// Optional stream of text chunks from an LLM API (OpenAI, Anthropic,
   /// Ollama, etc.). Each emitted string is appended to the rendered text and
   /// animated using the active typing settings. When this is non-null the
-  /// inner streaming engine takes over and per-character [fadeInEnabled] is
-  /// suppressed automatically; use [trailingFadeEnabled] for a smooth reveal.
+  /// inner streaming engine takes over, [text] is ignored, and
+  /// per-character [fadeInEnabled] is suppressed automatically; use
+  /// [trailingFadeEnabled] for a smooth reveal.
   ///
   /// ```dart
   /// StreamingTextMarkdown(
@@ -71,10 +103,18 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// ```
   final Stream<String>? stream;
 
-  /// Initial text to display before the animation starts
+  /// Initial text to display before the animation starts.
+  @Deprecated(
+    'Never displayed. text is the sole rendered/initial-buffer source; '
+    'this field has no effect. Will be removed in 2.0.0.',
+  )
   final String initialText;
 
-  /// Markdown style configuration (TextStyle applied to the markdown renderer)
+  /// Markdown style configuration: a plain [TextStyle] applied to the
+  /// markdown renderer as its base text style. Distinct from
+  /// [MarkdownRenderOptions.styleSheet] (in [markdownOptions]), which is a
+  /// `gpt_markdown` `GptMarkdownStyleSheet` for per-component styling
+  /// (headings, tables, block quotes, etc.).
   final TextStyle? styleSheet;
 
   /// Custom theme for the widget
@@ -100,7 +140,11 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Whether to stream text word by word instead of character by character
   final bool wordByWord;
 
-  /// The number of characters to reveal at once when not in word-by-word mode
+  /// The number of grapheme clusters revealed per animation tick when
+  /// [wordByWord] is `false`. Ignored in word-by-word mode, where one unit
+  /// is a whole word instead. A very large value (see
+  /// [StreamingTextMarkdown.instant]) reveals effectively everything on the
+  /// first tick.
   final int chunkSize;
 
   /// The speed at which each character or word appears
@@ -112,7 +156,13 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// The text alignment
   final TextAlign? textAlign;
 
-  /// Whether to enable markdown rendering
+  /// Whether to enable markdown rendering.
+  ///
+  /// Defaults to `false` here — note this differs from the inner
+  /// [StreamingText] widget, whose own `markdownEnabled` defaults to `true`
+  /// when used directly. [StreamingTextMarkdown] always forwards its own
+  /// value explicitly, so this mismatch has no runtime effect through this
+  /// widget; it only matters if you construct [StreamingText] yourself.
   final bool markdownEnabled;
 
   /// Whether to enable LaTeX rendering
@@ -124,7 +174,12 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// Scale factor for LaTeX equations
   final double latexScale;
 
-  /// Whether to enable fade-in animations for LaTeX content
+  /// Whether to enable fade-in animations for LaTeX content.
+  @Deprecated(
+    'No-op. LaTeX rendering is delegated to gpt_markdown, which has no '
+    'per-run fade hook of its own; use latexBuilder to control LaTeX '
+    'rendering directly. Will be removed in 2.0.0.',
+  )
   final bool? latexFadeInEnabled;
 
   /// Controller for programmatic animation control
@@ -172,43 +227,117 @@ class StreamingTextMarkdown extends StatefulWidget {
 
   /// Custom builder for code blocks in markdown content.
   final Widget Function(
-      BuildContext context, String name, String code, bool closed)? codeBuilder;
+    BuildContext context,
+    String name,
+    String code,
+    bool closed,
+  )?
+  codeBuilder;
 
   /// Custom builder for LaTeX expressions in markdown content.
   final Widget Function(
-          BuildContext context, String tex, TextStyle textStyle, bool inline)?
-      latexBuilder;
+    BuildContext context,
+    String tex,
+    TextStyle textStyle,
+    bool inline,
+  )?
+  latexBuilder;
 
   /// Custom builder for source tags in markdown content.
   final Widget Function(
-          BuildContext context, String content, TextStyle textStyle)?
-      sourceTagBuilder;
+    BuildContext context,
+    String content,
+    TextStyle textStyle,
+  )?
+  sourceTagBuilder;
 
   /// Custom builder for highlighted text in markdown content.
   final Widget Function(BuildContext context, String text, TextStyle style)?
-      highlightBuilder;
+  highlightBuilder;
 
   /// Custom builder for links in markdown content.
   final Widget Function(
-          BuildContext context, InlineSpan text, String url, TextStyle style)?
-      linkBuilder;
+    BuildContext context,
+    InlineSpan text,
+    String url,
+    TextStyle style,
+  )?
+  linkBuilder;
 
   /// Custom block-level markdown components forwarded to `gpt_markdown`'s
   /// `GptMarkdown.components`. Use this to override how headers, lists,
   /// bold, italic, tables, etc. are rendered. When `null`, the default
   /// `gpt_markdown` component list is used.
+  @Deprecated(
+    'Use markdownOptions.blockComponents. Passing components at all (even '
+    'an empty list) switches gpt_markdown onto its legacy regex pipeline, '
+    'which has no incremental segment cache. Will be removed in 2.0.0.',
+  )
   final List<MarkdownComponent>? components;
 
   /// Custom inline markdown components forwarded to `gpt_markdown`'s
   /// `GptMarkdown.inlineComponents`. When `null`, the default inline
   /// component list is used.
+  @Deprecated(
+    'Use markdownOptions.inlinePatterns. Passing inlineComponents at all '
+    '(even an empty list) switches gpt_markdown onto its legacy regex '
+    'pipeline, which has no incremental segment cache. '
+    'Will be removed in 2.0.0.',
+  )
   final List<MarkdownComponent>? inlineComponents;
+
+  /// Bundles `gpt_markdown` 1.3 pass-throughs that don't have a dedicated
+  /// top-level parameter of their own (style sheet, block/inline builders,
+  /// autolink config, ...). Forwarded as-is to the inner [StreamingText]. See
+  /// [MarkdownRenderOptions].
+  final MarkdownRenderOptions? markdownOptions;
+
+  /// Whether the rendered text can be selected by the user (wraps the
+  /// output in a `SelectionArea`). Defaults to `false`.
+  final bool selectable;
+
+  /// Whether to show a blinking cursor at the end of the text while
+  /// animating. When `null` (the default), resolves to `stream != null` —
+  /// a cursor makes sense for a live stream but not for static text.
+  final bool? showCursor;
+
+  /// Color of the blinking cursor shown while [showCursor] resolves to
+  /// `true`. Defaults to the theme's text-primary token.
+  final Color? cursorColor;
+
+  /// Semantic label used for accessibility. When set, this label (rather
+  /// than the revealed text itself) is what's announced/exposed to
+  /// assistive technology.
+  final String? semanticsLabel;
+
+  /// Builder invoked when [stream] emits an error. Receives the error
+  /// object; the text revealed so far stays on screen either way.
+  ///
+  /// When `null`, a default view is shown: the text revealed so far, plus a
+  /// trailing `Error: $error` line in `Theme.of(context).colorScheme.error`.
+  final Widget Function(BuildContext context, Object error)? errorBuilder;
 
   /// Whether tapping the widget jumps the animation to completion.
   ///
   /// Defaults to `true`. Set to `false` to let the animation play through
   /// uninterrupted regardless of taps.
   final bool? completeAnimationOnTap;
+
+  /// How revealed text arrives on screen (DESIGN.md section 4). Defaults to
+  /// [RevealMode.smoothFade] on this constructor, [.chatGPT] and [.claude].
+  /// [.typewriter] and [.instant] default to their own matching mode.
+  ///
+  /// Pass `revealMode: null` explicitly to opt OUT of every 2.0 reveal
+  /// default and keep the pre-2.0 behaviour driven entirely by the legacy
+  /// [wordByWord]/[fadeInEnabled]/[fadeInDuration]/[fadeInCurve]/
+  /// [chunkSize]/[typingSpeed] parameters — see doc/MIGRATION.md.
+  final RevealMode? revealMode;
+
+  /// How a `Stream<String>` (or static [text]) source is paced (DESIGN.md
+  /// 4.3). When `null`, [stream] input defaults to [StreamPacing.catchUp]
+  /// and static [text] input defaults to [StreamPacing.fixed] using
+  /// [typingSpeed].
+  final StreamPacing? pacing;
 
   /// Creates a streaming markdown text widget.
   ///
@@ -252,7 +381,15 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.markdownOptions,
+    this.selectable = false,
+    this.showCursor,
+    this.cursorColor,
+    this.semanticsLabel,
+    this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode = RevealMode.smoothFade,
+    this.pacing,
   });
 
   /// Creates a StreamingTextMarkdown with ChatGPT-style animation
@@ -294,16 +431,24 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.markdownOptions,
+    this.selectable = false,
+    this.showCursor,
+    this.cursorColor,
+    this.semanticsLabel,
+    this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode = RevealMode.smoothFade,
+    this.pacing,
     Duration? fadeInDuration,
     Curve? fadeInCurve,
     Duration? typingSpeed,
-  })  : fadeInEnabled = true,
-        fadeInDuration = fadeInDuration ?? const Duration(milliseconds: 150),
-        fadeInCurve = fadeInCurve ?? Curves.easeOut,
-        wordByWord = false,
-        chunkSize = 1,
-        typingSpeed = typingSpeed ?? const Duration(milliseconds: 15);
+  }) : fadeInEnabled = true,
+       fadeInDuration = fadeInDuration ?? const Duration(milliseconds: 150),
+       fadeInCurve = fadeInCurve ?? Curves.easeOut,
+       wordByWord = false,
+       chunkSize = 1,
+       typingSpeed = typingSpeed ?? const Duration(milliseconds: 15);
 
   /// Creates a StreamingTextMarkdown with Claude-style animation
   /// Perfect for smooth, word-by-word streaming like Claude
@@ -342,16 +487,24 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.markdownOptions,
+    this.selectable = false,
+    this.showCursor,
+    this.cursorColor,
+    this.semanticsLabel,
+    this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode = RevealMode.smoothFade,
+    this.pacing,
     Duration? fadeInDuration,
     Curve? fadeInCurve,
     Duration? typingSpeed,
-  })  : fadeInEnabled = true,
-        fadeInDuration = fadeInDuration ?? const Duration(milliseconds: 200),
-        fadeInCurve = fadeInCurve ?? Curves.easeInOut,
-        wordByWord = true,
-        chunkSize = 1,
-        typingSpeed = typingSpeed ?? const Duration(milliseconds: 80);
+  }) : fadeInEnabled = true,
+       fadeInDuration = fadeInDuration ?? const Duration(milliseconds: 200),
+       fadeInCurve = fadeInCurve ?? Curves.easeInOut,
+       wordByWord = true,
+       chunkSize = 1,
+       typingSpeed = typingSpeed ?? const Duration(milliseconds: 80);
 
   /// Creates a StreamingTextMarkdown with typewriter animation
   /// Classic typewriter effect without fade-in
@@ -390,16 +543,24 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.markdownOptions,
+    this.selectable = false,
+    this.showCursor,
+    this.cursorColor,
+    this.semanticsLabel,
+    this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode = RevealMode.typewriter,
+    this.pacing,
     Duration? fadeInDuration,
     Curve? fadeInCurve,
     Duration? typingSpeed,
-  })  : fadeInEnabled = false,
-        fadeInDuration = fadeInDuration ?? Duration.zero,
-        fadeInCurve = fadeInCurve ?? Curves.linear,
-        wordByWord = false,
-        chunkSize = 1,
-        typingSpeed = typingSpeed ?? const Duration(milliseconds: 50);
+  }) : fadeInEnabled = false,
+       fadeInDuration = fadeInDuration ?? Duration.zero,
+       fadeInCurve = fadeInCurve ?? Curves.linear,
+       wordByWord = false,
+       chunkSize = 1,
+       typingSpeed = typingSpeed ?? const Duration(milliseconds: 50);
 
   /// Creates a StreamingTextMarkdown with instant display
   /// For when speed is priority over animation
@@ -440,16 +601,24 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.markdownOptions,
+    this.selectable = false,
+    this.showCursor,
+    this.cursorColor,
+    this.semanticsLabel,
+    this.errorBuilder,
     this.completeAnimationOnTap,
+    this.revealMode = RevealMode.instant,
+    this.pacing,
     Duration? fadeInDuration,
     Curve? fadeInCurve,
     Duration? typingSpeed,
-  })  : fadeInEnabled = false,
-        fadeInDuration = fadeInDuration ?? Duration.zero,
-        fadeInCurve = fadeInCurve ?? Curves.linear,
-        wordByWord = false,
-        chunkSize = 1000,
-        typingSpeed = typingSpeed ?? Duration.zero;
+  }) : fadeInEnabled = false,
+       fadeInDuration = fadeInDuration ?? Duration.zero,
+       fadeInCurve = fadeInCurve ?? Curves.linear,
+       wordByWord = false,
+       chunkSize = 1000,
+       typingSpeed = typingSpeed ?? Duration.zero;
 
   /// Creates a StreamingTextMarkdown from a preset configuration
   StreamingTextMarkdown.fromPreset({
@@ -484,13 +653,21 @@ class StreamingTextMarkdown extends StatefulWidget {
     this.linkBuilder,
     this.components,
     this.inlineComponents,
+    this.markdownOptions,
+    this.selectable = false,
+    this.showCursor,
+    this.cursorColor,
+    this.semanticsLabel,
+    this.errorBuilder,
     this.completeAnimationOnTap,
-  })  : fadeInEnabled = preset.fadeInEnabled,
-        fadeInDuration = preset.fadeInDuration,
-        fadeInCurve = preset.fadeInCurve,
-        wordByWord = preset.wordByWord,
-        chunkSize = preset.chunkSize,
-        typingSpeed = preset.typingSpeed;
+    this.revealMode,
+    this.pacing,
+  }) : fadeInEnabled = preset.fadeInEnabled,
+       fadeInDuration = preset.fadeInDuration,
+       fadeInCurve = preset.fadeInCurve,
+       wordByWord = preset.wordByWord,
+       chunkSize = preset.chunkSize,
+       typingSpeed = preset.typingSpeed;
 
   @override
   State<StreamingTextMarkdown> createState() => _StreamingTextMarkdownState();
@@ -498,14 +675,6 @@ class StreamingTextMarkdown extends StatefulWidget {
 
 class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
   final ScrollController _scrollController = ScrollController();
-  late StreamingTextTheme _effectiveTheme;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Update effective theme when dependencies change
-    _effectiveTheme = widget.theme ?? context.streamingTextTheme;
-  }
 
   @override
   void dispose() {
@@ -531,14 +700,21 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
 
   @override
   Widget build(BuildContext context) {
+    // Resolved fresh on every build (not cached in didChangeDependencies)
+    // so that swapping widget.theme directly — with no ancestor
+    // InheritedWidget change — still restyles the output.
+    final effectiveTheme = widget.theme ?? context.streamingTextTheme;
+
     // Resolve TextStyle with proper fallback chain
     // Priority: widget.styleSheet > theme.markdownStyleSheet > theme.markdownStyle (deprecated) > default
-    final effectiveStyleSheet = widget.styleSheet ??
-        _effectiveTheme.markdownStyleSheet ??
+    final effectiveStyleSheet =
+        widget.styleSheet ??
+        effectiveTheme.markdownStyleSheet ??
         Theme.of(context).textTheme.bodyLarge;
 
-    final effectivePadding = widget.padding ??
-        _effectiveTheme.defaultPadding ??
+    final effectivePadding =
+        widget.padding ??
+        effectiveTheme.defaultPadding ??
         const EdgeInsets.all(16.0);
 
     // Show shimmer skeleton while waiting for first LLM token
@@ -554,17 +730,18 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
       child: Padding(
         padding: effectivePadding,
         child: StreamingText(
-          key: ValueKey(
-              'streaming_text_${widget.wordByWord}_${widget.chunkSize}_${widget.typingSpeed.inMilliseconds}_${widget.latexEnabled}'),
+          key: ValueKey('streaming_text_${widget.latexEnabled}'),
           text: widget.text,
           stream: widget.stream,
-          style: _effectiveTheme.textStyle,
+          style: effectiveTheme.textStyle,
           markdownEnabled: widget.markdownEnabled,
           latexEnabled: widget.latexEnabled,
-          latexStyle: widget.latexStyle ?? _effectiveTheme.inlineLatexStyle,
+          latexStyle: widget.latexStyle ?? effectiveTheme.inlineLatexStyle,
           latexScale: widget.latexScale,
+          // ignore: deprecated_member_use_from_same_package
           latexFadeInEnabled:
-              widget.latexFadeInEnabled ?? _effectiveTheme.latexFadeInEnabled,
+              // ignore: deprecated_member_use_from_same_package
+              widget.latexFadeInEnabled ?? effectiveTheme.latexFadeInEnabled,
           markdownStyleSheet: effectiveStyleSheet,
           fadeInEnabled: widget.fadeInEnabled,
           fadeInDuration: widget.fadeInDuration,
@@ -584,9 +761,19 @@ class _StreamingTextMarkdownState extends State<StreamingTextMarkdown> {
           sourceTagBuilder: widget.sourceTagBuilder,
           highlightBuilder: widget.highlightBuilder,
           linkBuilder: widget.linkBuilder,
+          // ignore: deprecated_member_use_from_same_package
           components: widget.components,
+          // ignore: deprecated_member_use_from_same_package
           inlineComponents: widget.inlineComponents,
+          markdownOptions: widget.markdownOptions,
+          selectable: widget.selectable,
+          showCursor: widget.showCursor ?? (widget.stream != null),
+          cursorColor: widget.cursorColor,
+          semanticsLabel: widget.semanticsLabel,
+          errorBuilder: widget.errorBuilder,
           completeAnimationOnTap: widget.completeAnimationOnTap ?? true,
+          revealMode: widget.revealMode,
+          pacing: widget.pacing,
           onTextChanged: widget.autoScroll ? _pinToBottom : null,
           onComplete: () {
             // Handle auto-scrolling

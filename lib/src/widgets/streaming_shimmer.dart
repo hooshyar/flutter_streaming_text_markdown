@@ -63,9 +63,10 @@ class _StreamingShimmerState extends State<StreamingShimmer>
     super.initState();
     _controller = AnimationController(vsync: this, duration: widget.duration)
       ..repeat();
-    _animation = Tween<double>(begin: -1.5, end: 2.5).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _animation = Tween<double>(
+      begin: -1.5,
+      end: 2.5,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -79,7 +80,8 @@ class _StreamingShimmerState extends State<StreamingShimmer>
     final colorScheme = Theme.of(context).colorScheme;
     final base =
         widget.baseColor ?? colorScheme.onSurface.withAlpha(30); // ~12% opacity
-    final highlight = widget.highlightColor ??
+    final highlight =
+        widget.highlightColor ??
         colorScheme.onSurface.withAlpha(10); // ~4% opacity
 
     return AnimatedBuilder(

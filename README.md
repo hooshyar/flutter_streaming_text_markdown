@@ -25,7 +25,9 @@
 
 ## 🎬 Demo
 
-<img src="https://raw.githubusercontent.com/hooshyar/flutter_streaming_text_markdown/main/doc/streaming_demo.gif" alt="A Stream<String> animating into markdown, LLM-style" width="300"/>
+<img src="https://raw.githubusercontent.com/hooshyar/flutter_streaming_text_markdown/main/doc/demo.gif" alt="The 1.11.0 example app: streaming markdown, presets, and the animation controller" width="720"/>
+
+Full-quality video: [doc/demo.mp4](https://github.com/hooshyar/flutter_streaming_text_markdown/raw/main/doc/demo.mp4)
 
 ▶️ **[Try the live web demo](https://hooshyar.github.io/flutter_streaming_text_markdown/)** — or run it locally: `cd example && flutter run`
 

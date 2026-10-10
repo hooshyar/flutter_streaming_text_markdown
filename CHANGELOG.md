@@ -9,8 +9,9 @@ Restores the full 160/160 pub points. There are no API or behaviour changes.
 * **Pub score.** gpt_markdown 1.3.2 deprecated `GptMarkdown.latexBuilder` in
   favour of `inlineLatexBuilder` / `blockLatexBuilder` after 1.11.0 shipped.
   That INFO cost 10 points under "Pass static analysis" (150/160). The call
-  is suppressed for now: the replacements need gpt_markdown >=1.3.1, and with
-  it Dart 3.9 / Flutter 3.35, so moving to them waits for an SDK-floor bump.
+  is suppressed for now. The replacements only exist from gpt_markdown 1.3.2,
+  which needs Dart 3.9 / Flutter 3.35, so moving to them waits for an
+  SDK-floor bump.
 
 ### Documentation
 
@@ -24,12 +25,22 @@ Restores the full 160/160 pub points. There are no API or behaviour changes.
   so those samples showed raw `#` and `**` markers.
 * `example/README.md` was flutter-create boilerplate. pub.dev shows it on the
   Example tab, so it is now a recipe guide.
+* The `stream` parameter's API doc now says to create the stream once,
+  matching the README.
+
+### CI
+
+* The weekly workflow's `pub upgrade` and `pub downgrade` jobs now generate
+  `example/lib/version.dart` before running `flutter analyze`, as the main CI
+  job already did. Without that generated file, analysing `example/` fails on
+  a missing import, whatever the state of the package code.
 
 ### Package
 
 * Internal files no longer ship in the pub archive: the `reports/` QA images
-  (~476 KB, about a quarter of the archive), `CLAUDE.md`, `DESIGN.md`,
-  `PROJECT.md` and `devtools_options.yaml`.
+  (~466 KB, about a quarter of the archive), `CLAUDE.md`, `PROJECT.md` and
+  `devtools_options.yaml`. `DESIGN.md` still ships because the API docs
+  refer to it.
 
 ## 1.11.0
 

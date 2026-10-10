@@ -301,10 +301,10 @@ class StreamingMarkdownView extends StatelessWidget {
       onLinkTap: onLinkTap,
       codeBuilder: codeBuilder ?? _defaultCodeBuilder,
       // gpt_markdown 1.3.2 deprecated `latexBuilder` in favour of
-      // `inlineLatexBuilder`/`blockLatexBuilder`, which need gpt_markdown
-      // >=1.3.1 and therefore Dart 3.9 / Flutter 3.35. Keep the single
-      // builder until the SDK floor moves; unsuppressed, this INFO costs
-      // 10 pub points under "Pass static analysis".
+      // `inlineLatexBuilder`/`blockLatexBuilder`, which only exist from
+      // 1.3.2 (gpt_markdown >=1.3.1 needs Dart 3.9 / Flutter 3.35). Keep the
+      // single builder until the SDK floor moves; unsuppressed, this INFO
+      // costs 10 pub points under "Pass static analysis".
       // ignore: deprecated_member_use
       latexBuilder: effectiveLatexBuilder,
       inlineSourceTagBuilder: effectiveSourceTagBuilder,

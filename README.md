@@ -139,6 +139,7 @@ class _ReplyState extends State<Reply> {
       markdownEnabled: true,
       latexEnabled: true,
       trailingFadeEnabled: true,       // recommended for streams
+      // Safe: this rebuild reuses the same _reply stream.
       onComplete: () => setState(() => _isStreaming = false),
     );
   }

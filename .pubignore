@@ -36,7 +36,6 @@ backlog/
 # Internal QA screenshots/reports and maintainer/agent notes.
 reports/
 /CLAUDE.md
-/DESIGN.md
 /PROJECT.md
 /devtools_options.yaml
 

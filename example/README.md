@@ -47,13 +47,15 @@ row is held back until it completes, so raw markers never flash on screen.
 
 ## Presets
 
-Presets turn markdown on and pick tuned reveal settings:
+Presets pick tuned reveal settings. `.chatGPT` and `.claude` also turn
+markdown on; `.typewriter` and `.instant` don't, so pass
+`markdownEnabled: true` when the text is markdown:
 
 ```dart
 StreamingTextMarkdown.chatGPT(stream: _reply)
 StreamingTextMarkdown.claude(stream: _reply)
 StreamingTextMarkdown.typewriter(text: 'Hello, world!')
-StreamingTextMarkdown.instant(text: alreadyCompleteAnswer)
+StreamingTextMarkdown.instant(text: answer, markdownEnabled: true)
 ```
 
 ## Waiting for the first token

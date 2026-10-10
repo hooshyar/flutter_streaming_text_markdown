@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.11.1
+
+Restores the full 160/160 pub points. There are no API or behaviour changes.
+
+### Fixed
+
+* **Pub score.** gpt_markdown 1.3.2 deprecated `GptMarkdown.latexBuilder` in
+  favour of `inlineLatexBuilder` / `blockLatexBuilder` after 1.11.0 shipped.
+  That INFO cost 10 points under "Pass static analysis" (150/160). The call
+  is suppressed for now: the replacements need gpt_markdown >=1.3.1, and with
+  it Dart 3.9 / Flutter 3.35, so moving to them waits for an SDK-floor bump.
+
+### Documentation
+
+* **The README stream samples no longer re-request on every rebuild.** They
+  used to pass `stream: chatService.streamReply(prompt)` inline in `build()`.
+  Every rebuild, including the one from `setState` in `onComplete`, handed the
+  widget a new `Stream`, which re-subscribes and fires a new API request. The
+  samples now create the stream once in `State`.
+* The TTFT, error-handling and accessibility samples now set
+  `markdownEnabled: true`. It is `false` by default on the plain constructor,
+  so those samples showed raw `#` and `**` markers.
+* `example/README.md` was flutter-create boilerplate. pub.dev shows it on the
+  Example tab, so it is now a recipe guide.
+
+### Package
+
+* Internal files no longer ship in the pub archive: the `reports/` QA images
+  (~476 KB, about a quarter of the archive), `CLAUDE.md`, `DESIGN.md`,
+  `PROJECT.md` and `devtools_options.yaml`.
+
 ## 1.11.0
 
 A ground-up correctness and architecture pass. No public API was removed

@@ -52,7 +52,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_streaming_text_markdown: ^1.11.0
+  flutter_streaming_text_markdown: ^1.11.1
 ```
 
 ## 🚀 Quick Start
@@ -124,13 +124,25 @@ For real LLM chat UIs where tokens arrive over HTTP/SSE, pass a `Stream<String>`
 ```dart
 import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
 
-StreamingTextMarkdown(
-  stream: chatService.streamReply(prompt),     // your Stream<String>
-  markdownEnabled: true,
-  latexEnabled: true,
-  trailingFadeEnabled: true,                    // recommended for streams
-  onComplete: () => setState(() => _isStreaming = false),
-)
+class _ReplyState extends State<Reply> {
+  // Create the stream ONCE (here, or when the user sends a message) and keep
+  // it in State. Calling `chatService.streamReply(prompt)` inside build()
+  // would hand the widget a new Stream on every rebuild, which re-subscribes
+  // and fires a new API request each time.
+  late final Stream<String> _reply = chatService.streamReply(widget.prompt);
+  bool _isStreaming = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamingTextMarkdown(
+      stream: _reply,                  // your Stream<String>
+      markdownEnabled: true,
+      latexEnabled: true,
+      trailingFadeEnabled: true,       // recommended for streams
+      onComplete: () => setState(() => _isStreaming = false),
+    );
+  }
+}
 ```
 
 > `stream:` input defaults to `RevealMode.smoothFade` (word-unit reveal + fade)
@@ -148,6 +160,7 @@ Show a skeleton while you wait for the first token, then swap to the streamed wi
 ```dart
 StreamingTextMarkdown(
   text: _buffer,
+  markdownEnabled: true,
   isLoading: _waitingForFirstToken,   // shimmer while true
   trailingFadeEnabled: true,
 )
@@ -162,7 +175,8 @@ stays on screen either way. Pass `errorBuilder` to render your own view; the
 
 ```dart
 StreamingTextMarkdown(
-  stream: chatService.streamReply(prompt),
+  stream: _reply, // created once in State, as above
+  markdownEnabled: true,
   controller: controller,
   errorBuilder: (context, error) => Row(
     children: [
@@ -612,7 +626,8 @@ The theme system follows Flutter's standard inheritance pattern:
 
 ```dart
 StreamingTextMarkdown(
-  stream: chatService.streamReply(prompt),
+  stream: _reply, // created once in State, as above
+  markdownEnabled: true,
   semanticsLabel: 'Assistant response',
   selectable: true,
 )

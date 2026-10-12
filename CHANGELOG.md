@@ -2,9 +2,16 @@
 
 ## 1.11.1
 
-Restores the full 160/160 pub points. There are no API or behaviour changes.
+Restores the full 160/160 pub points and fixes an uncaught error from the code
+block copy button. There are no API changes.
 
 ### Fixed
+
+* **The code block copy button no longer throws when the clipboard
+  refuses.** On the web the browser can reject a clipboard write, for
+  example when the page isn't focused or clipboard permission is denied.
+  `CodeBlockView` let that `PlatformException` escape as an uncaught error.
+  It now catches it and shows the check only after a successful copy.
 
 * **Pub score.** gpt_markdown 1.3.2 deprecated `GptMarkdown.latexBuilder` in
   favour of `inlineLatexBuilder` / `blockLatexBuilder` after 1.11.0 shipped.

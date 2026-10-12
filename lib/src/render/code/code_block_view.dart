@@ -127,7 +127,15 @@ class _CodeBlockViewState extends State<CodeBlockView> {
 
   Future<void> _copy() async {
     if (!widget.closed) return;
-    await Clipboard.setData(ClipboardData(text: _displayCode));
+    // The platform can refuse the write (on the web, when the page isn't
+    // focused or clipboard permission is denied). Swallow that instead of
+    // letting it escape as an uncaught error, and only show the check when
+    // the copy actually happened.
+    try {
+      await Clipboard.setData(ClipboardData(text: _displayCode));
+    } on PlatformException {
+      return;
+    }
     if (!mounted) return;
     setState(() => _copied = true);
     _copiedTimer?.cancel();

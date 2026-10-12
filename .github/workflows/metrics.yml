@@ -1,0 +1,145 @@
+# Weekly pub.dev numbers for the three packages, kept on the `metrics`
+# branch (history.csv + latest.md). Tracks downloads of the latest two minor
+# versions separately from the total, because one CI pipeline locked to an
+# old version can swing the total by thousands a week (2026-09: a single
+# consumer pulling 1.7.x stopped and halved the 30-day count overnight).
+name: Package metrics
+
+on:
+  schedule:
+    - cron: '30 7 * * 1' # Mondays 07:30 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: package-metrics
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the metrics branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin metrics > /dev/null; then
+            git fetch -q origin metrics
+            git worktree add -q m origin/metrics
+          else
+            git worktree add -q --detach m
+            (cd m && git checkout -q --orphan metrics && git rm -rfq .)
+          fi
+
+      - name: Collect pub.dev numbers
+        run: |
+          python3 - m <<'PY'
+          import base64, csv, datetime, json, os, re, sys, urllib.request
+
+          out = sys.argv[1]
+          packages = ['flutter_streaming_text_markdown', 'flutter_gen_ai_chat_ui', 'flutter_dot_loader']
+
+          def get(url):
+              req = urllib.request.Request(url, headers={'User-Agent': 'hooshyar-package-metrics (GitHub Actions)'})
+              with urllib.request.urlopen(req, timeout=60) as r:
+                  return r.read().decode()
+
+          def lower(rng):
+              m = re.match(r'>=(\d+)\.(\d+)\.(\d+)', rng)
+              return tuple(int(x) for x in m.groups()) if m else (0, 0, 0)
+
+          fields = ['package', 'week_ending', 'downloads_week', 'downloads_prev_week',
+                    'latest_two_minors_week', 'latest_two_minors_prev_week', 'latest_two_minors',
+                    'older_versions_share', 'downloads_30d', 'points', 'max_points', 'likes',
+                    'latest_version', 'collected_at']
+          rows = []
+          for p in packages:
+              html = get(f'https://pub.dev/packages/{p}/score')
+              m = re.search(r'data-downloads-chart-points="([^"]+)"', html)
+              chart = json.loads(base64.b64decode(m.group(1))) if m else None
+              score = json.loads(get(f'https://pub.dev/api/packages/{p}/score'))
+              info = json.loads(get(f'https://pub.dev/api/packages/{p}'))
+              row = {
+                  'package': p,
+                  'downloads_30d': score.get('downloadCount30Days'),
+                  'points': score.get('grantedPoints'),
+                  'max_points': score.get('maxPoints'),
+                  'likes': score.get('likeCount'),
+                  'latest_version': info['latest']['version'],
+                  'collected_at': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
+              }
+              if chart:
+                  total = chart['totalWeeklyDownloads']  # newest week first
+                  minors = sorted(chart['minorRangeWeeklyDownloads'], key=lambda x: lower(x['versionRange']), reverse=True)
+                  top2 = minors[:2]
+                  l2 = [sum(x['counts'][i] for x in top2) for i in (0, 1)]
+                  row.update({
+                      'week_ending': chart['newestDate'][:10],
+                      'downloads_week': total[0],
+                      'downloads_prev_week': total[1],
+                      'latest_two_minors_week': l2[0],
+                      'latest_two_minors_prev_week': l2[1],
+                      'latest_two_minors': ' + '.join(x['versionRange'] for x in top2),
+                      'older_versions_share': round(1 - l2[0] / total[0], 3) if total[0] else '',
+                  })
+              rows.append(row)
+
+          hist = os.path.join(out, 'history.csv')
+          old = []
+          if os.path.exists(hist):
+              with open(hist) as f:
+                  old = list(csv.DictReader(f))
+          def key(r):
+              return (r['package'], r.get('week_ending') or '')
+          keys = {key(r) for r in rows}
+          old = [r for r in old if key(r) not in keys]
+          with open(hist, 'w', newline='') as f:
+              w = csv.DictWriter(f, fieldnames=fields)
+              w.writeheader()
+              for r in old + rows:
+                  w.writerow({k: r.get(k, '') for k in fields})
+
+          def pct(a, b):
+              ok = isinstance(a, int) and isinstance(b, int) and b
+              return f'{(a - b) / b:+.0%}' if ok else 'n/a'
+
+          lines = ['# Package metrics', '',
+                   f"Collected {rows[0]['collected_at']} from pub.dev. Week ending {rows[0].get('week_ending', '?')}.", '',
+                   '| Package | Latest | Points | Likes | Downloads (week) | vs prev | Latest two minors (week) | vs prev | On older versions | 30-day |',
+                   '|---|---|---|---|---|---|---|---|---|---|']
+          flags = []
+          for r in rows:
+              d = {k: ('n/a' if r.get(k) in (None, '') else r.get(k)) for k in fields}
+              share = r.get('older_versions_share')
+              lines.append('| {package} | {latest_version} | {points}/{max_points} | {likes} | {downloads_week} | {wow} | {latest_two_minors_week} | {l2wow} | {share} | {downloads_30d} |'.format(
+                  wow=pct(r.get('downloads_week'), r.get('downloads_prev_week')),
+                  l2wow=pct(r.get('latest_two_minors_week'), r.get('latest_two_minors_prev_week')),
+                  share=f'{share:.0%}' if isinstance(share, float) else 'n/a',
+                  **{k: v for k, v in d.items() if k not in ('wow', 'l2wow', 'share')}))
+              if isinstance(r.get('points'), int) and r['points'] < r['max_points']:
+                  flags.append(f"- **{r['package']}** has {r['points']}/{r['max_points']} pub points.")
+              if r.get('downloads_week') is None:
+                  flags.append(f"- **{r['package']}**: no weekly download chart found on pub.dev (page layout changed?).")
+              prev = r.get('latest_two_minors_prev_week') or 0
+              if prev >= 100 and (r.get('latest_two_minors_week') or 0) < 0.7 * prev:
+                  flags.append(f"- **{r['package']}**: latest-two-minor downloads fell {pct(r['latest_two_minors_week'], prev)} week on week.")
+          lines += ['', '## Flags', ''] + (flags or ['- None.'])
+          lines += ['', 'Ranges for "latest two minors": ' + '; '.join(f"{r['package']}: {r.get('latest_two_minors', 'n/a')}" for r in rows), '']
+          with open(os.path.join(out, 'latest.md'), 'w') as f:
+              f.write('\n'.join(lines))
+          print('\n'.join(lines))
+          PY
+
+      - name: Commit to the metrics branch
+        run: |
+          cd m
+          git add -A
+          if git diff --cached --quiet; then echo "No change."; exit 0; fi
+          git commit -qm "metrics: $(date -u +%F)"
+          git push -q origin HEAD:metrics
+          echo "::notice title=metrics::$(head -c 3000 latest.md | sed -e 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')"

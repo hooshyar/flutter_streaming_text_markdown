@@ -1,5 +1,77 @@
 # Changelog
 
+## 1.11.1
+
+Restores the full 160/160 pub points and fixes two bugs: markdown that could
+stay invisible after tap-to-complete, and an uncaught error from the code
+block copy button. There are no API changes.
+
+### Fixed
+
+* **Markdown text no longer stays invisible after tap-to-complete.** With
+  the default `smoothFade` reveal, tapping a streaming reply to complete it
+  could occasionally leave the last revealed paragraph fully transparent.
+  The paint-time fade mask starts a fade when it first lays out new text,
+  which can be later than the reveal engine's own timing, and the widget's
+  ticker could stop before that fade finished. The mask now reports while
+  it is still fading, and the ticker keeps running until every fade reaches
+  full opacity.
+* **The code block copy button no longer throws when the clipboard
+  refuses.** On the web the browser can reject a clipboard write, for
+  example when the page isn't focused or clipboard permission is denied.
+  `CodeBlockView` let that `PlatformException` escape as an uncaught error.
+  It now catches it and shows the check only after a successful copy.
+
+* **Pub score.** gpt_markdown 1.3.2 deprecated `GptMarkdown.latexBuilder` in
+  favour of `inlineLatexBuilder` / `blockLatexBuilder` after 1.11.0 shipped.
+  That INFO cost 10 points under "Pass static analysis" (150/160). The call
+  is suppressed for now. The replacements only exist from gpt_markdown 1.3.2,
+  which needs Dart 3.9 / Flutter 3.35, so moving to them waits for an
+  SDK-floor bump.
+
+### Documentation
+
+* **A quick start that streams.** The README now opens with a complete app
+  that streams a markdown reply from a stand-in `Stream<String>`, so pasting
+  it into `lib/main.dart` shows the package working with no API key. The
+  same code is `example/lib/quickstart.dart`, which CI analyzes and tests,
+  and a test keeps the README copy identical to it.
+* **New README section: one widget for streaming and finished replies.**
+  Swapping to another markdown widget when a reply completes makes the text
+  jump in typography and spacing. The section shows how to keep one widget,
+  including as a plain progressive renderer with `animationsEnabled: false`.
+* **The README stream samples no longer re-request on every rebuild.** They
+  used to pass `stream: chatService.streamReply(prompt)` inline in `build()`.
+  Every rebuild, including the one from `setState` in `onComplete`, handed the
+  widget a new `Stream`, which re-subscribes and fires a new API request. The
+  samples now create the stream once in `State`.
+* The TTFT, error-handling and accessibility samples now set
+  `markdownEnabled: true`. It is `false` by default on the plain constructor,
+  so those samples showed raw `#` and `**` markers.
+* `example/README.md` was flutter-create boilerplate. pub.dev shows it on the
+  Example tab, so it is now a recipe guide.
+* The `stream` parameter's API doc now says to create the stream once,
+  matching the README.
+
+### CI
+
+* **Weekly package metrics.** A new workflow records pub points, likes and
+  per-version weekly downloads for this package, `flutter_gen_ai_chat_ui`
+  and `flutter_dot_loader` on the `metrics` branch every Monday. It tracks
+  downloads of the latest two minor versions separately, so a single CI
+  pipeline locked to an old version no longer hides real adoption.
+* The weekly workflow's `pub upgrade` and `pub downgrade` jobs now generate
+  `example/lib/version.dart` before running `flutter analyze`, as the main CI
+  job already did. Without that generated file, analysing `example/` fails on
+  a missing import, whatever the state of the package code.
+
+### Package
+
+* Internal files no longer ship in the pub archive: the `reports/` QA images
+  (~466 KB, about a quarter of the archive), `CLAUDE.md`, `PROJECT.md` and
+  `devtools_options.yaml`. `DESIGN.md` still ships because the API docs
+  refer to it.
+
 ## 1.11.0
 
 A ground-up correctness and architecture pass. No public API was removed

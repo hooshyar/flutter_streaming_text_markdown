@@ -1,4 +1,5 @@
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 /// The Unicode object-replacement character `gpt_markdown`'s `TextPainter`
@@ -365,6 +366,7 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
     required this.fadeDuration,
     required this.curve,
     required this.repaint,
+    this.onFadingChanged,
   });
 
   /// Whether the mask is active at all. `false` paints [child] unmodified,
@@ -390,6 +392,17 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
   /// frame while a fade might be in progress). Never triggers a rebuild.
   final Listenable repaint;
 
+  /// Called after a frame in which the mask started or stopped painting a
+  /// fade, with `true` while any run is still below full opacity.
+  ///
+  /// [repaint] is driven by a ticker that times itself from the reveal
+  /// engine. The mask arms its own runs only when layout sees text grow,
+  /// which can be later than the engine's run (for example after a
+  /// tap-to-complete reveal whose layout lands on a slow frame). The owner
+  /// uses this callback to keep that ticker, and so [now] and [repaint],
+  /// running until the mask's own fades have finished.
+  final ValueChanged<bool>? onFadingChanged;
+
   @override
   RenderMarkdownFadeMask createRenderObject(BuildContext context) {
     return RenderMarkdownFadeMask(
@@ -399,6 +412,7 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
       fadeDuration: fadeDuration,
       curve: curve,
       repaint: repaint,
+      onFadingChanged: onFadingChanged,
     );
   }
 
@@ -413,7 +427,8 @@ class MarkdownFadeMask extends SingleChildRenderObjectWidget {
       ..now = now
       ..fadeDuration = fadeDuration
       ..curve = curve
-      ..repaint = repaint;
+      ..repaint = repaint
+      ..onFadingChanged = onFadingChanged;
   }
 }
 
@@ -438,6 +453,7 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
     required this.fadeDuration,
     required this.curve,
     required Listenable repaint,
+    this.onFadingChanged,
   }) : _enabled = enabled,
        _epoch = epoch,
        _repaint = repaint;
@@ -553,6 +569,9 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
   @override
   void detach() {
     _repaint.removeListener(markNeedsPaint);
+    // A detached mask paints nothing more, so it must not keep its owner's
+    // ticker alive.
+    _reportFading(false);
     super.detach();
   }
 
@@ -955,18 +974,36 @@ class RenderMarkdownFadeMask extends RenderProxyBox {
     return ranges;
   }
 
+  /// See [MarkdownFadeMask.onFadingChanged].
+  ValueChanged<bool>? onFadingChanged;
+
+  bool _reportedFading = false;
+
+  /// Reports a change in whether [paint] found fading runs. Deferred to
+  /// after the frame, since the owner reacts by starting or stopping a
+  /// ticker, which must not happen in the middle of painting.
+  void _reportFading(bool fading) {
+    if (fading == _reportedFading) return;
+    _reportedFading = fading;
+    final callback = onFadingChanged;
+    if (callback == null) return;
+    SchedulerBinding.instance.addPostFrameCallback((_) => callback(fading));
+  }
+
   @override
   void paint(PaintingContext context, Offset offset) {
     final c = child;
     if (c == null) return;
 
     if (!_enabled) {
+      _reportFading(false);
       _layerHandle.layer = null;
       context.paintChild(c, offset);
       return;
     }
 
     final dims = _collectDims();
+    _reportFading(dims.isNotEmpty);
     if (dims.isEmpty) {
       // Reduced motion / fade off / nothing currently fading: paint
       // completely unmodified, with NO layer pushed at all.

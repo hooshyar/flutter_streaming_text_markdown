@@ -94,9 +94,14 @@ class StreamingTextMarkdown extends StatefulWidget {
   /// per-character [fadeInEnabled] is suppressed automatically; use
   /// [trailingFadeEnabled] for a smooth reveal.
   ///
+  /// Create the stream once (in `initState`, or when the user sends a
+  /// message) and keep it in your `State`. A new `Stream` instance passed on
+  /// a rebuild is treated as a new source and re-subscribed, which would
+  /// start a new request.
+  ///
   /// ```dart
   /// StreamingTextMarkdown(
-  ///   stream: chatService.streamReply(prompt),
+  ///   stream: _replyStream, // created once, not inside build()
   ///   markdownEnabled: true,
   ///   trailingFadeEnabled: true,
   /// )

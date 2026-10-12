@@ -46,6 +46,11 @@ block copy button. There are no API changes.
 
 ### CI
 
+* **Weekly package metrics.** A new workflow records pub points, likes and
+  per-version weekly downloads for this package, `flutter_gen_ai_chat_ui`
+  and `flutter_dot_loader` on the `metrics` branch every Monday. It tracks
+  downloads of the latest two minor versions separately, so a single CI
+  pipeline locked to an old version no longer hides real adoption.
 * The weekly workflow's `pub upgrade` and `pub downgrade` jobs now generate
   `example/lib/version.dart` before running `flutter analyze`, as the main CI
   job already did. Without that generated file, analysing `example/` fails on

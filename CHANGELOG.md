@@ -22,6 +22,15 @@ block copy button. There are no API changes.
 
 ### Documentation
 
+* **A quick start that streams.** The README now opens with a complete app
+  that streams a markdown reply from a stand-in `Stream<String>`, so pasting
+  it into `lib/main.dart` shows the package working with no API key. The
+  same code is `example/lib/quickstart.dart`, which CI analyzes and tests,
+  and a test keeps the README copy identical to it.
+* **New README section: one widget for streaming and finished replies.**
+  Swapping to another markdown widget when a reply completes makes the text
+  jump in typography and spacing. The section shows how to keep one widget,
+  including as a plain progressive renderer with `animationsEnabled: false`.
 * **The README stream samples no longer re-request on every rebuild.** They
   used to pass `stream: chatService.streamReply(prompt)` inline in `build()`.
   Every rebuild, including the one from `setState` in `onComplete`, handed the

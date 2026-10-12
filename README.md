@@ -1,14 +1,69 @@
 # Flutter Streaming Text Markdown
 
-**Perfect for LLM applications.** A Flutter package optimized for beautiful AI text streaming with ChatGPT and Claude-style animations.
+Render LLM replies as they stream. Pass in a `Stream<String>` from ChatGPT, Claude, Gemini or any model and get smoothly revealed markdown, with ChatGPT- and Claude-style animations, LaTeX, right-to-left text, and a renderer that copes with half-finished syntax.
 
 [![pub package](https://img.shields.io/pub/v/flutter_streaming_text_markdown.svg)](https://pub.dev/packages/flutter_streaming_text_markdown)
-[![CI](https://github.com/hooshyar/flutter_streaming_text_markdown/actions/workflows/ci.yml/badge.svg)](https://github.com/hooshyar/flutter_streaming_text_markdown/actions/workflows/ci.yml)
 [![pub points](https://img.shields.io/pub/points/flutter_streaming_text_markdown)](https://pub.dev/packages/flutter_streaming_text_markdown/score)
 [![likes](https://img.shields.io/pub/likes/flutter_streaming_text_markdown)](https://pub.dev/packages/flutter_streaming_text_markdown/score)
-[![downloads](https://img.shields.io/pub/dm/flutter_streaming_text_markdown)](https://pub.dev/packages/flutter_streaming_text_markdown/score)
-[![coverage](https://img.shields.io/badge/lib%20coverage-95%25-brightgreen)](https://github.com/hooshyar/flutter_streaming_text_markdown/actions/workflows/ci.yml)
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/LICENSE)
+[![CI](https://github.com/hooshyar/flutter_streaming_text_markdown/actions/workflows/ci.yml/badge.svg)](https://github.com/hooshyar/flutter_streaming_text_markdown/actions/workflows/ci.yml)
+
+<img src="https://raw.githubusercontent.com/hooshyar/flutter_streaming_text_markdown/main/doc/demo.gif" alt="The example app: streaming markdown, presets, and the animation controller" width="720"/>
+
+▶️ **[Try the live web demo](https://hooshyar.github.io/flutter_streaming_text_markdown/)** · [full-quality video](https://github.com/hooshyar/flutter_streaming_text_markdown/raw/main/doc/demo.mp4)
+
+## Quick start
+
+```yaml
+dependencies:
+  flutter_streaming_text_markdown: ^1.11.1
+```
+
+This complete app streams a markdown reply. Paste it into `lib/main.dart` and run it; no API key needed:
+
+<!-- quickstart:start -->
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_streaming_text_markdown/flutter_streaming_text_markdown.dart';
+
+void main() => runApp(const MaterialApp(home: Scaffold(body: ReplyView())));
+
+class ReplyView extends StatefulWidget {
+  const ReplyView({super.key});
+
+  @override
+  State<ReplyView> createState() => _ReplyViewState();
+}
+
+class _ReplyViewState extends State<ReplyView> {
+  // Create the stream once, not in build(): a new stream on every rebuild
+  // would restart the reply.
+  late final Stream<String> _reply = fakeLlmReply();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: StreamingTextMarkdown.claude(stream: _reply),
+    );
+  }
+}
+
+/// Stands in for an LLM: yields a markdown reply one word at a time.
+Stream<String> fakeLlmReply() async* {
+  const reply = '## Hello!\n\n'
+      'This reply **streams in** token by token, with `inline code` '
+      'and lists:\n\n'
+      '- tokens are appended as they arrive\n'
+      '- markdown is re-rendered as it grows\n';
+  for (final token in RegExp(r'\S+\s*').allMatches(reply)) {
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    yield token[0]!;
+  }
+}
+```
+<!-- quickstart:end -->
+
+To use a real model, replace `fakeLlmReply()` with your model's token stream. [Streaming from an LLM API](#-streaming-from-an-llm-api-openai-anthropic-ollama-) has ready-made OpenAI and Anthropic bridges. Keep creating the stream once in `State`, not in `build()`.
 
 ## ✨ Features
 
@@ -24,16 +79,6 @@
 - ♿ **Accessibility** - Reduced-motion support, single-announcement semantics, and selectable text
 - ⚠️ **Stream error handling** - `errorBuilder` plus a controller error state, with revealed text kept on screen
 
-## 🎬 Demo
-
-<img src="https://raw.githubusercontent.com/hooshyar/flutter_streaming_text_markdown/main/doc/demo.gif" alt="The 1.11.0 example app: streaming markdown, presets, and the animation controller" width="720"/>
-
-Full-quality video: [doc/demo.mp4](https://github.com/hooshyar/flutter_streaming_text_markdown/raw/main/doc/demo.mp4)
-
-▶️ **[Try the live web demo](https://hooshyar.github.io/flutter_streaming_text_markdown/)** — or run it locally: `cd example && flutter run`
-
-The example app walks through every feature: presets (ChatGPT / Claude / typewriter), live `Stream<String>` input, markdown & LaTeX rendering, RTL/Arabic, theming, and the animation controller.
-
 ## When to use this package
 
 Use `flutter_streaming_text_markdown` when text arrives token by token from an LLM and you want it to appear smoothly: a pacer that catches up with the stream, a fade or typewriter reveal, and a markdown renderer that tolerates half-finished syntax (`**bol`, an open code fence, a partial table row) without flashing raw markers.
@@ -46,16 +91,23 @@ Use `flutter_streaming_text_markdown` when text arrives token by token from an L
 
 Under the hood the markdown is rendered by `gpt_markdown`; this package adds the streaming engine, reveal animations, pause/resume/skip control and accessibility on top.
 
-## Installation
+## One widget for streaming and finished replies
 
-Add this to your package's `pubspec.yaml` file:
+Keep the same `StreamingTextMarkdown` on screen after the stream closes. If you swap to another markdown widget once the reply is done, the text changes typography and spacing at that moment, because the two renderers style headings, code and lists differently.
 
-```yaml
-dependencies:
-  flutter_streaming_text_markdown: ^1.11.1
+The same widget also works as a plain progressive markdown renderer, if you don't want any animation:
+
+```dart
+StreamingTextMarkdown(
+  text: replySoFar, // grows as tokens arrive, then stays as the final reply
+  markdownEnabled: true,
+  animationsEnabled: false,
+)
 ```
 
-## 🚀 Quick Start
+Style it once with a `StreamingTextTheme` in your `ThemeData` (see [Styling and theming](#styling-and-theming)), and replace individual elements, such as inline code or links, with the builders in [`MarkdownRenderOptions`](#-markdownrenderoptions).
+
+## More examples
 
 ### ChatGPT-Style Streaming
 

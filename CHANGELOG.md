@@ -11,9 +11,11 @@ block copy button. There are no API changes.
 * **Markdown text no longer stays invisible after tap-to-complete.** With
   the default `smoothFade` reveal, tapping a streaming reply to complete it
   could occasionally leave the last revealed paragraph fully transparent.
-  The paint-time fade mask could start a fade after the widget's ticker had
-  stopped repainting it. The mask now keeps repainting itself until every
-  fade reaches full opacity.
+  The paint-time fade mask starts a fade when it first lays out new text,
+  which can be later than the reveal engine's own timing, and the widget's
+  ticker could stop before that fade finished. The mask now reports while
+  it is still fading, and the ticker keeps running until every fade reaches
+  full opacity.
 * **The code block copy button no longer throws when the clipboard
   refuses.** On the web the browser can reject a clipboard write, for
   example when the page isn't focused or clipboard permission is denied.

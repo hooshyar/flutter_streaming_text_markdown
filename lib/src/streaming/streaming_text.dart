@@ -978,7 +978,23 @@ class _StreamingTextState extends State<StreamingText>
       (_scheduler.isRunning ||
           _fadeActive ||
           _markdownFadeActive ||
+          _maskFading ||
           _caretVisible);
+
+  /// Whether [MarkdownFadeMask] last reported a run still fading. Keeps the
+  /// ticker (and with it the fade clock and the mask's repaints) running
+  /// until the mask's own fades finish, even after the engine-timed
+  /// [_markdownFadeActive] window has closed: the mask arms a run only when
+  /// layout sees the text grow, which can be later than the engine's run.
+  /// Without this, text revealed by tap-to-complete could be left painted
+  /// at alpha 0.
+  bool _maskFading = false;
+
+  void _onMaskFadingChanged(bool fading) {
+    if (!mounted || fading == _maskFading) return;
+    _maskFading = fading;
+    _syncTicker();
+  }
 
   void _syncTicker() {
     if (!mounted) return;
@@ -1038,7 +1054,7 @@ class _StreamingTextState extends State<StreamingText>
     // no correctness change: [_collectDims] was already a no-op on those
     // frames, this only stops making the render tree redundantly repaint to
     // discover that.
-    if (widget.markdownEnabled && _markdownFadeActive) {
+    if (widget.markdownEnabled && (_markdownFadeActive || _maskFading)) {
       _markdownFadeRepaint.ping();
     }
 
@@ -1489,6 +1505,7 @@ class _StreamingTextState extends State<StreamingText>
             fadeDuration: _effectiveFadeDuration,
             curve: _effectiveFadeCurve,
             repaint: _markdownFadeRepaint,
+            onFadingChanged: _onMaskFadingChanged,
             child: markdownContent,
           );
         }

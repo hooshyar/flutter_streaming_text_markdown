@@ -2,11 +2,18 @@
 
 ## 1.11.1
 
-Restores the full 160/160 pub points and fixes an uncaught error from the code
+Restores the full 160/160 pub points and fixes two bugs: markdown that could
+stay invisible after tap-to-complete, and an uncaught error from the code
 block copy button. There are no API changes.
 
 ### Fixed
 
+* **Markdown text no longer stays invisible after tap-to-complete.** With
+  the default `smoothFade` reveal, tapping a streaming reply to complete it
+  could occasionally leave the last revealed paragraph fully transparent.
+  The paint-time fade mask could start a fade after the widget's ticker had
+  stopped repainting it. The mask now keeps repainting itself until every
+  fade reaches full opacity.
 * **The code block copy button no longer throws when the clipboard
   refuses.** On the web the browser can reject a clipboard write, for
   example when the page isn't focused or clipboard permission is denied.

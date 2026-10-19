@@ -1,27 +1,22 @@
 import { chromium } from 'playwright';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 
+rmSync('out', { recursive: true, force: true });
 mkdirSync('out', { recursive: true });
 const browser = await chromium.launch();
 const url = 'https://hooshyar.github.io/flutter_streaming_text_markdown/';
-
-for (const scheme of ['dark', 'light']) {
-  const page = await browser.newPage({
-    viewport: { width: 1280, height: 860 },
-    deviceScaleFactor: 2,
-    colorScheme: scheme,
-  });
-  await page.goto(url, { waitUntil: 'networkidle' });
-  for (const t of [3, 7]) {
-    await page.waitForTimeout(t === 3 ? 3000 : 4000);
-    await page.screenshot({ path: `out/${scheme}-top-${t}s.png` });
-  }
-  await page.mouse.move(640, 500);
-  for (let i = 1; i <= 4; i++) {
-    await page.mouse.wheel(0, 700);
-    await page.waitForTimeout(2500);
-    await page.screenshot({ path: `out/${scheme}-scroll-${i}.png` });
-  }
-  await page.close();
+const page = await browser.newPage({
+  viewport: { width: 720, height: 1000 },
+  deviceScaleFactor: 2,
+  colorScheme: 'dark',
+});
+await page.goto(url, { waitUntil: 'networkidle' });
+await page.waitForTimeout(8000);
+await page.screenshot({ path: 'out/s00.png' });
+await page.mouse.move(360, 500);
+for (let i = 1; i <= 12; i++) {
+  await page.mouse.wheel(0, 450);
+  await page.waitForTimeout(3000);
+  await page.screenshot({ path: `out/s${String(i).padStart(2, '0')}.png` });
 }
 await browser.close();

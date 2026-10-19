@@ -22,11 +22,10 @@ await page.screenshot({ path: 'out/before.png' });
 await page.mouse.click(618, 196);
 await page.waitForTimeout(300);
 await page.mouse.wheel(0, -380);
-let last = 300;
-for (const ms of [1200, 2000, 2800, 3600, 5000, 9000]) {
-  await page.waitForTimeout(ms - last);
-  last = ms;
-  await page.screenshot({ path: `out/stream-${ms}.png` });
+await page.waitForTimeout(700);
+for (let ms = 1000; ms <= 3800; ms += 140) {
+  await page.waitForTimeout(140);
+  await page.screenshot({ path: `out/f${String(ms).padStart(5, '0')}.png`, clip: { x: 0, y: 50, width: 720, height: 380 } });
 }
 for (let i = 1; i <= 3; i++) {
   await page.mouse.wheel(0, 450);

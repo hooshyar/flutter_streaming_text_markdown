@@ -12,11 +12,21 @@ const page = await browser.newPage({
 });
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(8000);
-await page.screenshot({ path: 'out/s00.png' });
 await page.mouse.move(360, 500);
 for (let i = 1; i <= 12; i++) {
   await page.mouse.wheel(0, 450);
-  await page.waitForTimeout(3000);
-  await page.screenshot({ path: `out/s${String(i).padStart(2, '0')}.png` });
+  await page.waitForTimeout(1500);
+}
+await page.waitForTimeout(2000);
+await page.screenshot({ path: 'out/before.png' });
+await page.mouse.click(618, 196);
+for (const ms of [800, 1600, 2600, 4000, 7000]) {
+  await page.waitForTimeout(ms === 800 ? 800 : ms - [800, 1600, 2600, 4000, 7000][[800, 1600, 2600, 4000, 7000].indexOf(ms) - 1]);
+  await page.screenshot({ path: `out/stream-${ms}.png` });
+}
+for (let i = 1; i <= 3; i++) {
+  await page.mouse.wheel(0, 450);
+  await page.waitForTimeout(2500);
+  await page.screenshot({ path: `out/end-${i}.png` });
 }
 await browser.close();

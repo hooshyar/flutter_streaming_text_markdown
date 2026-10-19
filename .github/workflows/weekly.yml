@@ -82,5 +82,18 @@ jobs:
       - name: Activate pana
         run: dart pub global activate pana
 
+      - name: Install webp tools
+        # pana converts the pubspec screenshots with cwebp/gif2webp/webpinfo,
+        # as pub.dev does; without them it fails the screenshot check.
+        run: sudo apt-get update -q > /dev/null && sudo apt-get install -y -q webp > /dev/null
+
       - name: Run pana
-        run: dart pub global run pana --exit-code-threshold 0 .
+        # On a lost point, the report's section lines become an annotation:
+        # job logs are not always at hand, annotations are.
+        run: |
+          if ! dart pub global run pana --exit-code-threshold 0 . > pana.txt 2>&1; then
+            echo "::error title=pana lost points::$(grep -E '^## |^### |Points:|ERROR|WARNING|[Ff]ailed' pana.txt | tail -n 60 | sed -e 's/%/%25/g' -e 's/\r//g' | sed ':a;N;$!ba;s/\n/%0A/g')"
+            cat pana.txt
+            exit 1
+          fi
+          grep -E 'Points:' pana.txt || tail -n 5 pana.txt

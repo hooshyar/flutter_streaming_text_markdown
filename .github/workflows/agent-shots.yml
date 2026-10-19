@@ -16,6 +16,26 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Check out the example to build
+        uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-green-2026-10
+          path: pkg
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build the example for the web and serve it
+        run: |
+          cd pkg
+          flutter pub get > /dev/null
+          dart run tool/generate_version.dart > /dev/null
+          cd example
+          flutter pub get > /dev/null
+          flutter build web --release > /dev/null
+          (cd build/web && nohup python3 -m http.server 8080 > /dev/null 2>&1 &)
+          sleep 2
+          curl -sf http://localhost:8080/ > /dev/null && echo served
       - uses: actions/setup-node@v4
         with:
           node-version: 20

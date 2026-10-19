@@ -4,7 +4,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 rmSync('out', { recursive: true, force: true });
 mkdirSync('out', { recursive: true });
 const browser = await chromium.launch();
-const url = 'https://hooshyar.github.io/flutter_streaming_text_markdown/';
+const url = 'http://localhost:8080/';
 const page = await browser.newPage({
   viewport: { width: 720, height: 1000 },
   deviceScaleFactor: 2,
@@ -23,8 +23,8 @@ await page.mouse.click(618, 196);
 await page.waitForTimeout(300);
 await page.mouse.wheel(0, -380);
 await page.waitForTimeout(700);
-for (let ms = 1000; ms <= 3800; ms += 140) {
-  await page.waitForTimeout(140);
+for (let ms = 1000; ms <= 4800; ms += 120) {
+  await page.waitForTimeout(120);
   await page.screenshot({ path: `out/f${String(ms).padStart(5, '0')}.png`, clip: { x: 0, y: 50, width: 720, height: 380 } });
 }
 for (let i = 1; i <= 3; i++) {

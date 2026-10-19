@@ -1,6 +1,6 @@
 name: flutter_streaming_text_markdown
 description: Stream LLM output (ChatGPT, Claude, Gemini) into Flutter as live markdown with typewriter and fade reveal, LaTeX, RTL and pause/skip control.
-version: 1.11.1
+version: 1.11.2
 homepage: https://github.com/hooshyar/flutter_streaming_text_markdown
 repository: https://github.com/hooshyar/flutter_streaming_text_markdown
 documentation: https://github.com/hooshyar/flutter_streaming_text_markdown/blob/main/README.md
@@ -12,6 +12,12 @@ topics:
   - ai
 
 issue_tracker: https://github.com/hooshyar/flutter_streaming_text_markdown/issues
+
+screenshots:
+  - description: "A markdown reply streaming in, with the fade and caret at the reveal edge."
+    path: screenshots/streaming.png
+  - description: "Markdown, LaTeX and right-to-left Arabic rendered by the same widget."
+    path: screenshots/features.png
 
 platforms:
   android:

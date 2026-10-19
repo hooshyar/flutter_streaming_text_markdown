@@ -15,7 +15,7 @@ Render LLM replies as they stream. Pass in a `Stream<String>` from ChatGPT, Clau
 
 ```yaml
 dependencies:
-  flutter_streaming_text_markdown: ^1.11.1
+  flutter_streaming_text_markdown: ^1.11.2
 ```
 
 This complete app streams a markdown reply. Paste it into `lib/main.dart` and run it; no API key needed:

@@ -31,8 +31,8 @@ class _StreamingSectionState extends State<StreamingSection> {
     '- No buffering the whole reply\n',
     '- `trailingFadeEnabled` ',
     'for a smooth reveal\n',
-    '- Per-character fade ',
-    'auto-suppressed for streams\n\n',
+    '- Markdown that renders ',
+    'while it is still arriving\n\n',
     'Tap the text while it ',
     'streams to see ',
     '`completeAnimationOnTap` ',
@@ -134,7 +134,14 @@ class _StreamingSectionState extends State<StreamingSection> {
                   ),
                   Switch(
                     value: _completeOnTap,
-                    activeThumbColor: _accent,
+                    // `activeThumbColor` only exists from Flutter 3.35, and
+                    // `activeColor` is deprecated there; `thumbColor` works
+                    // on the whole supported range (Flutter 3.32+).
+                    thumbColor: WidgetStateProperty.resolveWith(
+                      (states) => states.contains(WidgetState.selected)
+                          ? _accent
+                          : null,
+                    ),
                     onChanged: (v) => setState(() => _completeOnTap = v),
                   ),
                 ],

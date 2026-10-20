@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.11.2
+
+A listing and tooling release. There are no API or behaviour changes.
+
+* **Screenshots on pub.dev.** The package page and search results now show
+  two screenshots: a markdown reply streaming in, and markdown, LaTeX and
+  Arabic RTL rendered by the same widget.
+* **Analyzer clean at the Flutter 3.32 floor.** `StreamingTextTheme.copyWith`
+  was missing one `deprecated_member_use_from_same_package` ignore that only
+  the 3.32 analyzer reports, and the example app used
+  `Switch.activeThumbColor`, which only exists from Flutter 3.35. The weekly
+  `pub downgrade` check is green again.
+* **Live demo text.** The streaming demo no longer says the per-character
+  fade is suppressed for streams; that stopped being true when the fade
+  became opacity-only.
+* **CI.** One exhaustive fade-matrix case (`dup` `table`, streaming) had a
+  15% pop ceiling that rounds to one word of five and failed about half the
+  weekly runs. It now uses the measured maximum plus one word, like the
+  other table ceilings.
+
 ## 1.11.1
 
 Restores the full 160/160 pub points and fixes two bugs: markdown that could

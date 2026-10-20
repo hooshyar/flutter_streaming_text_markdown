@@ -106,6 +106,7 @@ class StreamingTextTheme extends ThemeExtension<StreamingTextTheme> {
       markdownStyleSheet:
           markdownStyleSheet ??
           this.markdownStyleSheet ??
+          // ignore: deprecated_member_use_from_same_package
           (markdownStyle ?? this.markdownStyle),
       defaultPadding: defaultPadding ?? this.defaultPadding,
       inlineLatexStyle: inlineLatexStyle ?? this.inlineLatexStyle,
